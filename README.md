@@ -20,8 +20,6 @@ See [Configuration](./doc/CONFIGURATION.md) on how to configure `hrmp`.
 * [ALSA](https://www.alsa-project.org/wiki/Main_Page)
 * [libflac](https://xiph.org/flac/)
 
-See [Architecture](./doc/ARCHITECTURE.md) for the architecture of `hrmp`.
-
 ## Tested platforms
 
 * [Fedora](https://getfedora.org/) 42+
