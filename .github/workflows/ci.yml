@@ -27,8 +27,8 @@ jobs:
           sudo apt update -y
           sudo apt install -y \
           git gcc clang clang-tools cmake make \
-          alsa-lib alsa-lib-dev \
-          flac flac-dev \
+          libasound2 libasound2-dev \
+          flac libflac-dev \
           python3-docutils \
           check graphviz doxygen \
           pandoc texlive texlive-latex-extra \
