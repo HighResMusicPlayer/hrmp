@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        compiler: [gcc, clang]
+        build_type: [Debug, Release]
+      fail-fast: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          sudo apt update -y
+          sudo apt install -y \
+          git gcc clang clang-tools cmake make \
+          alsa-lib alsa-lib-dev \
+          flac flac-dev \
+          python3-docutils \
+          check graphviz doxygen \
+          pandoc texlive texlive-latex-extra \
+          texlive-fonts-extra texlive-xetex texlive-luatex \
+          texlive-science texlive-extra-utils \
+          texlive-lang-all
+
+      - name: Install Eisvogel template for Pandoc
+        run: |
+          wget https://github.com/Wandmalfarbe/pandoc-latex-template/releases/download/v3.2.0/Eisvogel-3.2.0.tar.gz
+          tar -xzf Eisvogel-3.2.0.tar.gz
+          mkdir -p ~/.local/share/pandoc/templates
+          mv Eisvogel-3.2.0/eisvogel.latex ~/.local/share/pandoc/templates/
+
+      - name: Build Project
+        run: |
+          mkdir build
+          cd build
+          if [ "${{ matrix.compiler }}" = "gcc" ]; then
+            export CC=/usr/bin/gcc
+          else
+            export CC=/usr/bin/clang
+          fi
+          cmake -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}  ..
+          make -j$(nproc)
+        working-directory: /home/runner/work/HighResMusicPlayer/hrmp
+
+      - name: Upload Build and Run Logs as Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-${{ matrix.compiler }}-${{ matrix.build_type }}
+          path: /home/runner/work/HighResMusicPlayer/hrmp/build/log
+          retention-days: 60
