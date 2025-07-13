@@ -41,3 +41,28 @@ hrmp_is_file_supported(char* f)
 
    return false;
 }
+
+bool
+hrmp_is_file_metadata_supported(struct file_metadata *fm, int device)
+{
+   struct configuration* config = NULL;
+
+   config = (struct configuration *)shmem;
+
+   if (fm->bits_per_sample == 16 && config->devices[device].capabilities.s16_le)
+   {
+      return true;
+   }
+
+   if (fm->bits_per_sample == 24 && config->devices[device].capabilities.s24_le)
+   {
+      return true;
+   }
+
+   if (fm->bits_per_sample == 32 && config->devices[device].capabilities.s32_le)
+   {
+      return true;
+   }
+
+   return false;
+}

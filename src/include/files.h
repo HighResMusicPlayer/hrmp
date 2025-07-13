@@ -38,6 +38,27 @@ extern "C" {
 #include <stdbool.h>
 #include <stdlib.h>
 
+#define TYPE_FLAC 1
+
+/** @struct
+ * Defines a file metadata
+ */
+struct file_metadata
+{
+  int type;               /**< The type of file */
+  char name[MISC_LENGTH]; /**< The name of the file */
+  int format;
+  unsigned int sample_rate;
+  unsigned int channels;
+  unsigned int bits_per_sample;
+  unsigned long total_samples;
+  double duration;
+  unsigned int min_blocksize;
+  unsigned int max_blocksize;
+  unsigned int min_framesize;
+  unsigned int max_framesize;
+} __attribute__((aligned(64)));
+
 /**
  * Is the file supported
  * @param f The file
@@ -45,6 +66,15 @@ extern "C" {
  */
 bool
 hrmp_is_file_supported(char* f);
+
+/**
+ * Is the file metadata supported
+ * @param fm The file metadata
+ * @param device The device
+ * @return The result
+ */
+bool
+hrmp_is_file_metadata_supported(struct file_metadata* fm, int device);
 
 #ifdef __cplusplus
 }

@@ -242,8 +242,9 @@ main(int argc, char** argv)
    for (int i = 0; i < hrmp_dlist_size(files); i++)
    {
       char* fn = hrmp_dlist_get(files, i);
+      bool is_supported = false;
 
-      if (hrmp_ends_with(fn, ".flac"))
+      if (hrmp_is_file_supported(fn))
       {
          struct file_metadata* fm = NULL;
          snd_pcm_t* pcm_handle = NULL;
@@ -254,14 +255,24 @@ main(int argc, char** argv)
 
          if (active_device >= 0)
          {
-            hrmp_alsa_init_handle(config->devices[active_device].device, fm->format, fm->sample_rate, &pcm_handle);
+            if (hrmp_is_file_metadata_supported(fm, active_device))
+            {
+               is_supported = true;
 
-            hrmp_alsa_close_handle(pcm_handle);
+               hrmp_alsa_init_handle(config->devices[active_device].device, fm->format, fm->sample_rate, &pcm_handle);
+
+               hrmp_alsa_close_handle(pcm_handle);
+            }
          }
 
          hrmp_flac_print_metadata(fm);
 
          free(fm);
+      }
+
+      if (!is_supported)
+      {
+         hrmp_log_warn("File '%s' isn't supported", fn);
       }
    }
 
