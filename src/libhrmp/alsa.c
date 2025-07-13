@@ -75,6 +75,11 @@ hrmp_alsa_init_handle(char* device, int format, int rate, snd_pcm_t** handle)
       hrmp_log_error("snd_pcm_hw_params_set_rate %s/%s", device, snd_strerror(err));
       goto error;
    }
+   if ((err = snd_pcm_hw_params_set_rate_resample(h, hw_params, 0)) < 0)
+   {
+      hrmp_log_error("snd_pcm_hw_params_set_rate_resample %s/%s", device, snd_strerror(err));
+      goto error;
+   }
    if ((err = snd_pcm_hw_params(h, hw_params)) < 0)
    {
       hrmp_log_error("snd_pcm_hw_params %s/%s", device, snd_strerror(err));
