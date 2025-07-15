@@ -31,12 +31,15 @@
 #include <alsa.h>
 #include <logging.h>
 
+#include <alsa/pcm.h>
+
 int
 hrmp_alsa_init_handle(char* device, int format, int rate, snd_pcm_t** handle)
 {
    int err;
    snd_pcm_t* h = NULL;
    snd_pcm_hw_params_t* hw_params = NULL;
+   snd_pcm_uframes_t buffer_size = 44100; // TODO
 
    *handle = NULL;
 
@@ -60,7 +63,7 @@ hrmp_alsa_init_handle(char* device, int format, int rate, snd_pcm_t** handle)
       hrmp_log_error("snd_pcm_hw_params_set_access %s/%s", device, snd_strerror(err));
       goto error;
    }
-   if ((err = snd_pcm_hw_params_set_format(h, hw_params, format)) < 0)
+   if ((err = snd_pcm_hw_params_set_format(h, hw_params, format)) < 0) // TODO
    {
       hrmp_log_error("snd_pcm_hw_params_set_format %s/%s", device, snd_strerror(err));
       goto error;
@@ -78,6 +81,11 @@ hrmp_alsa_init_handle(char* device, int format, int rate, snd_pcm_t** handle)
    if ((err = snd_pcm_hw_params_set_rate_resample(h, hw_params, 0)) < 0)
    {
       hrmp_log_error("snd_pcm_hw_params_set_rate_resample %s/%s", device, snd_strerror(err));
+      goto error;
+   }
+   if ((err = snd_pcm_hw_params_set_buffer_size(h, hw_params, buffer_size)) < 0)
+   {
+      hrmp_log_error("snd_pcm_hw_params_set_buffer_size %s/%s", device, snd_strerror(err));
       goto error;
    }
    if ((err = snd_pcm_hw_params(h, hw_params)) < 0)
@@ -111,19 +119,11 @@ error:
 int
 hrmp_alsa_close_handle(snd_pcm_t* handle)
 {
-   if (handle == NULL)
+   if (handle != NULL)
    {
-      return 1;
+      snd_pcm_drain(handle);
+      snd_pcm_close(handle);
    }
-
-   snd_pcm_drain(handle);
-   snd_pcm_close(handle);
 
    return 0;
 }
-
-// TODO ... (implement FLAC decoding callbacks, buffer handling, etc.)
-/*     // 3. While decoding FLAC, send PCM data to ALSA */
-/*     // FLAC__stream_decoder_process_single(...) or similar */
-/*     // Inside write callback: */
-/*     // snd_pcm_writei(pcm_handle, pcm_buffer, frames); */

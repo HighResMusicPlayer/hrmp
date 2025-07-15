@@ -28,21 +28,27 @@
 
 /* hrmp */
 #include <hrmp.h>
+#include <alsa.h>
 #include <devices.h>
+#include <files.h>
 #include <logging.h>
 #include <playback.h>
 #include <wav.h>
 
 /* system */
-/* #include <errno.h> */
-/* #include <stdlib.h> */
-/* #include <string.h> */
-/* #include <sys/mman.h> */
-
+#include <stdio.h>
+#include <stdlib.h>
+#include <FLAC/all.h>
+//#include <FLAC/stream_decoder.h>
 #include <alsa/asoundlib.h>
 
+static FLAC__bool write_pcm(const FLAC__int32* const buffer[], size_t samples, struct playback* ctx);
+static FLAC__StreamDecoderWriteStatus write_callback(const FLAC__StreamDecoder* decoder, const FLAC__Frame* frame, const FLAC__int32* const buffer[], void* client_data);
+static void metadata_callback(const FLAC__StreamDecoder* decoder, const FLAC__StreamMetadata* metadata, void* client_data);
+static void error_callback(const FLAC__StreamDecoder* decoder, FLAC__StreamDecoderErrorStatus status, void* client_data);
+
 int
-hrmp_playback_wav(char* path)
+hrmp_playback_wav(char* fn, int device, struct file_metadata* fm)
 {
    /* int err; */
    /* snd_pcm_t* pcm = NULL; */
@@ -51,7 +57,8 @@ hrmp_playback_wav(char* path)
 
    /* /\* device = hrmp_get_device(); *\/ */
 
-   /* if ((err = snd_pcm_open(&pcm, device->device, SND_PCM_STREAM_PLAYBACK, 0)) < 0) */
+   /* if ((err = snd_pcm_open(&pcm, device->device, SND_PCM_STREAM_PLAYBACK, 0))
+    * < 0) */
    /* { */
    /*    hrmp_log_fatal("Can not play %s due to %s", path, snd_strerror(err)); */
    /*    goto error; */
@@ -70,15 +77,187 @@ hrmp_playback_wav(char* path)
 
    return 0;
 
-/* error: */
+   /* error: */
 
-/*    if (pcm != NULL) */
-/*    { */
-/*       if ((err = snd_pcm_close(pcm)) < 0) */
-/*       { */
-/*          hrmp_log_debug("Error in closing PCM: %s", snd_strerror(err)); */
-/*       } */
-/*    } */
+   /*    if (pcm != NULL) */
+   /*    { */
+   /*       if ((err = snd_pcm_close(pcm)) < 0) */
+   /*       { */
+   /*          hrmp_log_debug("Error in closing PCM: %s", snd_strerror(err)); */
+   /*       } */
+   /*    } */
 
-/*    return 1; */
+   /*    return 1; */
+}
+
+int
+hrmp_playback_flac(char* fn, int device, struct file_metadata* fm)
+{
+   FLAC__StreamDecoder* decoder = NULL;
+   snd_pcm_t* pcm_handle = NULL;
+   struct playback* pb = NULL;
+   struct configuration* config = NULL;
+
+   config = (struct configuration*)shmem;
+
+   if (hrmp_alsa_init_handle(config->devices[device].device, fm->format, fm->sample_rate, &pcm_handle))
+   {
+      hrmp_log_error("Could not initialize %s for %s", config->devices[device].name, fn);
+      goto error;
+   }
+
+   decoder = FLAC__stream_decoder_new();
+   if (decoder == NULL)
+   {
+      hrmp_log_error("Could not initialize decoder for %s", fn);
+      goto error;
+   }
+   FLAC__stream_decoder_set_md5_checking(decoder, false);
+
+   pb = (struct playback*)malloc(sizeof(struct playback));
+   memset(pb, 0, sizeof(struct playback));
+
+   pb->pcm_handle = pcm_handle;
+   pb->fm = fm;
+
+   FLAC__StreamDecoderInitStatus status = FLAC__stream_decoder_init_file(decoder, fn, write_callback, metadata_callback, error_callback, pb);
+   if (status == FLAC__STREAM_DECODER_INIT_STATUS_OK)
+   {
+      hrmp_log_debug("OK: %s", fn);
+   }
+   else if (status == FLAC__STREAM_DECODER_INIT_STATUS_UNSUPPORTED_CONTAINER)
+   {
+      hrmp_log_error("UNSUPPORTED_CONTAINER: %s", fn);
+      goto error;
+   }
+   else if (status == FLAC__STREAM_DECODER_INIT_STATUS_INVALID_CALLBACKS)
+   {
+      hrmp_log_error("INVALID_CALLBACKS: %s", fn);
+      goto error;
+   }
+   else if (status == FLAC__STREAM_DECODER_INIT_STATUS_MEMORY_ALLOCATION_ERROR)
+   {
+      hrmp_log_error("MEMORY_ALLOCATION_ERROR: %s", fn);
+      goto error;
+   }
+   else if (status == FLAC__STREAM_DECODER_INIT_STATUS_ERROR_OPENING_FILE)
+   {
+      hrmp_log_error("ERROR_OPENING_FILE: %s", fn);
+      goto error;
+   }
+   else if (status == FLAC__STREAM_DECODER_INIT_STATUS_ALREADY_INITIALIZED)
+   {
+      hrmp_log_error("ALREADY_INITIALIZED: %s", fn);
+      goto error;
+   }
+   else
+   {
+      hrmp_log_debug("Unknown %d for %s", status, fn);
+   }
+
+   // Metadata will be filled before first frame
+   FLAC__stream_decoder_process_until_end_of_metadata(decoder);
+
+   // Decode and play
+   FLAC__stream_decoder_process_until_end_of_stream(decoder);
+
+   hrmp_alsa_close_handle(pcm_handle);
+   FLAC__stream_decoder_delete(decoder);
+
+   free(pb);
+
+   return 0;
+
+error:
+
+   hrmp_alsa_close_handle(pcm_handle);
+
+   if (decoder != NULL)
+   {
+      FLAC__stream_decoder_delete(decoder);
+   }
+
+   free(pb);
+
+   return 1;
+}
+
+static FLAC__bool
+write_pcm(const FLAC__int32* const buffer[], size_t samples, struct playback* ctx)
+{
+   size_t i, ch;
+   int frame_size = ctx->fm->channels * (ctx->fm->bits_per_sample / 8);
+   unsigned char* out = malloc(samples * frame_size);
+
+   if (!out)
+   {
+      return false;
+   }
+
+   for (i = 0; i < samples; ++i)
+   {
+      for (ch = 0; ch < ctx->fm->channels; ++ch)
+      {
+         int sample = buffer[ch][i];
+
+         out[i * ctx->fm->channels * 2 + ch * 2] = sample & 0xFF;
+         out[i * ctx->fm->channels * 2 + ch * 2 + 1] = (sample >> 8) & 0xFF;
+      }
+   }
+
+   snd_pcm_writei(ctx->pcm_handle, out, samples);
+   free(out);
+
+   return true;
+}
+
+static FLAC__StreamDecoderWriteStatus
+write_callback(const FLAC__StreamDecoder* decoder,
+               const FLAC__Frame* frame,
+               const FLAC__int32* const buffer[],
+               void* client_data)
+{
+   struct playback* ctx = (struct playback*)client_data;
+   write_pcm(buffer, frame->header.blocksize, ctx);
+   return FLAC__STREAM_DECODER_WRITE_STATUS_CONTINUE;
+}
+
+static void
+metadata_callback(const FLAC__StreamDecoder* decoder,
+                  const FLAC__StreamMetadata* metadata,
+                  void* client_data)
+{
+}
+
+static void
+error_callback(const FLAC__StreamDecoder* decoder,
+               FLAC__StreamDecoderErrorStatus status,
+               void* client_data)
+{
+   if (status == FLAC__STREAM_DECODER_ERROR_STATUS_LOST_SYNC)
+   {
+      hrmp_log_error("LOST_SYNC");
+   }
+   else if (status == FLAC__STREAM_DECODER_ERROR_STATUS_BAD_HEADER)
+   {
+      hrmp_log_error("BAD_HEADER");
+   }
+   else if (status == FLAC__STREAM_DECODER_ERROR_STATUS_FRAME_CRC_MISMATCH)
+   {
+      hrmp_log_error("FRAME_CRC_MISMATCH");
+   }
+   else if (status == FLAC__STREAM_DECODER_ERROR_STATUS_BAD_METADATA)
+   {
+      hrmp_log_error("BAD_METADATA");
+   }
+   /* else if (status == FLAC__STREAM_DECODER_ERROR_STATUS_OUT_OF_BOUNDS) */
+   /* { */
+   /* } */
+   /* else if (status == FLAC__STREAM_DECODER_ERROR_STATUS_MISSING_FRAME) */
+   /* { */
+   /* } */
+   else
+   {
+      hrmp_log_error("UNKNOWN %d", status);
+   }
 }

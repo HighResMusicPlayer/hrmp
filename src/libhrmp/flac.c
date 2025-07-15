@@ -26,14 +26,13 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+/* hrmp */
 #include <hrmp.h>
-#include <flac.h>
+#include <devices.h>
 #include <logging.h>
+#include <playback.h>
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
+/* system */
 #include <alsa/asoundlib.h>
 #include <FLAC/metadata.h>
 
@@ -47,9 +46,17 @@ hrmp_flac_get_metadata(char* filename, struct file_metadata** file_metadata)
    *file_metadata = NULL;
 
    metadata = (FLAC__StreamMetadata*)malloc(sizeof(FLAC__StreamMetadata));
+   if (metadata == NULL)
+   {
+      goto error;
+   }
    memset(metadata, 0, sizeof(FLAC__StreamMetadata));
 
    fm = (struct file_metadata*)malloc(sizeof(struct file_metadata));
+   if (fm == NULL)
+   {
+      goto error;
+   }
    memset(fm, 0, sizeof(struct file_metadata));
 
    fm->type = TYPE_FLAC;
@@ -86,21 +93,20 @@ hrmp_flac_get_metadata(char* filename, struct file_metadata** file_metadata)
    fm->min_framesize = info->min_framesize;
    fm->min_framesize = info->min_framesize;
 
-   // TODO
    switch (fm->bits_per_sample)
    {
       case 16:
-         fm->format = SND_PCM_FORMAT_S16;
+         fm->format = SND_PCM_FORMAT_S16_LE;
          break;
       case 24:
-         fm->format = SND_PCM_FORMAT_S24;
+         fm->format = SND_PCM_FORMAT_S24_LE;
          break;
       case 32:
-         fm->format = SND_PCM_FORMAT_S32;
+         fm->format = SND_PCM_FORMAT_S32_LE;
          break;
       default:
-         fm->format = SND_PCM_FORMAT_S16;
-         break;
+         hrmp_log_error("Unsupported bit rate: %s/%d", filename, fm->bits_per_sample);
+         goto error;
    }
 
    *file_metadata = fm;
@@ -116,22 +122,7 @@ error:
       FLAC__metadata_object_delete(metadata);
    }
 
+   free(fm);
+
    return 1;
-}
-
-int
-hrmp_flac_print_metadata(struct file_metadata* file_metadata)
-{
-   if (file_metadata == NULL)
-   {
-      return 1;
-   }
-
-   printf("%s\n", file_metadata->name);
-   printf("  Bits: %d\n", file_metadata->bits_per_sample);
-   printf("  Format: %d\n", file_metadata->format);
-   printf("  Rate: %d\n", file_metadata->sample_rate);
-   printf("  Duration: %lf\n", file_metadata->duration);
-
-   return 0;
 }

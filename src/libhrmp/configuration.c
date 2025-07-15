@@ -191,6 +191,7 @@ hrmp_read_configuration(void* shm, char* filename, bool emitWarnings)
                memset(&drv, 0, sizeof(struct device));
                drv.volume = -1;
                drv.active = false;
+               memset(&drv.name, 0, sizeof(drv.name));
                memcpy(&drv.name, &section, strlen(section));
                idx_device++;
             }
@@ -219,6 +220,7 @@ hrmp_read_configuration(void* shm, char* filename, bool emitWarnings)
                   {
                      max = MISC_LENGTH - 1;
                   }
+                  memset(&drv.name, 0, sizeof(drv.name));
                   memcpy(&drv.name, section, max);
                   max = strlen(value);
                   if (max > MISC_LENGTH - 1)
@@ -235,6 +237,7 @@ hrmp_read_configuration(void* shm, char* filename, bool emitWarnings)
                   {
                      max = MISC_LENGTH - 1;
                   }
+                  memset(&drv.name, 0, sizeof(drv.name));
                   memcpy(&drv.name, section, max);
                   max = strlen(value);
                   if (max > MISC_LENGTH - 1)
@@ -253,6 +256,7 @@ hrmp_read_configuration(void* shm, char* filename, bool emitWarnings)
                }
                else if (key_in_section("volume", section, key, false, &unknown))
                {
+                  memset(&drv.name, 0, sizeof(drv.name));
                   memcpy(&drv.name, section, strlen(section));
                   if (as_int(value, &drv.volume))
                   {

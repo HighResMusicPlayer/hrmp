@@ -31,23 +31,29 @@
 #include <files.h>
 #include <utils.h>
 
-bool
+/* system */
+#include <stdio.h>
+#include <alsa/asoundlib.h>
+
+static char* get_format_string(int format);
+
+int
 hrmp_is_file_supported(char* f)
 {
    if (hrmp_ends_with(f, ".flac"))
    {
-      return true;
+      return TYPE_FLAC;
    }
 
-   return false;
+   return TYPE_UNKNOWN;
 }
 
 bool
-hrmp_is_file_metadata_supported(struct file_metadata *fm, int device)
+hrmp_is_file_metadata_supported(int device, struct file_metadata* fm)
 {
    struct configuration* config = NULL;
 
-   config = (struct configuration *)shmem;
+   config = (struct configuration*)shmem;
 
    if (fm->bits_per_sample == 16 && config->devices[device].capabilities.s16_le)
    {
@@ -65,4 +71,79 @@ hrmp_is_file_metadata_supported(struct file_metadata *fm, int device)
    }
 
    return false;
+}
+
+int
+hrmp_print_file_metadata(struct file_metadata* fm)
+{
+   if (fm != NULL)
+   {
+      printf("%s\n", fm->name);
+      printf("  Bits: %d\n", fm->bits_per_sample);
+      printf("  Format: %s\n", get_format_string(fm->format));
+      printf("  Rate: %d\n", fm->sample_rate);
+      printf("  Duration: %lf\n", fm->duration);
+   }
+
+   return 0;
+}
+
+static char *
+get_format_string(int format)
+{
+   switch (format)
+   {
+      case SND_PCM_FORMAT_DSD_U16_LE:
+         return "DSD_U16_LE";
+         break;
+      case SND_PCM_FORMAT_DSD_U16_BE:
+         return "DSD_U16_BE";
+         break;
+      case SND_PCM_FORMAT_DSD_U32_LE:
+         return "DSD_U32_LE";
+         break;
+      case SND_PCM_FORMAT_DSD_U32_BE:
+         return "DSD_U32_BE";
+         break;
+      case SND_PCM_FORMAT_S32_LE:
+         return "S32_LE";
+         break;
+      case SND_PCM_FORMAT_S32_BE:
+         return "S32_BE";
+         break;
+      case SND_PCM_FORMAT_U32_LE:
+         return "U32_LE";
+         break;
+      case SND_PCM_FORMAT_U32_BE:
+         return "U32_BE";
+         break;
+      case SND_PCM_FORMAT_S24_LE:
+         return "S24_LE";
+         break;
+      case SND_PCM_FORMAT_S24_BE:
+         return "S24_BE";
+         break;
+      case SND_PCM_FORMAT_U24_LE:
+         return "U24_LE";
+         break;
+      case SND_PCM_FORMAT_U24_BE:
+         return "U24_BE";
+         break;
+      case SND_PCM_FORMAT_S16_LE:
+         return "S16_LE";
+         break;
+      case SND_PCM_FORMAT_S16_BE:
+         return "S16_BE";
+         break;
+      case SND_PCM_FORMAT_U16_LE:
+         return "U16_LE";
+         break;
+      case SND_PCM_FORMAT_U16_BE:
+         return "U16_BE";
+         break;
+      default:
+         break;
+   }
+
+   return "Unkwown";
 }

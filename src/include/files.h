@@ -38,43 +38,53 @@ extern "C" {
 #include <stdbool.h>
 #include <stdlib.h>
 
-#define TYPE_FLAC 1
+#define TYPE_UNKNOWN 0
+#define TYPE_WAV     1
+#define TYPE_FLAC    2
 
 /** @struct
  * Defines a file metadata
  */
 struct file_metadata
 {
-  int type;               /**< The type of file */
-  char name[MISC_LENGTH]; /**< The name of the file */
-  int format;
-  unsigned int sample_rate;
-  unsigned int channels;
-  unsigned int bits_per_sample;
-  unsigned long total_samples;
-  double duration;
-  unsigned int min_blocksize;
-  unsigned int max_blocksize;
-  unsigned int min_framesize;
-  unsigned int max_framesize;
+   int type;                     /**< The type of file */
+   char name[MISC_LENGTH];       /**< The name of the file */
+   int format;                   /**< The format */
+   unsigned int sample_rate;     /**< The sample rate */
+   unsigned int channels;        /**< The number of channels */
+   unsigned int bits_per_sample; /**< The bits per sample */
+   unsigned long total_samples;  /**< The total number of samples */
+   double duration;              /**< The number of seconds */
+   unsigned int min_blocksize;   /**< The minimum blocksize */
+   unsigned int max_blocksize;   /**< The maximum blocksize */
+   unsigned int min_framesize;   /**< The minimum framesize */
+   unsigned int max_framesize;   /**< The maximum framesize */
 } __attribute__((aligned(64)));
 
 /**
  * Is the file supported
  * @param f The file
- * @return The result
+ * @return The result type
  */
-bool
+int
 hrmp_is_file_supported(char* f);
 
 /**
  * Is the file metadata supported
- * @param fm The file metadata
  * @param device The device
+ * @param fm The file metadata
  * @return The result
  */
 bool
-hrmp_is_file_metadata_supported(struct file_metadata* fm, int device);
+hrmp_is_file_metadata_supported(int device, struct file_metadata* fm);
+
+/**
+ * Print the file metadata
+ * @param fm The file metadata
+ * @return The result
+ */
+int
+hrmp_print_file_metadata(struct file_metadata* fm);
 
 #ifdef __cplusplus
 }

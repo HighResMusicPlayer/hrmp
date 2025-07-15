@@ -33,15 +33,40 @@
 extern "C" {
 #endif
 
+#include <hrmp.h>
+#include <files.h>
+
 #include <stdlib.h>
+#include <alsa/asoundlib.h>
+
+/** @struct
+ * Defines a playback
+ */
+struct playback
+{
+   snd_pcm_t* pcm_handle;
+   struct file_metadata* fm;
+};
 
 /**
  * Play back a WAV file
- * @param path The path
+ * @param fn The file name
+ * @param device The device
+ * @param fm The file metadata
  * @return 0 upon success, otherwise 1
  */
 int
-hrmp_playback_wav(char* path);
+hrmp_playback_wav(char* fn, int device, struct file_metadata* fm);
+
+/**
+ * Play back a FLAC file
+ * @param fn The file name
+ * @param device The device
+ * @param fm The file metadata
+ * @return 0 upon success, otherwise 1
+ */
+int
+hrmp_playback_flac(char* fn, int device, struct file_metadata* fm);
 
 #ifdef __cplusplus
 }

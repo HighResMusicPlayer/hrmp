@@ -35,6 +35,7 @@
 #include <files.h>
 #include <flac.h>
 #include <logging.h>
+#include <playback.h>
 #include <shmem.h>
 #include <utils.h>
 
@@ -236,41 +237,46 @@ main(int argc, char** argv)
       }
 
       /* Set the master volume */
-      hrmp_set_master_volume(config->volume);
+      /* hrmp_set_master_volume(config->volume); */
    }
 
    for (int i = 0; i < hrmp_dlist_size(files); i++)
    {
       char* fn = hrmp_dlist_get(files, i);
       bool is_supported = false;
+      int type = hrmp_is_file_supported(fn);
+      int active_device = -1;
 
-      if (hrmp_is_file_supported(fn))
+      active_device = hrmp_active_device(config->device);
+
+      if (type == TYPE_FLAC)
       {
          struct file_metadata* fm = NULL;
-         snd_pcm_t* pcm_handle = NULL;
-         int active_device = -1;
-
          hrmp_flac_get_metadata(fn, &fm);
-         active_device = hrmp_active_device(config->device);
 
          if (active_device >= 0)
          {
-            if (hrmp_is_file_metadata_supported(fm, active_device))
+            if (hrmp_is_file_metadata_supported(active_device, fm))
             {
                is_supported = true;
-
-               hrmp_alsa_init_handle(config->devices[active_device].device, fm->format, fm->sample_rate, &pcm_handle);
-
-               hrmp_alsa_close_handle(pcm_handle);
+               hrmp_print_file_metadata(fm);
+               hrmp_playback_flac(fn, active_device, fm);
             }
          }
 
-         hrmp_flac_print_metadata(fm);
+         if (!is_supported)
+         {
+            hrmp_print_file_metadata(fm);
+         }
 
          free(fm);
       }
 
-      if (!is_supported)
+      if (active_device < 0)
+      {
+         hrmp_log_error("No active devices for %s", fn);
+      }
+      else if (!is_supported)
       {
          hrmp_log_warn("File '%s' isn't supported", fn);
       }
