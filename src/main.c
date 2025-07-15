@@ -71,6 +71,7 @@ usage(void)
    printf("Options:\n");
    printf("  -c, --config CONFIG_FILE   Set the path to the hrmp.conf file\n");
    printf("                             Default: $HOME/.hrmp/hrmp.conf\n");
+   printf("  -D, --device               Set the device name\n");
    printf("  -I, --sample-configuration Generate a sample configuration\n");
    printf("  -V, --version              Display version information\n");
    printf("  -?, --help                 Display help\n");
@@ -83,6 +84,7 @@ int
 main(int argc, char** argv)
 {
    char* configuration_path = NULL;
+   char* device_name = NULL;
    char* cp = NULL;
    size_t shmem_size;
    struct configuration* config = NULL;
@@ -99,14 +101,14 @@ main(int argc, char** argv)
       static struct option long_options[] =
       {
          {"config", required_argument, 0, 'c'},
+         {"device", required_argument, 0, 'D'},
          {"sample-configuration", no_argument, 0, 'I'},
          {"version", no_argument, 0, 'V'},
          {"help", no_argument, 0, '?'}
       };
       int option_index = 0;
 
-      c = getopt_long (argc, argv, "IV?c:",
-                       long_options, &option_index);
+      c = getopt_long(argc, argv, "IV?c:D:", long_options, &option_index);
 
       if (c == -1)
       {
@@ -117,6 +119,10 @@ main(int argc, char** argv)
       {
          case 'c':
             configuration_path = optarg;
+            files_index += 2;
+            break;
+         case 'D':
+            device_name = optarg;
             files_index += 2;
             break;
          case 'I':
@@ -131,6 +137,12 @@ main(int argc, char** argv)
          default:
             break;
       }
+   }
+
+   if (argc == 1)
+   {
+      usage();
+      exit(0);
    }
 
    shmem_size = sizeof(struct configuration);
@@ -247,7 +259,14 @@ main(int argc, char** argv)
       int type = hrmp_is_file_supported(fn);
       int active_device = -1;
 
-      active_device = hrmp_active_device(config->device);
+      if (device_name != NULL)
+      {
+         active_device = hrmp_active_device(device_name);
+      }
+      else
+      {
+         active_device = hrmp_active_device(config->device);
+      }
 
       if (type == TYPE_FLAC)
       {

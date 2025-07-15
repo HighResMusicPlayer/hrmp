@@ -20,6 +20,7 @@ Usage:
 Options:
   -c, --config CONFIG_FILE   Set the path to the hrmp.conf file
                              Default: $HOME/.hrmp/hrmp.conf
+  -D, --device               Set the device name
   -I, --sample-configuration Generate a sample configuration
   -V, --version              Display version information
   -?, --help                 Display help
@@ -37,6 +38,9 @@ OPTIONS
 
 -c, --config CONFIG_FILE
   Set the path to the hrmp.conf file
+
+-D, --device
+  Set the device name
 
 -I, --sample-configuration
   Generate a sample configuration

@@ -88,7 +88,7 @@ hrmp_print_file_metadata(struct file_metadata* fm)
    return 0;
 }
 
-static char *
+static char*
 get_format_string(int format)
 {
    switch (format)

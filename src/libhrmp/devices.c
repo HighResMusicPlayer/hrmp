@@ -81,17 +81,20 @@ hrmp_active_device(char* name)
 
    for (int i = 0; i < config->number_of_devices; i++)
    {
-      if (name != NULL && !strcmp(name, config->device) && config->devices[i].active)
+      if (name != NULL && !strcmp(name, config->devices[i].name) && config->devices[i].active)
       {
          return i;
       }
    }
 
-   for (int i = 0; i < config->number_of_devices; i++)
+   if (name == NULL || strlen(name) == 0)
    {
-      if (config->devices[i].active)
+      for (int i = 0; i < config->number_of_devices; i++)
       {
-         return i;
+         if (config->devices[i].active)
+         {
+            return i;
+         }
       }
    }
 

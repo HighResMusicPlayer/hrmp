@@ -102,14 +102,14 @@ hrmp_playback_flac(char* fn, int device, struct file_metadata* fm)
 
    if (hrmp_alsa_init_handle(config->devices[device].device, fm->format, fm->sample_rate, &pcm_handle))
    {
-      hrmp_log_error("Could not initialize %s for %s", config->devices[device].name, fn);
+      hrmp_log_error("Could not initialize '%s' for '%s'", config->devices[device].name, fn);
       goto error;
    }
 
    decoder = FLAC__stream_decoder_new();
    if (decoder == NULL)
    {
-      hrmp_log_error("Could not initialize decoder for %s", fn);
+      hrmp_log_error("Could not initialize decoder for '%s'", fn);
       goto error;
    }
    FLAC__stream_decoder_set_md5_checking(decoder, false);
@@ -186,7 +186,8 @@ static FLAC__bool
 write_pcm(const FLAC__int32* const buffer[], size_t samples, struct playback* ctx)
 {
    size_t i, ch;
-   int frame_size = ctx->fm->channels * (ctx->fm->bits_per_sample / 8);
+   int byte_per_frame = ctx->fm->bits_per_sample / 8;
+   int frame_size = ctx->fm->channels * byte_per_frame;
    unsigned char* out = malloc(samples * frame_size);
 
    if (!out)
@@ -200,8 +201,18 @@ write_pcm(const FLAC__int32* const buffer[], size_t samples, struct playback* ct
       {
          int sample = buffer[ch][i];
 
-         out[i * ctx->fm->channels * 2 + ch * 2] = sample & 0xFF;
-         out[i * ctx->fm->channels * 2 + ch * 2 + 1] = (sample >> 8) & 0xFF;
+         out[(i * frame_size) + (ch * byte_per_frame) + 0] = sample & 0xFF;
+         out[(i * frame_size) + (ch * byte_per_frame) + 1] = (sample >> 8) & 0xFF;
+
+         if (byte_per_frame >= 3)
+         {
+            out[(i * frame_size) + (ch * byte_per_frame) + 2] = (sample >> 16) & 0xFF;
+         }
+
+         if (byte_per_frame == 4)
+         {
+            out[(i * frame_size) + (ch * byte_per_frame) + 3] = (sample >> 24) & 0xFF;
+         }
       }
    }
 
