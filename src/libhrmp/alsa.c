@@ -39,7 +39,10 @@ hrmp_alsa_init_handle(char* device, int format, int rate, snd_pcm_t** handle)
    int err;
    snd_pcm_t* h = NULL;
    snd_pcm_hw_params_t* hw_params = NULL;
-   snd_pcm_uframes_t buffer_size = 44100; // TODO
+   unsigned int buffer_time = 500000; // TODO
+   unsigned int period_time = 100000; // TODO
+   int dir = 0; // TODO
+   unsigned int r = (unsigned int)rate;
 
    *handle = NULL;
 
@@ -63,9 +66,14 @@ hrmp_alsa_init_handle(char* device, int format, int rate, snd_pcm_t** handle)
       hrmp_log_error("snd_pcm_hw_params_set_access %s/%s", device, snd_strerror(err));
       goto error;
    }
-   if ((err = snd_pcm_hw_params_set_format(h, hw_params, format)) < 0) // TODO
+   if ((err = snd_pcm_hw_params_set_buffer_time_near(h, hw_params, &buffer_time, &dir)) < 0)
    {
-      hrmp_log_error("snd_pcm_hw_params_set_format %s/%s", device, snd_strerror(err));
+      hrmp_log_error("snd_pcm_hw_params_set_buffer_time_near %s/%s", device, snd_strerror(err));
+      goto error;
+   }
+   if ((err = snd_pcm_hw_params_set_period_time_near(h, hw_params, &period_time, &dir)) < 0)
+   {
+      hrmp_log_error("snd_pcm_hw_params_set_period_time_near %s/%s", device, snd_strerror(err));
       goto error;
    }
    if ((err = snd_pcm_hw_params_set_channels(h, hw_params, 2)) < 0) // TODO
@@ -73,7 +81,7 @@ hrmp_alsa_init_handle(char* device, int format, int rate, snd_pcm_t** handle)
       hrmp_log_error("snd_pcm_hw_params_set_channels %s/%s", device, snd_strerror(err));
       goto error;
    }
-   if ((err = snd_pcm_hw_params_set_rate(h, hw_params, rate, 0)) < 0)
+   if ((err = snd_pcm_hw_params_set_rate_near(h, hw_params, &r, &dir)) < 0)
    {
       hrmp_log_error("snd_pcm_hw_params_set_rate %s/%s", device, snd_strerror(err));
       goto error;
@@ -83,9 +91,9 @@ hrmp_alsa_init_handle(char* device, int format, int rate, snd_pcm_t** handle)
       hrmp_log_error("snd_pcm_hw_params_set_rate_resample %s/%s", device, snd_strerror(err));
       goto error;
    }
-   if ((err = snd_pcm_hw_params_set_buffer_size(h, hw_params, buffer_size)) < 0)
+   if ((err = snd_pcm_hw_params_set_format(h, hw_params, format)) < 0) // TODO
    {
-      hrmp_log_error("snd_pcm_hw_params_set_buffer_size %s/%s", device, snd_strerror(err));
+      hrmp_log_error("snd_pcm_hw_params_set_format %s/%s", device, snd_strerror(err));
       goto error;
    }
    if ((err = snd_pcm_hw_params(h, hw_params)) < 0)

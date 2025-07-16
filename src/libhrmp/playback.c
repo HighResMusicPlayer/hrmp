@@ -94,6 +94,7 @@ int
 hrmp_playback_flac(char* fn, int device, struct file_metadata* fm)
 {
    FLAC__StreamDecoder* decoder = NULL;
+   FLAC__StreamDecoderInitStatus status;
    snd_pcm_t* pcm_handle = NULL;
    struct playback* pb = NULL;
    struct configuration* config = NULL;
@@ -120,7 +121,7 @@ hrmp_playback_flac(char* fn, int device, struct file_metadata* fm)
    pb->pcm_handle = pcm_handle;
    pb->fm = fm;
 
-   FLAC__StreamDecoderInitStatus status = FLAC__stream_decoder_init_file(decoder, fn, write_callback, metadata_callback, error_callback, pb);
+   status = FLAC__stream_decoder_init_file(decoder, fn, write_callback, metadata_callback, error_callback, pb);
    if (status == FLAC__STREAM_DECODER_INIT_STATUS_OK)
    {
       hrmp_log_debug("OK: %s", fn);
@@ -155,7 +156,7 @@ hrmp_playback_flac(char* fn, int device, struct file_metadata* fm)
       hrmp_log_debug("Unknown %d for %s", status, fn);
    }
 
-   // Metadata will be filled before first frame
+   // Metadata
    FLAC__stream_decoder_process_until_end_of_metadata(decoder);
 
    // Decode and play
