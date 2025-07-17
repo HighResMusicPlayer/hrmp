@@ -55,19 +55,22 @@ hrmp_is_file_metadata_supported(int device, struct file_metadata* fm)
 
    config = (struct configuration*)shmem;
 
-   if (fm->bits_per_sample == 16 && config->devices[device].capabilities.s16_le)
+   if (device >= 0 && fm != NULL)
    {
-      return true;
-   }
+      if (fm->bits_per_sample == 16 && config->devices[device].capabilities.s16_le)
+      {
+         return true;
+      }
 
-   if (fm->bits_per_sample == 24 && config->devices[device].capabilities.s24_le)
-   {
-      return true;
-   }
+      if (fm->bits_per_sample == 24 && config->devices[device].capabilities.s24_le)
+      {
+         return true;
+      }
 
-   if (fm->bits_per_sample == 32 && config->devices[device].capabilities.s32_le)
-   {
-      return true;
+      if (fm->bits_per_sample == 32 && config->devices[device].capabilities.s32_le)
+      {
+         return true;
+      }
    }
 
    return false;

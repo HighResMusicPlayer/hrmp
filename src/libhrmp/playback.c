@@ -33,6 +33,7 @@
 #include <files.h>
 #include <logging.h>
 #include <playback.h>
+#include <stdint.h>
 #include <wav.h>
 
 /* system */
@@ -186,38 +187,39 @@ error:
 static FLAC__bool
 write_pcm(const FLAC__int32* const buffer[], size_t samples, struct playback* ctx)
 {
-   size_t i, ch;
-   int byte_per_frame = ctx->fm->bits_per_sample / 8;
+   int byte_per_frame = ctx->fm->format == SND_PCM_FORMAT_S16_LE ? 2 : 4;
    int frame_size = ctx->fm->channels * byte_per_frame;
-   unsigned char* out = malloc(samples * frame_size);
+   size_t bs = samples *frame_size;
+   unsigned char* out = (unsigned char *)malloc(bs);
 
-   if (!out)
+   if (out == NULL)
    {
       return false;
    }
 
-   for (i = 0; i < samples; ++i)
+   memset(out, 0, bs);
+
+   for (size_t i = 0; i < samples; i++)
    {
-      for (ch = 0; ch < ctx->fm->channels; ++ch)
+      int root = (i * frame_size);
+      for (size_t ch = 0; ch < ctx->fm->channels; ch++)
       {
-         int sample = buffer[ch][i];
+         int32_t sample = buffer[ch][i];
+         int base = root + (ch * byte_per_frame);
 
-         out[(i * frame_size) + (ch * byte_per_frame) + 0] = sample & 0xFF;
-         out[(i * frame_size) + (ch * byte_per_frame) + 1] = (sample >> 8) & 0xFF;
-
-         if (byte_per_frame >= 3)
-         {
-            out[(i * frame_size) + (ch * byte_per_frame) + 2] = (sample >> 16) & 0xFF;
-         }
+         out[base] = sample & 0xFF;
+         out[base + 1] = (sample >> 8) & 0xFF;
 
          if (byte_per_frame == 4)
          {
-            out[(i * frame_size) + (ch * byte_per_frame) + 3] = (sample >> 24) & 0xFF;
+            out[base + 2] = (sample >> 16) & 0xFF;
+            out[base + 3] = (sample >> 24) & 0xFF;
          }
       }
    }
 
    snd_pcm_writei(ctx->pcm_handle, out, samples);
+
    free(out);
 
    return true;

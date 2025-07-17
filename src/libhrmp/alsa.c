@@ -33,69 +33,88 @@
 
 #include <alsa/pcm.h>
 
+#define MAX_BUFFER_SIZE 131072
+
 int
 hrmp_alsa_init_handle(char* device, int format, int rate, snd_pcm_t** handle)
 {
    int err;
    snd_pcm_t* h = NULL;
    snd_pcm_hw_params_t* hw_params = NULL;
-   unsigned int buffer_time = 500000; // TODO
-   unsigned int period_time = 100000; // TODO
-   int dir = 0; // TODO
+   snd_pcm_uframes_t buffer_size = 0;
+   snd_pcm_uframes_t period_size = 0;
    unsigned int r = (unsigned int)rate;
 
    *handle = NULL;
 
+   // TODO: flags - SND_PCM_NONBLOCK ?
    if ((err = snd_pcm_open(&h, device, SND_PCM_STREAM_PLAYBACK, 0)) < 0)
    {
       hrmp_log_error("snd_pcm_open %s/%s", device, snd_strerror(err));
       goto error;
    }
+
    if ((err = snd_pcm_hw_params_malloc(&hw_params)) < 0)
    {
       hrmp_log_error("snd_pcm_hw_params_malloc %s/%s", device, snd_strerror(err));
       goto error;
    }
+
    if ((err = snd_pcm_hw_params_any(h, hw_params)) < 0)
    {
       hrmp_log_error("snd_pcm_hw_params_any %s/%s", device, snd_strerror(err));
       goto error;
    }
+
    if ((err = snd_pcm_hw_params_set_access(h, hw_params, SND_PCM_ACCESS_RW_INTERLEAVED)) < 0)
    {
       hrmp_log_error("snd_pcm_hw_params_set_access %s/%s", device, snd_strerror(err));
       goto error;
    }
-   if ((err = snd_pcm_hw_params_set_buffer_time_near(h, hw_params, &buffer_time, &dir)) < 0)
+
+   if ((err = snd_pcm_hw_params_set_rate_near(h, hw_params, &r, 0)) < 0)
    {
-      hrmp_log_error("snd_pcm_hw_params_set_buffer_time_near %s/%s", device, snd_strerror(err));
+      hrmp_log_error("snd_pcm_hw_params_set_rate_near %s/%s", device, snd_strerror(err));
       goto error;
    }
-   if ((err = snd_pcm_hw_params_set_period_time_near(h, hw_params, &period_time, &dir)) < 0)
-   {
-      hrmp_log_error("snd_pcm_hw_params_set_period_time_near %s/%s", device, snd_strerror(err));
-      goto error;
-   }
+
    if ((err = snd_pcm_hw_params_set_channels(h, hw_params, 2)) < 0) // TODO
    {
       hrmp_log_error("snd_pcm_hw_params_set_channels %s/%s", device, snd_strerror(err));
       goto error;
    }
-   if ((err = snd_pcm_hw_params_set_rate_near(h, hw_params, &r, &dir)) < 0)
+
+   snd_pcm_hw_params_get_buffer_size_max(hw_params, &buffer_size);
+   buffer_size = MIN(buffer_size, MAX_BUFFER_SIZE);
+   if ((err = snd_pcm_hw_params_set_buffer_size_near(h, hw_params, &buffer_size)) < 0)
    {
-      hrmp_log_error("snd_pcm_hw_params_set_rate %s/%s", device, snd_strerror(err));
+      hrmp_log_error("snd_pcm_hw_params_set_buffer_size_near %s/%s", device, snd_strerror(err));
       goto error;
    }
+
+   snd_pcm_hw_params_get_period_size_min(hw_params, &period_size, NULL);
+   if (!period_size)
+   {
+      period_size = buffer_size / 4;
+   }
+   if ((err = snd_pcm_hw_params_set_period_size_near(h, hw_params, &period_size, NULL)) < 0)
+   {
+      hrmp_log_error("snd_pcm_hw_params_set_period_size_near %s/%s", device, snd_strerror(err));
+      goto error;
+   }
+
    if ((err = snd_pcm_hw_params_set_rate_resample(h, hw_params, 0)) < 0)
    {
       hrmp_log_error("snd_pcm_hw_params_set_rate_resample %s/%s", device, snd_strerror(err));
       goto error;
    }
+
    if ((err = snd_pcm_hw_params_set_format(h, hw_params, format)) < 0) // TODO
    {
       hrmp_log_error("snd_pcm_hw_params_set_format %s/%s", device, snd_strerror(err));
       goto error;
    }
+
    if ((err = snd_pcm_hw_params(h, hw_params)) < 0)
    {
       hrmp_log_error("snd_pcm_hw_params %s/%s", device, snd_strerror(err));

@@ -64,13 +64,13 @@ hrmp_flac_get_metadata(char* filename, struct file_metadata** file_metadata)
 
    if (!FLAC__metadata_get_streaminfo(filename, metadata))
    {
-      hrmp_log_error("Error reading FLAC metadata for %s", filename);
+      hrmp_log_error("Error reading FLAC metadata for '%s'", filename);
       goto error;
    }
 
    if (metadata->type != FLAC__METADATA_TYPE_STREAMINFO)
    {
-      hrmp_log_error("No STREAMINFO block found for %s", filename);
+      hrmp_log_error("No STREAMINFO block found for '%s'", filename);
       goto error;
    }
 
@@ -78,6 +78,13 @@ hrmp_flac_get_metadata(char* filename, struct file_metadata** file_metadata)
 
    fm->sample_rate = info->sample_rate;
    fm->channels = info->channels;
+
+   if (fm->channels != 2)
+   {
+      hrmp_log_error("Unsupported number of channels for '%s' (%d channels)", filename, fm->channels);
+      goto error;
+   }
+
    fm->bits_per_sample = info->bits_per_sample;
    fm->total_samples = info->total_samples;
    if (info->sample_rate > 0)
@@ -99,13 +106,11 @@ hrmp_flac_get_metadata(char* filename, struct file_metadata** file_metadata)
          fm->format = SND_PCM_FORMAT_S16_LE;
          break;
       case 24:
-         fm->format = SND_PCM_FORMAT_S24_LE;
-         break;
       case 32:
          fm->format = SND_PCM_FORMAT_S32_LE;
          break;
       default:
-         hrmp_log_error("Unsupported bit rate: %s/%d", filename, fm->bits_per_sample);
+         hrmp_log_error("Unsupported bit rate for '%s' (%d rate)", filename, fm->bits_per_sample);
          goto error;
    }
 

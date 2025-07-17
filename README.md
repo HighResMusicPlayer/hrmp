@@ -1,13 +1,13 @@
 # HighResMusicPlayer
 
 `hrmp` is a command line music player for Linux (ALSA) based systems. `hrmp` focuses on
-high-resolution loss-less files (16bit/44.1kHz+).
+high-resolution loss-less files (44.1kHz+/16bit+).
 
 `hrmp` requires an external DAC as it only supports 16bit, 24bit, 32bit and DSD files.
 
 ## Features
 
-* FLAC (44.1kHz/16bit)
+* FLAC (44.1kHz/16bit) (Stereo)
 * By-pass PulseAudio for native bit-stream
 
 See [Getting Started](./doc/GETTING_STARTED.md) on how to get started with `hrmp`.
