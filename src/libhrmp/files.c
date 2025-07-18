@@ -57,19 +57,14 @@ hrmp_is_file_metadata_supported(int device, struct file_metadata* fm)
 
    if (device >= 0 && fm != NULL)
    {
-      if (fm->bits_per_sample == 16 && config->devices[device].capabilities.s16_le)
+      if ((fm->bits_per_sample == 16 && config->devices[device].capabilities.s16_le) ||
+          (fm->bits_per_sample == 24 && config->devices[device].capabilities.s24_le) ||
+          (fm->bits_per_sample == 32 && config->devices[device].capabilities.s32_le))
       {
-         return true;
-      }
-
-      if (fm->bits_per_sample == 24 && config->devices[device].capabilities.s24_le)
-      {
-         return true;
-      }
-
-      if (fm->bits_per_sample == 32 && config->devices[device].capabilities.s32_le)
-      {
-         return true;
+         if (fm->sample_rate == 44100)
+         {
+            return true;
+         }
       }
    }
 
