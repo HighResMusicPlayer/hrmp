@@ -36,23 +36,23 @@ extern "C" {
 #include <stdbool.h>
 #include <stdlib.h>
 
-/**
+/** @struct dlist_element
  * Define an element of the double linked list.
  */
 struct dlist_element
 {
-   void* data;
-   struct dlist_element* prev;
-   struct dlist_element* next;
+   void* data;                 /**< The data */
+   struct dlist_element* prev; /**< The previous element */
+   struct dlist_element* next; /**< The next element */
 };
 
-/**
+/** @struct dlist
  * A double linked list implementation where the client owns
  * both the value pointers.
  */
 struct dlist
 {
-   struct dlist_element* data;
+   struct dlist_element* data; /**< The elements */
 };
 
 /**

@@ -189,8 +189,8 @@ write_pcm(const FLAC__int32* const buffer[], size_t samples, struct playback* ct
 {
    int byte_per_frame = ctx->fm->format == SND_PCM_FORMAT_S16_LE ? 2 : 4;
    int frame_size = ctx->fm->channels * byte_per_frame;
-   size_t bs = samples *frame_size;
-   unsigned char* out = (unsigned char *)malloc(bs);
+   size_t bs = samples * frame_size;
+   unsigned char* out = (unsigned char*)malloc(bs);
 
    if (out == NULL)
    {

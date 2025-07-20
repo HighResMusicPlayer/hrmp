@@ -11,22 +11,7 @@ High resolution music player
 SYNOPSIS
 ========
 
-hrmp 0.1.0
-  High resolution music player
-
-Usage:
-  hrmp <FILES>
-
-Options:
-  -c, --config CONFIG_FILE   Set the path to the hrmp.conf file
-                             Default: $HOME/.hrmp/hrmp.conf
-  -D, --device               Set the device name
-  -I, --sample-configuration Generate a sample configuration
-  -V, --version              Display version information
-  -?, --help                 Display help
-
-hrmp: https://hrmp.github.io/
-Report bugs: https://github.com/HighResMusicPlayer/hrmp/issues
+hrmp <FILES>
 
 DESCRIPTION
 ===========

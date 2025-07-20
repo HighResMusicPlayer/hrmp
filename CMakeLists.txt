@@ -30,6 +30,8 @@ include(CPack)
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake" ${CMAKE_MODULE_PATH})
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+set(generation TRUE)
+
 message(STATUS "hrmp ${VERSION_STRING}")
 
 include(CheckCCompilerFlag)
@@ -85,6 +87,28 @@ if (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
   else ()
     message(FATAL_ERROR "libatomic needed")
   endif()
+endif()
+
+find_package(Doxygen)
+
+if (DOXYGEN_FOUND)
+  message(status "Doxygen found: ${DOXYGEN_EXECUTABLE}")
+endif()
+
+find_package(Pandoc)
+if (PANDOC_FOUND)
+  message(STATUS "pandoc found")
+else ()
+  set(generation FALSE)
+  message(STATUS "pandoc needed. The generation process will be skipped.")
+endif()
+
+find_package(Pdflatex)
+if (PDFLATEX_FOUND)
+  message(STATUS "pdflatex found")
+else ()
+  set(generation FALSE)
+  message(STATUS "pdflatex needed. The generation process will be skipped.")
 endif()
 
 file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/src/")

@@ -34,8 +34,49 @@
 #include <string.h>
 #include <arpa/inet.h>
 
-int
-hrmp_wav_open(char* path, enum wav_channel_format chanfmt, struct wav** w)
+struct wav_header
+{
+   uint32_t chunk_id;
+   uint32_t chunk_size;
+   uint32_t format;
+   uint32_t subchunk1_id;
+   uint32_t subchunk1_size;
+   uint16_t audio_format;
+   uint16_t num_channels;
+   uint32_t sample_rate;
+   uint32_t byte_rate;
+   uint16_t block_align;
+   uint16_t bits_per_sample;
+   uint32_t subchunk2_id;
+   uint32_t subchunk2_size;
+};
+
+enum wav_channel_format
+{
+   WAV_INTERLEAVED, /* [LRLRLRLR] */
+   WAV_INLINE,      /* [LLLLRRRR] */
+   WAV_SPLIT        /* [[LLLL],[RRRR]] */
+};
+
+enum wav_sample_format
+{
+   WAV_INT16 = 2,  /* two byte signed integer */
+   WAV_FLOAT32 = 4 /* four byte IEEE float */
+};
+
+struct wav
+{
+   FILE* file;
+   struct wav_header header;
+   int32_t number_of_frames;
+   uint32_t total_frames_read;
+   enum wav_channel_format channel_format;
+   enum wav_sample_format sample_format;
+};
+
+__attribute__((used))
+static int
+wav_open(char* path, enum wav_channel_format chanfmt, struct wav** w)
 {
    bool additional_data = false;
    size_t ret;
@@ -106,8 +147,9 @@ error:
    return 1;
 }
 
-int
-hrmp_wav_read(struct wav* wav, void* data, int len)
+__attribute__((used))
+static int
+wav_read(struct wav* wav, void* data, int len)
 {
    switch (wav->sample_format)
    {
@@ -197,8 +239,9 @@ hrmp_wav_read(struct wav* wav, void* data, int len)
    return len;
 }
 
-void
-hrmp_wav_close(struct wav* wav)
+__attribute__((used))
+static void
+wav_close(struct wav* wav)
 {
    if (wav->file != NULL)
    {

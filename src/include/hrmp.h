@@ -118,7 +118,7 @@ extern void* shmem;
            goto goto_to;                     \
         } while (0);
 
-/** @struct
+/** @struct capabilities
  * Defines the capabilities of a device
  */
 struct capabilities
@@ -150,7 +150,7 @@ struct capabilities
    bool dsd_u32_be; /**< Support DSD unsigned 32bit (BE) decoding */
 } __attribute__((aligned(64)));
 
-/** @struct
+/** @struct device
  * Defines a device
  */
 struct device
@@ -164,7 +164,7 @@ struct device
    bool active;                      /**< Is the device active ? */
 } __attribute__((aligned(64)));
 
-/** @struct
+/** @struct configuration
  * Defines the configuration and state of hrmp
  */
 struct configuration

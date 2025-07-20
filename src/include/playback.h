@@ -39,13 +39,13 @@ extern "C" {
 #include <stdlib.h>
 #include <alsa/asoundlib.h>
 
-/** @struct
+/** @struct playback
  * Defines a playback
  */
 struct playback
 {
-   snd_pcm_t* pcm_handle;
-   struct file_metadata* fm;
+   snd_pcm_t* pcm_handle;    /**< The PCM handle */
+   struct file_metadata* fm; /**< The file metadata */
 };
 
 /**

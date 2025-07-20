@@ -42,7 +42,7 @@ extern "C" {
 #define TYPE_WAV     1
 #define TYPE_FLAC    2
 
-/** @struct
+/** @struct file_metadata
  * Defines a file metadata
  */
 struct file_metadata
