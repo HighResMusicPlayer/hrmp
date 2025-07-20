@@ -61,6 +61,11 @@ extern "C" {
 #define MAX_PATH    1024
 
 /**
+ * Quiet output ?
+ */
+extern bool quiet;
+
+/**
  * The shared memory segment
  */
 extern void* shmem;

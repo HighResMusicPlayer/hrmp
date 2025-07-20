@@ -46,6 +46,14 @@ char*
 hrmp_get_home_directory(void);
 
 /**
+ * Get the size of the file
+ * @param file_path The path of the file
+ * @return The size or 0 if it doesn't exists
+ */
+size_t
+hrmp_get_file_size(char* file_path);
+
+/**
  * Does a string start with another string
  * @param str The string
  * @param prefix The prefix

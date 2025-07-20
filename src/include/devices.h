@@ -45,6 +45,14 @@ void
 hrmp_check_devices(void);
 
 /**
+ * Is the device known in the configuration
+ * @param name The device name
+ * @return True if known, otherwise false
+ */
+bool
+hrmp_is_device_known(char* name);
+
+/**
  * Return the active device
  * @param name Device hint
  * @return The active device, or -1

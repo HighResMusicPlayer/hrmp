@@ -27,6 +27,7 @@
  */
 
 /* hrmp */
+#include "utils.h"
 #include <hrmp.h>
 #include <devices.h>
 #include <logging.h>
@@ -76,29 +77,28 @@ hrmp_flac_get_metadata(char* filename, struct file_metadata** file_metadata)
 
    info = &metadata->data.stream_info;
 
+   fm->file_size = hrmp_get_file_size(filename);
+
    fm->sample_rate = info->sample_rate;
    fm->channels = info->channels;
 
    if (fm->channels != 2)
    {
-      hrmp_log_error("Unsupported number of channels for '%s' (%d channels)", filename, fm->channels);
+      /* hrmp_print_file_metadata(fm); */
+      printf("Unsupported number of channels for '%s' (%d channels)", filename, fm->channels);
       goto error;
    }
 
    fm->bits_per_sample = info->bits_per_sample;
    fm->total_samples = info->total_samples;
-   if (info->sample_rate > 0)
+   if (fm->sample_rate > 0)
    {
-      fm->duration = (double)((double)info->total_samples / info->sample_rate);
+      fm->duration = (double)((double)info->total_samples / fm->sample_rate);
    }
    else
    {
       fm->duration = 0.0;
    }
-   fm->min_blocksize = info->min_blocksize;
-   fm->max_blocksize = info->max_blocksize;
-   fm->min_framesize = info->min_framesize;
-   fm->min_framesize = info->min_framesize;
 
    switch (fm->bits_per_sample)
    {

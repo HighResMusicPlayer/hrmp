@@ -107,6 +107,30 @@ and then save that to `~/.hrmp/hrmp.conf` as the default configuration.
 
 Now that we have `hrmp` installed, we can continue to enhance its functionality.
 
+## Audio formats
+
+### FLAC
+
+* [Specification](https://xiph.org/flac/format.html) (Max 655350Hz)
+
+### WAV
+
+* [Header](http://www.ringthis.com/dev/wave_format.htm) (Max 4.3GHz)
+
+### Direct Stream Digital (DSD)
+
+* DSD64 (2.8224 MHz)
+* DSD128 (5.6448 MHz)
+* DSD256 (11.2896 MHz)
+* DSD512 (22.5792 MHz)
+* DSD1024 (45.1584 MHz)
+
+Digital Stream Digital (DSD) over Pulse Code Modulation (PCM) (DoP)
+
+* DSD 64 requires a 176400Hz PCM package
+* DSD 128 requires a 352800Hz PCM package
+* DSD 256 requires a 705600Hz PCM package (WAV only)
+
 ## C programming
 
 [**hrmp**](https://github.com/HighResMusicPlayer/hrmp) is developed using the [C programming language](https://en.wikipedia.org/wiki/C_(programming_language)) so it is a good

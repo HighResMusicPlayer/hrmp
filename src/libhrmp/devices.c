@@ -61,15 +61,39 @@ hrmp_check_devices(void)
 
       if (is_device_active(config->devices[i].device))
       {
-         hrmp_log_trace("%s is active", config->devices[i].device);
+         if (!quiet)
+         {
+            printf("Device: %s (Active)\n", config->devices[i].name);
+         }
          check_capabilities(config->devices[i].device, i);
          config->devices[i].active = true;
       }
       else
       {
-         hrmp_log_trace("%s is inactive", config->devices[i].device);
+         if (!quiet)
+         {
+            printf("Device: %s (Inactive)\n", config->devices[i].name);
+         }
       }
    }
+}
+
+bool
+hrmp_is_device_known(char* name)
+{
+   struct configuration* config = NULL;
+
+   config = (struct configuration*)shmem;
+
+   for (int i = 0; i < config->number_of_devices; i++)
+   {
+      if (name != NULL && !strcmp(name, config->devices[i].name))
+      {
+         return true;
+      }
+   }
+
+   return false;
 }
 
 int
@@ -107,6 +131,11 @@ hrmp_print_devices(void)
    struct configuration* config = NULL;
 
    config = (struct configuration*)shmem;
+
+   if (quiet)
+   {
+      return;
+   }
 
    for (int i = 0; i < config->number_of_devices; i++)
    {
@@ -549,7 +578,7 @@ is_device_active(char* device)
 
    if ((err = snd_pcm_open(&handle, device, SND_PCM_STREAM_PLAYBACK, 0)) < 0)
    {
-      hrmp_log_debug("Open error: %s/%s", device, snd_strerror(err));
+      /* hrmp_log_debug("Open error: %s/%s", device, snd_strerror(err)); */
       goto error;
    }
 
@@ -561,7 +590,7 @@ is_device_active(char* device)
 
    snd_pcm_close(handle);
 
-   snd_device_name_free_hint((void **)hints);
+   snd_device_name_free_hint((void**)hints);
 
    return true;
 
@@ -574,7 +603,7 @@ error:
 
    if (hints != NULL)
    {
-      snd_device_name_free_hint((void **)hints);
+      snd_device_name_free_hint((void**)hints);
    }
 
    return false;

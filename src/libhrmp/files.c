@@ -29,9 +29,11 @@
 /* hrmp */
 #include <hrmp.h>
 #include <files.h>
+#include <logging.h>
 #include <utils.h>
 
 /* system */
+#include <stdbool.h>
 #include <stdio.h>
 #include <alsa/asoundlib.h>
 
@@ -43,6 +45,10 @@ hrmp_is_file_supported(char* f)
    if (hrmp_ends_with(f, ".flac"))
    {
       return TYPE_FLAC;
+   }
+   else if (hrmp_ends_with(f, ".wav"))
+   {
+      return TYPE_WAV;
    }
 
    return TYPE_UNKNOWN;
@@ -57,13 +63,63 @@ hrmp_is_file_metadata_supported(int device, struct file_metadata* fm)
 
    if (device >= 0 && fm != NULL)
    {
-      if ((fm->bits_per_sample == 16 && config->devices[device].capabilities.s16_le) ||
-          (fm->bits_per_sample == 24 && config->devices[device].capabilities.s24_le) ||
-          (fm->bits_per_sample == 32 && config->devices[device].capabilities.s32_le))
+      if (fm->bits_per_sample == 16)
       {
-         if (fm->sample_rate == 44100)
+         if (config->devices[device].capabilities.s16_le)
          {
-            return true;
+            switch (fm->sample_rate)
+            {
+               case 44100:
+               case 48000:
+                  return true;
+                  break;
+               default:
+                  hrmp_log_error("Unsupported sample rate: %d", fm->sample_rate);
+                  break;
+            }
+         }
+      }
+      else if (fm->bits_per_sample == 24)
+      {
+         if (config->devices[device].capabilities.s24_le &&
+             config->devices[device].capabilities.s32_le)
+         {
+            switch (fm->sample_rate)
+            {
+               case 88200:
+               case 96000:
+               case 176400:
+               case 192000:
+               case 352800:
+               case 384000:
+               case 768000:
+                  return true;
+                  break;
+               default:
+                  hrmp_log_error("Unsupported sample rate: %dkHz/%dbits", fm->sample_rate, fm->bits_per_sample);
+                  break;
+            }
+         }
+      }
+      else if (fm->bits_per_sample == 32)
+      {
+         if (config->devices[device].capabilities.s32_le)
+         {
+            switch (fm->sample_rate)
+            {
+               case 88200:
+               case 96000:
+               case 176400:
+               case 192000:
+               case 352800:
+               case 384000:
+               case 768000:
+                  return true;
+                  break;
+               default:
+                  hrmp_log_error("Unsupported sample rate: %dkHz/%dbits", fm->sample_rate, fm->bits_per_sample);
+                  break;
+            }
          }
       }
    }
@@ -79,6 +135,7 @@ hrmp_print_file_metadata(struct file_metadata* fm)
       printf("%s\n", fm->name);
       printf("  Bits: %d\n", fm->bits_per_sample);
       printf("  Format: %s\n", get_format_string(fm->format));
+      printf("  Size: %zu\n", fm->file_size);
       printf("  Rate: %d\n", fm->sample_rate);
       printf("  Duration: %lf\n", fm->duration);
    }

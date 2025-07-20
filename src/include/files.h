@@ -29,6 +29,7 @@
 #ifndef HRMP_FILES_H
 #define HRMP_FILES_H
 
+#include <stddef.h>
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -50,15 +51,12 @@ struct file_metadata
    int type;                     /**< The type of file */
    char name[MISC_LENGTH];       /**< The name of the file */
    int format;                   /**< The format */
+   size_t file_size;             /**< The file size */
    unsigned int sample_rate;     /**< The sample rate */
    unsigned int channels;        /**< The number of channels */
    unsigned int bits_per_sample; /**< The bits per sample */
    unsigned long total_samples;  /**< The total number of samples */
    double duration;              /**< The number of seconds */
-   unsigned int min_blocksize;   /**< The minimum blocksize */
-   unsigned int max_blocksize;   /**< The maximum blocksize */
-   unsigned int min_framesize;   /**< The minimum framesize */
-   unsigned int max_framesize;   /**< The maximum framesize */
 } __attribute__((aligned(64)));
 
 /**

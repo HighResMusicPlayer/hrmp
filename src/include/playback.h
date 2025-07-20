@@ -44,29 +44,36 @@ extern "C" {
  */
 struct playback
 {
-   snd_pcm_t* pcm_handle;    /**< The PCM handle */
-   struct file_metadata* fm; /**< The file metadata */
+   int device;                    /**< The device */
+   int file_number;               /**< The file number */
+   int total_number;              /**< The total number */
+   char identifier[MISC_LENGTH];  /**< The file identifier */
+   unsigned long current_samples; /**< The total number of samples */
+   snd_pcm_t *pcm_handle;         /**< The PCM handle */
+   struct file_metadata* fm;      /**< The file metadata */
 };
 
 /**
  * Play back a WAV file
- * @param fn The file name
  * @param device The device
+ * @param number The file number
+ * @param total The total number of files
  * @param fm The file metadata
  * @return 0 upon success, otherwise 1
  */
 int
-hrmp_playback_wav(char* fn, int device, struct file_metadata* fm);
+hrmp_playback_wav(int device, int number, int total, struct file_metadata* fm);
 
 /**
  * Play back a FLAC file
- * @param fn The file name
  * @param device The device
+ * @param number The file number
+ * @param total The total number of files
  * @param fm The file metadata
  * @return 0 upon success, otherwise 1
  */
 int
-hrmp_playback_flac(char* fn, int device, struct file_metadata* fm);
+hrmp_playback_flac(int device, int number, int total, struct file_metadata* fm);
 
 #ifdef __cplusplus
 }

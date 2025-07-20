@@ -43,6 +43,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 
 static int string_compare(const void* a, const void* b);
@@ -85,6 +86,21 @@ hrmp_ends_with(char* str, char* suffix)
    }
 
    return false;
+}
+
+size_t
+hrmp_get_file_size(char* file_path)
+{
+   struct stat file_stat;
+
+   if (stat(file_path, &file_stat) != 0)
+   {
+      hrmp_log_warn("pgmoneta_get_file_size: %s (%s)", file_path, strerror(errno));
+      errno = 0;
+      return 0;
+   }
+
+   return file_stat.st_size;
 }
 
 bool

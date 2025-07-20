@@ -26,57 +26,120 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "utils.h"
 #include <hrmp.h>
+#include <files.h>
 #include <logging.h>
 #include <wav.h>
 
+#include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include <alsa/asoundlib.h>
 #include <arpa/inet.h>
 
-struct wav_header
-{
-   uint32_t chunk_id;
-   uint32_t chunk_size;
-   uint32_t format;
-   uint32_t subchunk1_id;
-   uint32_t subchunk1_size;
-   uint16_t audio_format;
-   uint16_t num_channels;
-   uint32_t sample_rate;
-   uint32_t byte_rate;
-   uint16_t block_align;
-   uint16_t bits_per_sample;
-   uint32_t subchunk2_id;
-   uint32_t subchunk2_size;
-};
+static int wav_read(struct wav* wav, void* data, int len);
+static void wav_print_header(struct wav_header* header);
 
-enum wav_channel_format
+int
+hrmp_wav_get_metadata(char* filename, struct file_metadata** file_metadata)
 {
-   WAV_INTERLEAVED, /* [LRLRLRLR] */
-   WAV_INLINE,      /* [LLLLRRRR] */
-   WAV_SPLIT        /* [[LLLL],[RRRR]] */
-};
+   size_t ret;
+   struct file_metadata* fm = NULL;
+   struct wav* wav = NULL;
 
-enum wav_sample_format
-{
-   WAV_INT16 = 2,  /* two byte signed integer */
-   WAV_FLOAT32 = 4 /* four byte IEEE float */
-};
+   *file_metadata = NULL;
 
-struct wav
-{
-   FILE* file;
-   struct wav_header header;
-   int32_t number_of_frames;
-   uint32_t total_frames_read;
-   enum wav_channel_format channel_format;
-   enum wav_sample_format sample_format;
-};
+   wav = (struct wav*)malloc(sizeof(struct wav));
+   if (wav == NULL)
+   {
+      hrmp_log_error("Unable to allocate for '%s'", filename);
+      goto error;
+   }
 
-__attribute__((used))
-static int
-wav_open(char* path, enum wav_channel_format chanfmt, struct wav** w)
+   memset(wav, 0, sizeof(struct wav));
+
+   wav->file = fopen(filename, "rb");
+   if (wav->file == NULL)
+   {
+      hrmp_log_error("Unable to open '%s'", filename);
+      goto error;
+   }
+
+   ret = fread(&wav->header, 1, sizeof(struct wav_header), wav->file);
+   if (ret < sizeof(struct wav_header))
+   {
+      hrmp_log_error("Unable to read '%s'", filename);
+      goto error;
+   }
+
+   /* wav_print_header(&wav->header); */
+
+   fm = (struct file_metadata*)malloc(sizeof(struct file_metadata));
+   if (fm == NULL)
+   {
+      hrmp_log_error("Unable to allocate for '%s'", filename);
+      goto error;
+   }
+
+   memset(fm, 0, sizeof(struct file_metadata));
+
+   fm->type = TYPE_WAV;
+   memcpy(fm->name, filename, strlen(filename));
+
+   fm->file_size = hrmp_get_file_size(filename);
+
+   fm->sample_rate = wav->header.sample_rate;
+   fm->channels = wav->header.channels;
+
+   if (fm->channels != 2)
+   {
+      hrmp_log_error("Unsupported number of channels for '%s' (%d channels)", filename, fm->channels);
+      goto error;
+   }
+
+   fm->bits_per_sample = wav->header.bits_per_sample;
+   fm->total_samples = fm->file_size / (wav->header.bits_per_sample / 8);
+
+   if (wav->header.sample_rate > 0)
+   {
+      fm->duration = (double)((double)fm->total_samples / wav->header.sample_rate);
+   }
+   else
+   {
+      fm->duration = 0.0;
+   }
+
+   switch (fm->bits_per_sample)
+   {
+      case 16:
+         fm->format = SND_PCM_FORMAT_S16_LE;
+         break;
+      case 24:
+      case 32:
+         fm->format = SND_PCM_FORMAT_S32_LE;
+         break;
+      default:
+         hrmp_log_error("Unsupported bit rate for '%s' (%d rate)", filename, fm->bits_per_sample);
+         goto error;
+   }
+
+   hrmp_wav_close(wav);
+
+   *file_metadata = fm;
+
+   return 0;
+
+error:
+
+   hrmp_wav_close(wav);
+
+   return 1;
+}
+
+int
+hrmp_wav_open(char* path, enum wav_channel_format chanfmt, struct wav** w)
 {
    bool additional_data = false;
    size_t ret;
@@ -87,7 +150,7 @@ wav_open(char* path, enum wav_channel_format chanfmt, struct wav** w)
    wav = (struct wav*)malloc(sizeof(struct wav));
    wav->file = fopen(path, "rb");
 
-   ret = fread(&wav->header, sizeof(struct wav_header), 1, wav->file);
+   ret = fread(&wav->header, 1, sizeof(struct wav_header), wav->file);
    if (ret < sizeof(struct wav_header))
    {
       goto error;
@@ -97,7 +160,7 @@ wav_open(char* path, enum wav_channel_format chanfmt, struct wav** w)
    while (wav->header.subchunk2_id != htonl(0x64617461))
    {
       fseek(wav->file, 4, SEEK_CUR);
-      ret = fread(&wav->header.subchunk2_id, 4, 1, wav->file);
+      ret = fread(&wav->header.subchunk2_id, 1, 4, wav->file);
 
       if (ret < 4)
       {
@@ -110,7 +173,7 @@ wav_open(char* path, enum wav_channel_format chanfmt, struct wav** w)
    /* Update the value of subchunk2_size */
    if (additional_data)
    {
-      ret = fread(&wav->header.subchunk2_size, 4, 1, wav->file);
+      ret = fread(&wav->header.subchunk2_size, 1, 4, wav->file);
 
       if (ret < 4)
       {
@@ -135,7 +198,7 @@ wav_open(char* path, enum wav_channel_format chanfmt, struct wav** w)
       wav->sample_format = WAV_FLOAT32;
    }
 
-   wav->number_of_frames = wav->header.subchunk2_size / (wav->header.num_channels * wav->sample_format);
+   wav->number_of_frames = wav->header.subchunk2_size / (wav->header.channels * wav->sample_format);
    wav->total_frames_read = 0;
 
    *w = wav;
@@ -147,101 +210,8 @@ error:
    return 1;
 }
 
-__attribute__((used))
-static int
-wav_read(struct wav* wav, void* data, int len)
-{
-   switch (wav->sample_format)
-   {
-      case WAV_INT16:
-      {
-         int16_t* interleaved_data = (int16_t*)alloca(wav->header.num_channels * len * sizeof(int16_t));
-         size_t samples_read = fread(interleaved_data, sizeof(int16_t), wav->header.num_channels * len, wav->file);
-         int valid_len = (int) samples_read / wav->header.num_channels;
-         switch (wav->channel_format)
-         {
-            case WAV_INTERLEAVED: /* [LRLRLRLR] */
-            {
-               for (int pos = 0; pos < wav->header.num_channels * valid_len; pos++)
-               {
-                  ((float*)data)[pos] = (float)interleaved_data[pos] / INT16_MAX;
-               }
-               return valid_len;
-            }
-            case WAV_INLINE: /* [LLLLRRRR] */
-            {
-               for (int i = 0, pos = 0; i < wav->header.num_channels; i++)
-               {
-                  for (int j = i; j < valid_len * wav->header.num_channels; j += wav->header.num_channels, ++pos)
-                  {
-                     ((float*)data)[pos] = (float)interleaved_data[j] / INT16_MAX;
-                  }
-               }
-               return valid_len;
-            }
-            case WAV_SPLIT: /* [[LLLL],[RRRR]] */
-            {
-               for (int i = 0, pos = 0; i < wav->header.num_channels; i++)
-               {
-                  for (int j = 0; j < valid_len; j++, ++pos)
-                  {
-                     ((float**)data)[i][j] = (float)interleaved_data[j * wav->header.num_channels + i] / INT16_MAX;
-                  }
-               }
-               return valid_len;
-            }
-            default:
-               return 0;
-         }
-      }
-      case WAV_FLOAT32:
-      {
-         float* interleaved_data = (float*) alloca(wav->header.num_channels * len * sizeof(float));
-         size_t samples_read = fread(interleaved_data, sizeof(float), wav->header.num_channels * len, wav->file);
-         int valid_len = (int) samples_read / wav->header.num_channels;
-         switch (wav->channel_format)
-         {
-            case WAV_INTERLEAVED: /* [LRLRLRLR] */
-            {
-               memcpy(data, interleaved_data, wav->header.num_channels * valid_len * sizeof(float));
-               return valid_len;
-            }
-            case WAV_INLINE: /* [LLLLRRRR] */
-            {
-               for (int i = 0, pos = 0; i < wav->header.num_channels; i++)
-               {
-                  for (int j = i; j < valid_len * wav->header.num_channels; j += wav->header.num_channels, ++pos)
-                  {
-                     ((float*) data)[pos] = interleaved_data[j];
-                  }
-               }
-               return valid_len;
-            }
-            case WAV_SPLIT: /* [[LLLL],[RRRR]] */
-            {
-               for (int i = 0, pos = 0; i < wav->header.num_channels; i++)
-               {
-                  for (int j = 0; j < valid_len; j++, ++pos)
-                  {
-                     ((float**) data)[i][j] = interleaved_data[j * wav->header.num_channels + i];
-                  }
-               }
-               return valid_len;
-            }
-            default:
-               return 0;
-         }
-      }
-      default:
-         return 0;
-   }
-
-   return len;
-}
-
-__attribute__((used))
-static void
-wav_close(struct wav* wav)
+void
+hrmp_wav_close(struct wav* wav)
 {
    if (wav->file != NULL)
    {
@@ -249,4 +219,29 @@ wav_close(struct wav* wav)
    }
 
    wav->file = NULL;
+
+   free(wav);
+}
+
+__attribute__((used))
+static void
+wav_print_header(struct wav_header* header)
+{
+   printf("chunk_id: %c%c%c%c\n",
+          header->chunk_id[0], header->chunk_id[1],
+          header->chunk_id[2], header->chunk_id[3]);
+   printf("chunk_size: %" PRIu32 "\n", header->chunk_size);
+   printf("format: %c%c%c%c\n",
+          header->format[0], header->format[1],
+          header->format[2], header->format[3]);
+   printf("subchunk1_id: %" PRIu32 "\n", header->subchunk1_id);
+   printf("subchunk1_size: %" PRIu32 "\n", header->subchunk1_size);
+   printf("audio_format: %" PRIu16 "\n", header->audio_format);
+   printf("channels: %" PRIu16 "\n", header->channels);
+   printf("sample_rate: %" PRIu32 "\n", header->sample_rate);
+   printf("byte_rate: %" PRIu32 "\n", header->byte_rate);
+   printf("block_align: %" PRIu16 "\n", header->block_align);
+   printf("bits_per_sample: %" PRIu16 "\n", header->bits_per_sample);
+   printf("subchunk2_id: %" PRIu32 "\n", header->subchunk2_id);
+   printf("subchunk2_size: %" PRIu32 "\n", header->subchunk2_size);
 }

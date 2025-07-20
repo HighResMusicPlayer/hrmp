@@ -48,14 +48,6 @@ extern "C" {
 int
 hrmp_flac_get_metadata(char* filename, struct file_metadata** file_metadata);
 
-/**
- * FLAC: Print metadata for a file
- * @param file_metadata The file metadata
- * @return 0 upon success, 1 is failure
- */
-int
-hrmp_flac_print_metadata(struct file_metadata* file_metadata);
-
 #ifdef __cplusplus
 }
 #endif
