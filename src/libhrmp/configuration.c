@@ -244,6 +244,7 @@ hrmp_read_configuration(void* shm, char* filename, bool emitWarnings)
                   {
                      max = MISC_LENGTH - 1;
                   }
+                  memset(&drv.description, 0, sizeof(drv.description));
                   memcpy(&drv.description, value, max);
                   drv.active = false;
                }
@@ -471,84 +472,147 @@ hrmp_validate_configuration(void* shm)
 static int
 extract_key_value(char* str, char** key, char** value)
 {
-   int c = 0;
-   int offset = 0;
-   int length = strlen(str);
-   char* k;
-   char* v;
-   char quoting_begin = '\0';
-   char quoting_end = '\0';
+   char* equal = NULL;
+   char* end = NULL;
+   char* ptr = NULL;
+   char left[MISC_LENGTH];
+   char right[MISC_LENGTH];
+   bool start_left = false;
+   bool start_right = false;
+   int idx = 0;
+   int i = 0;
+   char c = 0;
+   char* k = NULL;
+   char* v = NULL;
 
-   // the key does not allow spaces and is whatever is
-   // on the left of the '='
-   while (str[c] != ' ' && str[c] != '=' && c < length)
-      c++;
+   *key = NULL;
+   *value = NULL;
 
-   if (c < length)
+   memset(left, 0, sizeof(left));
+   memset(right, 0, sizeof(right));
+
+   equal = strchr(str, '=');
+
+   if (equal != NULL)
    {
-      k = malloc(c + 1);
-      memset(k, 0, c + 1);
-      memcpy(k, str, c);
-      *key = k;
-
-      while ((str[c] == ' ' || str[c] == '\t' || str[c] == '=') && c < length)
-         c++;
-
-      offset = c;
-
-      // the value of the parameter starts from offset 'offset'
-      while (str[c] != '\r' && str[c] != '\n' && c < length)
+      i = 0;
+      while (true)
       {
-         if (str[c] == '\'' || str[c] == '"')
+         ptr = str + i;
+         if (ptr != equal)
          {
-            if (quoting_begin == '\0')
+            c = *(str + i);
+            if (c == '\t' || c == ' ' || c == '\"' || c == '\'')
             {
-               quoting_begin = str[c];
-               offset = c + 1;    // start at the very first character after the quote
+               /* Skip */
             }
-            else if (str[c] == quoting_begin && quoting_end == '\0')
+            else
             {
-               quoting_end = str[c];
-               // end at the last character before the quote
-               break;
+               start_left = true;
             }
-         }
-         else if (str[c] == '#' || str[c] == ';')
-         {
-            if (quoting_begin == '\0' || (quoting_begin != '\0' && quoting_end != '\0'))
-            {
-               // a comment outside of quoted string, ignore anything else
-               break;
-            }
-         }
-         else if (str[c] == ' ')
-         {
-            if (quoting_begin == '\0' || (quoting_begin != '\0' && quoting_end != '\0'))
-            {
-               // space outside a quoted string, stop here
-               break;
-            }
-         }
 
-         c++;
+            if (start_left)
+            {
+               left[idx] = c;
+               idx++;
+            }
+         }
+         else
+         {
+            break;
+         }
+         i++;
       }
 
-      // quotes must be the same!
-      if (quoting_begin != '\0' && quoting_begin != quoting_end)
+      end = strchr(str, '\n');
+      idx = 0;
+
+      for (size_t i = 0; i < strlen(equal); i++)
+      {
+         ptr = equal + i;
+         if (ptr != end)
+         {
+            c = *(ptr);
+            if (c == '=' || c == ' ' || c == '\t' || c == '\"' || c == '\'')
+            {
+               /* Skip */
+            }
+            else
+            {
+               start_right = true;
+            }
+
+            if (start_right)
+            {
+               if (c != '#')
+               {
+                  right[idx] = c;
+                  idx++;
+               }
+               else
+               {
+                  break;
+               }
+            }
+         }
+         else
+         {
+            break;
+         }
+      }
+
+      for (int i = strlen(left); i >= 0; i--)
+      {
+         if (left[i] == '\t' || left[i] == ' ' || left[i] == '\0' || left[i] == '\"' || left[i] == '\'')
+         {
+            left[i] = '\0';
+         }
+         else
+         {
+            break;
+         }
+      }
+
+      for (int i = strlen(right); i >= 0; i--)
+      {
+         if (right[i] == '\t' || right[i] == ' ' || right[i] == '\0' || right[i] == '\r' || right[i] == '\"' || right[i] == '\'')
+         {
+            right[i] = '\0';
+         }
+         else
+         {
+            break;
+         }
+      }
+
+      k = calloc(1, strlen(left) + 1);
+
+      if (k == NULL)
       {
          goto error;
       }
 
-      if (c <= length)
+      v = calloc(1, strlen(right) + 1);
+
+      if (v == NULL)
       {
-         v = malloc((c - offset) + 1);
-         memset(v, 0, (c - offset) + 1);
-         memcpy(v, str + offset, (c - offset));
-         *value = v;
-         return 0;
+         goto error;
       }
+
+      memcpy(k, left, strlen(left));
+      memcpy(v, right, strlen(right));
+
+      *key = k;
+      *value = v;
    }
+
+   return 0;
+
 error:
+
+   free(k);
+   free(v);
+
    return 1;
 }
 
