@@ -514,6 +514,38 @@ is_device_active(char* device)
    int err;
    snd_pcm_t* handle = NULL;
    snd_pcm_hw_params_t* hw = NULL;
+   char** hints;
+   char** n;
+   char* name;
+   bool found = false;
+
+   err = snd_device_name_hint(-1, "pcm", (void***)&hints);
+   if (err != 0)
+   {
+      hrmp_log_error("ALSA: Cannot get device names");
+      goto error;
+   }
+
+   n = hints;
+   while (!found && *n != NULL)
+   {
+      name = snd_device_name_get_hint(*n, "NAME");
+
+      if (!strcmp(name, device))
+      {
+         found = true;
+      }
+
+      free(name);
+      name = NULL;
+
+      n++;
+   }
+
+   if (!found)
+   {
+      goto error;
+   }
 
    if ((err = snd_pcm_open(&handle, device, SND_PCM_STREAM_PLAYBACK, 0)) < 0)
    {
@@ -529,6 +561,8 @@ is_device_active(char* device)
 
    snd_pcm_close(handle);
 
+   snd_device_name_free_hint((void **)hints);
+
    return true;
 
 error:
@@ -536,6 +570,11 @@ error:
    if (handle != NULL)
    {
       snd_pcm_close(handle);
+   }
+
+   if (hints != NULL)
+   {
+      snd_device_name_free_hint((void **)hints);
    }
 
    return false;
