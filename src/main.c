@@ -152,6 +152,8 @@ main(int argc, char** argv)
       goto error;
    }
 
+   memset(shmem, 0, sizeof(struct configuration));
+
    hrmp_init_configuration(shmem);
    config = (struct configuration*)shmem;
 
