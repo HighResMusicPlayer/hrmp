@@ -50,6 +50,8 @@
 
 #define LINE_LENGTH 512
 
+bool quiet;
+
 static int extract_key_value(char* str, char** key, char** value);
 static int as_int(char* str, int* i);
 static int as_logging_type(char* str);

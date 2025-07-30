@@ -45,7 +45,7 @@
 //#include <FLAC/stream_decoder.h>
 #include <alsa/asoundlib.h>
 
-static int wav_read(struct wav* wav, void* data, int length);
+/* static int wav_read(struct wav* wav, void* data, int length); */
 
 static FLAC__bool flac_write_pcm(const FLAC__int32*const buffer[], size_t samples, struct playback* ctx);
 static FLAC__StreamDecoderWriteStatus flac_write_callback(const FLAC__StreamDecoder* decoder, const FLAC__Frame* frame, const FLAC__int32* const buffer[], void* client_data);
@@ -225,96 +225,96 @@ error:
    return 1;
 }
 
-static int
-wav_read(struct wav* wav, void* data, int length)
-{
-   switch (wav->sample_format)
-   {
-      case WAV_INT16:
-      {
-         int16_t* interleaved_data = (int16_t*)alloca(wav->header.channels * length * sizeof(int16_t));
-         size_t samples_read = fread(interleaved_data, sizeof(int16_t), wav->header.channels * length, wav->file);
-         int valid_length = (int) samples_read / wav->header.channels;
-         switch (wav->channel_format)
-         {
-            case WAV_INTERLEAVED: /* [LRLRLRLR] */
-            {
-               for (int pos = 0; pos < wav->header.channels * valid_length; pos++)
-               {
-                  ((float*)data)[pos] = (float)interleaved_data[pos] / INT16_MAX;
-               }
-               return valid_length;
-            }
-            case WAV_INLINE: /* [LLLLRRRR] */
-            {
-               for (int i = 0, pos = 0; i < wav->header.channels; i++)
-               {
-                  for (int j = i; j < valid_length * wav->header.channels; j += wav->header.channels, ++pos)
-                  {
-                     ((float*)data)[pos] = (float)interleaved_data[j] / INT16_MAX;
-                  }
-               }
-               return valid_length;
-            }
-            case WAV_SPLIT: /* [[LLLL],[RRRR]] */
-            {
-               for (int i = 0, pos = 0; i < wav->header.channels; i++)
-               {
-                  for (int j = 0; j < valid_length; j++, ++pos)
-                  {
-                     ((float**)data)[i][j] = (float)interleaved_data[j * wav->header.channels + i] / INT16_MAX;
-                  }
-               }
-               return valid_length;
-            }
-            default:
-               return 0;
-         }
-      }
-      case WAV_FLOAT32:
-      {
-         float* interleaved_data = (float*) alloca(wav->header.channels * length * sizeof(float));
-         size_t samples_read = fread(interleaved_data, sizeof(float), wav->header.channels * length, wav->file);
-         int valid_length = (int) samples_read / wav->header.channels;
-         switch (wav->channel_format)
-         {
-            case WAV_INTERLEAVED: /* [LRLRLRLR] */
-            {
-               memcpy(data, interleaved_data, wav->header.channels * valid_length * sizeof(float));
-               return valid_length;
-            }
-            case WAV_INLINE: /* [LLLLRRRR] */
-            {
-               for (int i = 0, pos = 0; i < wav->header.channels; i++)
-               {
-                  for (int j = i; j < valid_length * wav->header.channels; j += wav->header.channels, ++pos)
-                  {
-                     ((float*) data)[pos] = interleaved_data[j];
-                  }
-               }
-               return valid_length;
-            }
-            case WAV_SPLIT: /* [[LLLL],[RRRR]] */
-            {
-               for (int i = 0, pos = 0; i < wav->header.channels; i++)
-               {
-                  for (int j = 0; j < valid_length; j++, ++pos)
-                  {
-                     ((float**) data)[i][j] = interleaved_data[j * wav->header.channels + i];
-                  }
-               }
-               return valid_length;
-            }
-            default:
-               return 0;
-         }
-      }
-      default:
-         return 0;
-   }
+/* static int */
+/* wav_read(struct wav* wav, void* data, int length) */
+/* { */
+/*    switch (wav->sample_format) */
+/*    { */
+/*       case WAV_INT16: */
+/*       { */
+/*          int16_t* interleaved_data = (int16_t*)alloca(wav->header.channels * length * sizeof(int16_t)); */
+/*          size_t samples_read = fread(interleaved_data, sizeof(int16_t), wav->header.channels * length, wav->file); */
+/*          int valid_length = (int) samples_read / wav->header.channels; */
+/*          switch (wav->channel_format) */
+/*          { */
+/*             case WAV_INTERLEAVED: /\* [LRLRLRLR] *\/ */
+/*             { */
+/*                for (int pos = 0; pos < wav->header.channels * valid_length; pos++) */
+/*                { */
+/*                   ((float*)data)[pos] = (float)interleaved_data[pos] / INT16_MAX; */
+/*                } */
+/*                return valid_length; */
+/*             } */
+/*             case WAV_INLINE: /\* [LLLLRRRR] *\/ */
+/*             { */
+/*                for (int i = 0, pos = 0; i < wav->header.channels; i++) */
+/*                { */
+/*                   for (int j = i; j < valid_length * wav->header.channels; j += wav->header.channels, ++pos) */
+/*                   { */
+/*                      ((float*)data)[pos] = (float)interleaved_data[j] / INT16_MAX; */
+/*                   } */
+/*                } */
+/*                return valid_length; */
+/*             } */
+/*             case WAV_SPLIT: /\* [[LLLL],[RRRR]] *\/ */
+/*             { */
+/*                for (int i = 0, pos = 0; i < wav->header.channels; i++) */
+/*                { */
+/*                   for (int j = 0; j < valid_length; j++, ++pos) */
+/*                   { */
+/*                      ((float**)data)[i][j] = (float)interleaved_data[j * wav->header.channels + i] / INT16_MAX; */
+/*                   } */
+/*                } */
+/*                return valid_length; */
+/*             } */
+/*             default: */
+/*                return 0; */
+/*          } */
+/*       } */
+/*       case WAV_FLOAT32: */
+/*       { */
+/*          float* interleaved_data = (float*) alloca(wav->header.channels * length * sizeof(float)); */
+/*          size_t samples_read = fread(interleaved_data, sizeof(float), wav->header.channels * length, wav->file); */
+/*          int valid_length = (int) samples_read / wav->header.channels; */
+/*          switch (wav->channel_format) */
+/*          { */
+/*             case WAV_INTERLEAVED: /\* [LRLRLRLR] *\/ */
+/*             { */
+/*                memcpy(data, interleaved_data, wav->header.channels * valid_length * sizeof(float)); */
+/*                return valid_length; */
+/*             } */
+/*             case WAV_INLINE: /\* [LLLLRRRR] *\/ */
+/*             { */
+/*                for (int i = 0, pos = 0; i < wav->header.channels; i++) */
+/*                { */
+/*                   for (int j = i; j < valid_length * wav->header.channels; j += wav->header.channels, ++pos) */
+/*                   { */
+/*                      ((float*) data)[pos] = interleaved_data[j]; */
+/*                   } */
+/*                } */
+/*                return valid_length; */
+/*             } */
+/*             case WAV_SPLIT: /\* [[LLLL],[RRRR]] *\/ */
+/*             { */
+/*                for (int i = 0, pos = 0; i < wav->header.channels; i++) */
+/*                { */
+/*                   for (int j = 0; j < valid_length; j++, ++pos) */
+/*                   { */
+/*                      ((float**) data)[i][j] = interleaved_data[j * wav->header.channels + i]; */
+/*                   } */
+/*                } */
+/*                return valid_length; */
+/*             } */
+/*             default: */
+/*                return 0; */
+/*          } */
+/*       } */
+/*       default: */
+/*          return 0; */
+/*    } */
 
-   return length;
-}
+/*    return length; */
+/* } */
 
 static FLAC__bool
 flac_write_pcm(const FLAC__int32* const buffer[], size_t samples, struct playback* ctx)

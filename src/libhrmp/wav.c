@@ -39,7 +39,6 @@
 #include <alsa/asoundlib.h>
 #include <arpa/inet.h>
 
-static int wav_read(struct wav* wav, void* data, int len);
 static void wav_print_header(struct wav_header* header);
 
 int

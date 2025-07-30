@@ -53,8 +53,6 @@
 #define ACTION_SAMPLE_CONFIG 2
 #define ACTION_PLAY          3
 
-bool quiet;
-
 static void
 version(void)
 {
