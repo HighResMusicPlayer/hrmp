@@ -1,5 +1,6 @@
 ---
-title: "High-Resolution Music Player"
+title: "hrmp"
+subtitle: "High-Resolution Music Player"
 keywords: [high, resolution, flac, wav, dsd]
 lang: "en"
 titlepage: true,
