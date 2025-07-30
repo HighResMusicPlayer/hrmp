@@ -197,7 +197,7 @@ hrmp_playback_flac(int device, int number, int total, struct file_metadata* fm)
    /* Decode and play */
    FLAC__stream_decoder_process_until_end_of_stream(decoder);
 
-   if (!quiet)
+   if (!config->quiet)
    {
       printf("\n");
    }
@@ -487,35 +487,36 @@ playback_identifier(struct file_metadata* fm, char** identifer)
 static void
 print_progress(struct playback* pb)
 {
-   if (!quiet)
+   struct configuration* config = NULL;
+
+   config = (struct configuration*)shmem;
+
+   if (!config->quiet)
    {
-         char t[MISC_LENGTH];
-         double current = 0.0;
-         int current_min = 0;
-         int current_sec = 0;
-         int total_min = 0;
-         int total_sec = 0;
-         struct configuration *config = NULL;
+      char t[MISC_LENGTH];
+      double current = 0.0;
+      int current_min = 0;
+      int current_sec = 0;
+      int total_min = 0;
+      int total_sec = 0;
 
-         config = (struct configuration *)shmem;
+      memset(&t[0], 0, sizeof(t));
 
-         memset(&t[0], 0, sizeof(t));
+      current = (int)((double)(pb->current_samples) / pb->fm->sample_rate);
 
-         current = (int)((double)(pb->current_samples) / pb->fm->sample_rate);
+      current_min = (int)(current) / 60;
+      current_sec = current - (current_min * 60);
 
-         current_min = (int)(current) / 60;
-         current_sec = current - (current_min * 60);
+      total_min = (int)(pb->fm->duration) / 60;
+      total_sec = pb->fm->duration - (total_min * 60);
 
-         total_min = (int)(pb->fm->duration) / 60;
-         total_sec = pb->fm->duration - (total_min * 60);
+      snprintf(&t[0], sizeof(t), "%d:%02d/%d:%02d", current_min, current_sec,
+               total_min, total_sec);
 
-         snprintf(&t[0], sizeof(t), "%d:%02d/%d:%02d", current_min, current_sec,
-                  total_min, total_sec);
+      printf("\r[%d/%d] %s: %s %s (%s)", pb->file_number, pb->total_number,
+             config->devices[pb->device].name, pb->fm->name, pb->identifier,
+             &t[0]);
 
-         printf("\r[%d/%d] %s: %s %s (%s)", pb->file_number, pb->total_number,
-                config->devices[pb->device].name, pb->fm->name, pb->identifier,
-                &t[0]);
-
-         fflush(stdout);
+      fflush(stdout);
    }
 }

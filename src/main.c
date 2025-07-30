@@ -94,12 +94,12 @@ main(int argc, char** argv)
    int c;
    char message[MISC_LENGTH];
    /* int vol; */
+   bool q = false;
    int files_index = 1;
    int action = ACTION_PLAY;
    int active_device = -1;
    struct dlist* files = NULL;
 
-   quiet = false;
 
    while (1)
    {
@@ -135,7 +135,7 @@ main(int argc, char** argv)
             action = ACTION_SAMPLE_CONFIG;
             break;
          case 'q':
-            quiet = true;
+            q = true;
             break;
          case 'V':
             action = ACTION_VERSION;
@@ -222,6 +222,8 @@ main(int argc, char** argv)
       goto error;
    }
 
+   config->quiet = q;
+
    if (action == ACTION_HELP)
    {
       usage();
@@ -236,7 +238,7 @@ main(int argc, char** argv)
    }
    else
    {
-      if (!quiet)
+      if (!config->quiet)
       {
          printf("hrmp %s\n", VERSION);
       }
@@ -317,7 +319,7 @@ main(int argc, char** argv)
             }
          }
 
-         if (!quiet && !is_supported)
+         if (!config->quiet && !is_supported)
          {
             printf("[%d/%d] %s: Unsupported format\n", i + 1, hrmp_dlist_size(files), config->devices[active_device].name);
          }

@@ -61,7 +61,7 @@ hrmp_check_devices(void)
 
       if (is_device_active(config->devices[i].device))
       {
-         if (!quiet)
+         if (!config->quiet)
          {
             printf("Device: %s (Active)\n", config->devices[i].name);
          }
@@ -70,7 +70,7 @@ hrmp_check_devices(void)
       }
       else
       {
-         if (!quiet)
+         if (!config->quiet)
          {
             printf("Device: %s (Inactive)\n", config->devices[i].name);
          }
@@ -132,7 +132,7 @@ hrmp_print_devices(void)
 
    config = (struct configuration*)shmem;
 
-   if (quiet)
+   if (config->quiet)
    {
       return;
    }

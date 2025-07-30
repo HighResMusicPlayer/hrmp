@@ -49,7 +49,7 @@ struct playback
    int total_number;              /**< The total number */
    char identifier[MISC_LENGTH];  /**< The file identifier */
    unsigned long current_samples; /**< The total number of samples */
-   snd_pcm_t *pcm_handle;         /**< The PCM handle */
+   snd_pcm_t* pcm_handle;         /**< The PCM handle */
    struct file_metadata* fm;      /**< The file metadata */
 };
 

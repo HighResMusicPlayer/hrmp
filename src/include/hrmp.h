@@ -61,11 +61,6 @@ extern "C" {
 #define MAX_PATH    1024
 
 /**
- * Quiet output ?
- */
-extern bool quiet;
-
-/**
  * The shared memory segment
  */
 extern void* shmem;
@@ -178,6 +173,8 @@ struct configuration
 
    char device[MISC_LENGTH]; /**< The name of the default device */
    int volume;               /**< The general volume */
+
+   bool quiet;                        /**< The quiet the output */
 
    int log_type;                      /**< The logging type */
    int log_level;                     /**< The logging level */
