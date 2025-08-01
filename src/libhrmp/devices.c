@@ -276,7 +276,7 @@ hrmp_sample_configuration(void)
    printf("\n");
 
    printf("log_type = console\n");
-   printf("log_level = debug5\n");
+   printf("log_level = info\n");
    printf("\n");
 
    for (int i = 0; i < config->number_of_devices; i++)
