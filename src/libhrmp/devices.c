@@ -237,8 +237,6 @@ hrmp_sample_configuration(void)
             d = NULL;
          }
 
-         hrmp_log_trace("Device: %s (%s)", config->devices[dn].name, config->devices[dn].device);
-
          dn++;
       }
 
