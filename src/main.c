@@ -95,11 +95,11 @@ main(int argc, char** argv)
    char message[MISC_LENGTH];
    /* int vol; */
    bool q = false;
+   bool ad = true;
    int files_index = 1;
    int action = ACTION_PLAY;
    int active_device = -1;
    struct dlist* files = NULL;
-
 
    while (1)
    {
@@ -227,10 +227,12 @@ main(int argc, char** argv)
    if (action == ACTION_HELP)
    {
       usage();
+      ad = false;
    }
    else if (action == ACTION_VERSION)
    {
       version();
+      ad = false;
    }
    else if (action == ACTION_SAMPLE_CONFIG)
    {
@@ -345,7 +347,10 @@ main(int argc, char** argv)
       }
       else
       {
-         printf("No active devices\n");
+         if (ad && !config->quiet)
+         {
+            printf("No active devices\n");
+         }
       }
    }
 
