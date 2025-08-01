@@ -15,6 +15,8 @@ Options:
                              Default: $HOME/.hrmp/hrmp.conf
   -D, --device               Set the device name
   -I, --sample-configuration Generate a sample configuration
+  -s, --status               Status of the devices
+  -q, --quiet                Quiet the player
   -V, --version              Display version information
   -?, --help                 Display help
 

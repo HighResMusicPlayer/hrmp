@@ -51,7 +51,8 @@
 #define ACTION_HELP          0
 #define ACTION_VERSION       1
 #define ACTION_SAMPLE_CONFIG 2
-#define ACTION_PLAY          3
+#define ACTION_STATUS        3
+#define ACTION_PLAY          4
 
 static void
 version(void)
@@ -74,6 +75,7 @@ usage(void)
    printf("                             Default: $HOME/.hrmp/hrmp.conf\n");
    printf("  -D, --device               Set the device name\n");
    printf("  -I, --sample-configuration Generate a sample configuration\n");
+   printf("  -s, --status               Status of the devices\n");
    printf("  -q, --quiet                Quiet the player\n");
    printf("  -V, --version              Display version information\n");
    printf("  -?, --help                 Display help\n");
@@ -108,13 +110,14 @@ main(int argc, char** argv)
          {"config", required_argument, 0, 'c'},
          {"device", required_argument, 0, 'D'},
          {"sample-configuration", no_argument, 0, 'I'},
+         {"status", no_argument, 0, 's'},
          {"quiet", no_argument, 0, 'q'},
          {"version", no_argument, 0, 'V'},
          {"help", no_argument, 0, '?'}
       };
       int option_index = 0;
 
-      c = getopt_long(argc, argv, "IqV?c:D:", long_options, &option_index);
+      c = getopt_long(argc, argv, "IsqV?c:D:", long_options, &option_index);
 
       if (c == -1)
       {
@@ -133,6 +136,9 @@ main(int argc, char** argv)
             break;
          case 'I':
             action = ACTION_SAMPLE_CONFIG;
+            break;
+         case 's':
+            action = ACTION_STATUS;
             break;
          case 'q':
             q = true;
@@ -237,6 +243,10 @@ main(int argc, char** argv)
    else if (action == ACTION_SAMPLE_CONFIG)
    {
       hrmp_sample_configuration();
+   }
+   else if (action == ACTION_STATUS)
+   {
+      hrmp_check_devices();
    }
    else
    {
@@ -343,7 +353,7 @@ main(int argc, char** argv)
 
       if (active && strlen(config->device) > 0)
       {
-         printf("'%s' is not active\n", config->device);
+         printf("Default: %s is not active\n", config->device);
       }
       else
       {
