@@ -47,7 +47,9 @@
 FILE* log_file;
 char current_log_path[MAX_PATH]; /* the current log file */
 
-static const char* levels[] =
+static int log_file_open(void);
+
+static const char *levels[] =
 {
    "TRACE",
    "DEBUG",
@@ -66,31 +68,6 @@ static const char* colors[] =
    "\x1b[31m",
    "\x1b[35m"
 };
-
-/**
- *
- */
-int
-hrmp_init_logging(void)
-{
-   struct configuration* config;
-
-   config = (struct configuration*)shmem;
-
-   if (config->log_type == HRMP_LOGGING_TYPE_FILE)
-   {
-      log_file_open();
-
-      if (!log_file)
-      {
-         printf("Failed to open log file %s due to %s\n", strlen(config->log_path) > 0 ? config->log_path : "hrmp.log", strerror(errno));
-         errno = 0;
-         return 1;
-      }
-   }
-
-   return 0;
-}
 
 /**
  *
@@ -121,7 +98,7 @@ hrmp_start_logging(void)
    return 0;
 }
 
-int
+static int
 log_file_open(void)
 {
    struct configuration* config;

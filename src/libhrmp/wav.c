@@ -33,6 +33,7 @@
 #include <wav.h>
 
 #include <inttypes.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -212,12 +213,15 @@ error:
 void
 hrmp_wav_close(struct wav* wav)
 {
-   if (wav->file != NULL)
+   if (wav != NULL)
    {
-      fclose(wav->file);
-   }
+      if (wav->file != NULL)
+      {
+         fclose(wav->file);
+      }
 
-   wav->file = NULL;
+      wav->file = NULL;
+   }
 
    free(wav);
 }

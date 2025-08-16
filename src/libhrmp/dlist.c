@@ -65,7 +65,7 @@ hrmp_dlist_append(struct dlist* dlist, void* value)
 
    if (dlist == NULL)
    {
-      return 1;
+      goto error;
    }
 
    e = dlist->data;
@@ -82,7 +82,7 @@ hrmp_dlist_append(struct dlist* dlist, void* value)
 
    if (!n)
    {
-      return 1;
+      goto error;
    }
 
    n->data = value;
@@ -100,6 +100,10 @@ hrmp_dlist_append(struct dlist* dlist, void* value)
    }
 
    return 0;
+
+error:
+
+   return 1;
 }
 
 __attribute__((used))

@@ -62,13 +62,6 @@ extern "C" {
 #define hrmp_log_fatal(...) hrmp_log_line(HRMP_LOGGING_LEVEL_FATAL, __FILE__, __LINE__, __VA_ARGS__)
 
 /**
- * Initialize the logging system
- * @return 0 upon success, otherwise 1
- */
-int
-hrmp_init_logging(void);
-
-/**
  * Start the logging system
  * @return 0 upon success, otherwise 1
  */
@@ -101,29 +94,6 @@ hrmp_log_line(int level, char* file, int line, char* fmt, ...);
  */
 void
 hrmp_log_mem(void* data, size_t size);
-
-/**
- * Opens the log file defined in the configuration.
- * Works only for a real log file, i.e., the configuration
- * must be set up to log to a file, not console.
- *
- * The function considers the settings in the configuration
- * to determine the mode (append, create) and the filename
- * to open.
- *
- * It sets the global variable 'log_file'.
- *
- * If it succeed in opening the log file, it calls
- * the log_rotation_set_next_rotation_age() function to
- * determine the next instant at which the log file
- * must be rotated. Calling such function is safe
- * because if the log rotation is disabled, the function
- * does nothing.
- *
- * @return 0 on success, 1 on error.
- */
-int
-log_file_open(void);
 
 #ifdef __cplusplus
 }

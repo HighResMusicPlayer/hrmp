@@ -90,7 +90,7 @@ hrmp_playback_wav(int device, int number, int total, struct file_metadata* fm)
 
    if (hrmp_wav_open(fm->name, WAV_INTERLEAVED, &wav))
    {
-      hrmp_log_error("Could not open %s", fm->name);
+      printf("Could not open '%s'\n", fm->name);
       goto error;
    }
 
@@ -499,6 +499,7 @@ print_progress(struct playback* pb)
       int current_sec = 0;
       int total_min = 0;
       int total_sec = 0;
+      int percent = 0;
 
       memset(&t[0], 0, sizeof(t));
 
@@ -510,12 +511,14 @@ print_progress(struct playback* pb)
       total_min = (int)(pb->fm->duration) / 60;
       total_sec = pb->fm->duration - (total_min * 60);
 
+      percent = (int)(current * 100 / pb->fm->duration);
+
       snprintf(&t[0], sizeof(t), "%d:%02d/%d:%02d", current_min, current_sec,
                total_min, total_sec);
 
-      printf("\r[%d/%d] %s: %s %s (%s)", pb->file_number, pb->total_number,
+      printf("\r[%d/%d] %s: %s %s (%s) (%d%%)", pb->file_number, pb->total_number,
              config->devices[pb->device].name, pb->fm->name, pb->identifier,
-             &t[0]);
+             &t[0], percent);
 
       fflush(stdout);
    }

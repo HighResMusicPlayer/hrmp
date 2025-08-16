@@ -209,8 +209,6 @@ hrmp_sample_configuration(void)
 
       if (hrmp_starts_with(name, "iec958"))
       {
-         config->devices[dn].active = true;
-
          cdesc = clean_description(desc);
 
          ptr = strtok(cdesc, ",");
@@ -219,6 +217,11 @@ hrmp_sample_configuration(void)
          memcpy(config->devices[dn].device, name, strlen(name));
 
          config->devices[dn].volume = 50;
+
+         if (is_device_active(config->devices[dn].device))
+         {
+            config->devices[dn].active = true;
+         }
 
          ptr = strtok(NULL, ",");
          if (ptr != NULL)
@@ -269,7 +272,7 @@ hrmp_sample_configuration(void)
 
    if (!active && config->number_of_devices > 0)
    {
-      printf("# device=%s\n", config->devices[0].name);
+      printf("device=%s\n", config->devices[0].name);
    }
 
    printf("volume = 70\n");
@@ -281,18 +284,9 @@ hrmp_sample_configuration(void)
 
    for (int i = 0; i < config->number_of_devices; i++)
    {
-      if (config->devices[i].active)
-      {
-         printf("[%s]\n", config->devices[i].name);
-         printf("device=%s\n", config->devices[i].device);
-         printf("description=%s\n", config->devices[i].description);
-      }
-      else
-      {
-         printf("# [%s]\n", config->devices[i].name);
-         printf("# device=%s\n", config->devices[i].device);
-         printf("# description=%s\n", config->devices[i].description);
-      }
+      printf("[%s]\n", config->devices[i].name);
+      printf("device=%s\n", config->devices[i].device);
+      printf("description=%s\n", config->devices[i].description);
 
       if (i < config->number_of_devices - 1)
       {

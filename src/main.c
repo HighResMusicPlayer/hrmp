@@ -29,6 +29,7 @@
 /* hrmp */
 #include <hrmp.h>
 #include <alsa.h>
+#include <cmd.h>
 #include <configuration.h>
 #include <devices.h>
 #include <dlist.h>
@@ -42,17 +43,17 @@
 
 /* system */
 #include <err.h>
-#include <getopt.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
-#define ACTION_HELP          0
-#define ACTION_VERSION       1
-#define ACTION_SAMPLE_CONFIG 2
-#define ACTION_STATUS        3
-#define ACTION_PLAY          4
+#define ACTION_NOTHING       0
+#define ACTION_HELP          1
+#define ACTION_VERSION       2
+#define ACTION_SAMPLE_CONFIG 3
+#define ACTION_STATUS        4
+#define ACTION_PLAY          5
 
 static void
 version(void)
@@ -74,6 +75,7 @@ usage(void)
    printf("  -c, --config CONFIG_FILE   Set the path to the hrmp.conf file\n");
    printf("                             Default: $HOME/.hrmp/hrmp.conf\n");
    printf("  -D, --device               Set the device name\n");
+   printf("  -R, --recursive            Add files recursive of the directory\n");
    printf("  -I, --sample-configuration Generate a sample configuration\n");
    printf("  -s, --status               Status of the devices\n");
    printf("  -q, --quiet                Quiet the player\n");
@@ -93,64 +95,101 @@ main(int argc, char** argv)
    size_t shmem_size;
    struct configuration* config = NULL;
    int ret;
-   int c;
    char message[MISC_LENGTH];
    /* int vol; */
+   bool recursive = false;
    bool q = false;
-   bool ad = true;
+   bool e = false;
    int files_index = 1;
-   int action = ACTION_PLAY;
+   int action = ACTION_NOTHING;
    int active_device = -1;
+   char* filepath = NULL;
+   int optind = 0;
+   int num_options = 0;
+   int num_results = 0;
    struct dlist* files = NULL;
 
-   while (1)
+   cli_option options[] =
    {
-      static struct option long_options[] =
-      {
-         {"config", required_argument, 0, 'c'},
-         {"device", required_argument, 0, 'D'},
-         {"sample-configuration", no_argument, 0, 'I'},
-         {"status", no_argument, 0, 's'},
-         {"quiet", no_argument, 0, 'q'},
-         {"version", no_argument, 0, 'V'},
-         {"help", no_argument, 0, '?'}
-      };
-      int option_index = 0;
+      {"c", "config", true},
+      {"D", "device", true},
+      {"R", "recursive", false},
+      {"I", "sample-configuration", false},
+      {"s", "status", false},
+      {"q", "quiet", false},
+      {"V", "version", false},
+      {"", "experimental", false},
+      {"?", "help", false}
+   };
 
-      c = getopt_long(argc, argv, "IsqV?c:D:", long_options, &option_index);
+   // Disable stdout buffering (i.e. write to stdout immediatelly).
+   setbuf(stdout, NULL);
 
-      if (c == -1)
+   num_options = sizeof(options) / sizeof(options[0]);
+
+   cli_result results[num_options];
+
+   num_results = cmd_parse(argc, argv, options, num_options, results,
+                           num_options, false, &filepath, &optind);
+
+   if (num_results < 0)
+   {
+      return 1;
+   }
+
+   for (int i = 0; i < num_results; i++)
+   {
+      char* optname = results[i].option_name;
+      char* optarg = results[i].argument;
+
+      if (optname == NULL)
       {
          break;
       }
-
-      switch (c)
+      else if (!strcmp(optname, "c") || !strcmp(optname, "config"))
       {
-         case 'c':
-            configuration_path = optarg;
-            files_index += 2;
-            break;
-         case 'D':
-            device_name = optarg;
-            files_index += 2;
-            break;
-         case 'I':
-            action = ACTION_SAMPLE_CONFIG;
-            break;
-         case 's':
-            action = ACTION_STATUS;
-            break;
-         case 'q':
-            q = true;
-            break;
-         case 'V':
-            action = ACTION_VERSION;
-            break;
-         case '?':
-            action = ACTION_HELP;
-            break;
-         default:
-            break;
+         configuration_path = optarg;
+         files_index += 2;
+      }
+      else if (!strcmp(optname, "D") || !strcmp(optname, "device"))
+      {
+         device_name = optarg;
+         files_index += 2;
+      }
+      else if (!strcmp(optname, "R") || !strcmp(optname, "recursive"))
+      {
+         recursive = true;
+         files_index += 1;
+      }
+      else if (!strcmp(optname, "I") || !strcmp(optname, "sample-configuration"))
+      {
+         action = ACTION_SAMPLE_CONFIG;
+         files_index += 1;
+      }
+      else if (!strcmp(optname, "s") || !strcmp(optname, "status"))
+      {
+         action = ACTION_STATUS;
+         files_index += 1;
+      }
+      else if (!strcmp(optname, "q") || !strcmp(optname, "quiet"))
+      {
+         q = true;
+         files_index += 1;
+      }
+      else if (!strcmp(optname, "V") || !strcmp(optname, "version"))
+      {
+         version();
+         exit(0);
+      }
+      else if (!strcmp(optname, "experimental"))
+      {
+         e = true;
+         files_index += 1;
+      }
+      else if (!strcmp(optname, "?") || !strcmp(optname, "help"))
+      {
+         usage();
+         exit(0);
       }
    }
 
@@ -210,12 +249,6 @@ main(int argc, char** argv)
 
    memcpy(&config->configuration_path[0], cp, MIN(strlen(cp), MAX_PATH - 1));
 
-   if (hrmp_init_logging())
-   {
-      errx(1, "Failed to init logging");
-      goto error;
-   }
-
    if (hrmp_start_logging())
    {
       errx(1, "Failed to start logging");
@@ -229,16 +262,15 @@ main(int argc, char** argv)
    }
 
    config->quiet = q;
+   config->experimental = e;
 
    if (action == ACTION_HELP)
    {
       usage();
-      ad = false;
    }
    else if (action == ACTION_VERSION)
    {
       version();
-      ad = false;
    }
    else if (action == ACTION_SAMPLE_CONFIG)
    {
@@ -250,116 +282,113 @@ main(int argc, char** argv)
    }
    else
    {
+      action = ACTION_PLAY;
+   }
+
+   if (action == ACTION_PLAY)
+   {
       if (!config->quiet)
       {
          printf("hrmp %s\n", VERSION);
       }
 
       hrmp_check_devices();
-      /* hrmp_print_devices(); */
 
-      if (files_index >= argc)
+      if (device_name != NULL)
       {
-         printf("No files\n");
-         goto error;
-      }
-
-      if (hrmp_dlist_create(&files))
-      {
-         printf("Error creating files list\n");
-         goto error;
-      }
-
-      for (int i = files_index; i < argc; i++)
-      {
-         hrmp_dlist_append(files, argv[i]);
-      }
-
-      /* Set the master volume */
-      /* hrmp_set_master_volume(config->volume); */
-   }
-
-   if (device_name != NULL)
-   {
-      if (hrmp_is_device_known(device_name))
-      {
-         active_device = hrmp_active_device(device_name);
+         if (hrmp_is_device_known(device_name))
+         {
+            active_device = hrmp_active_device(device_name);
+         }
+         else
+         {
+            printf("Unknown device '%s'\n", device_name);
+         }
       }
       else
       {
-         printf("Unknown device '%s'\n", device_name);
+         active_device = hrmp_active_device(config->device);
       }
-   }
-   else
-   {
-      active_device = hrmp_active_device(config->device);
-   }
 
-   if (active_device >= 0)
-   {
-      for (int i = 0; i < hrmp_dlist_size(files); i++)
+      if (active_device >= 0)
       {
-         char* fn = hrmp_dlist_get(files, i);
-         int type = hrmp_is_file_supported(fn);
-         bool is_supported = false;
-         struct file_metadata* fm = NULL;
-
-         if (type == TYPE_FLAC)
+         if (hrmp_dlist_create(&files))
          {
-            hrmp_flac_get_metadata(fn, &fm);
-
-            if (fm != NULL)
-            {
-               if (hrmp_is_file_metadata_supported(active_device, fm))
-               {
-                  is_supported = true;
-                  hrmp_playback_flac(active_device, i + 1, hrmp_dlist_size(files), fm);
-               }
-            }
+            printf("Error creating files list\n");
+            goto error;
          }
-         else if (type == TYPE_WAV)
-         {
-            hrmp_wav_get_metadata(fn, &fm);
 
-            if (fm != NULL)
+         for (int i = files_index; i < argc; i++)
+         {
+            if (hrmp_is_directory(argv[i]))
             {
-               if (hrmp_is_file_metadata_supported(active_device, fm))
+               hrmp_get_files(active_device, argv[i], recursive, files);
+            }
+            else
+            {
+               bool added = false;
+
+               if (hrmp_exists(argv[i]))
                {
-                  is_supported = true;
-                  hrmp_playback_wav(active_device, i + 1, hrmp_dlist_size(files), fm);
+                  if (hrmp_is_file_supported(argv[i]))
+                  {
+                     struct file_metadata* fm = NULL;
+
+                     if (hrmp_file_metadata(argv[i], &fm) == 0)
+                     {
+                        if (hrmp_is_file_metadata_supported(active_device, fm))
+                        {
+                           hrmp_dlist_append(files, argv[i]);
+                           added = true;
+                        }
+                     }
+
+                     free(fm);
+                  }
+               }
+
+               if (!added)
+               {
+                  printf("Unsupported file '%s'\n", argv[i]);
                }
             }
          }
 
-         if (!config->quiet && !is_supported)
-         {
-            printf("[%d/%d] %s: Unsupported format\n", i + 1, hrmp_dlist_size(files), config->devices[active_device].name);
-         }
+         /* Set the master volume */
+         /* hrmp_set_master_volume(config->volume); */
 
-         free(fm);
-      }
-   }
-   else
-   {
-      bool active = false;
-
-      for (int i = 0; i < config->number_of_devices; i++)
-      {
-         if (config->devices[i].active)
+         for (int i = 0; i < hrmp_dlist_size(files); i++)
          {
-            active = true;
-         }
-      }
+            char* fn = hrmp_dlist_get(files, i);
+            int type = hrmp_is_file_supported(fn);
+            struct file_metadata* fm = NULL;
 
-      if (active && strlen(config->device) > 0)
-      {
-         printf("Default: %s is not active\n", config->device);
-      }
-      else
-      {
-         if (ad && !config->quiet)
-         {
-            printf("No active devices\n");
+            if (type == TYPE_FLAC)
+            {
+               hrmp_flac_get_metadata(fn, &fm);
+
+               if (fm != NULL)
+               {
+                  if (hrmp_is_file_metadata_supported(active_device, fm))
+                  {
+                     hrmp_playback_flac(active_device, i + 1, hrmp_dlist_size(files), fm);
+                  }
+               }
+            }
+            else if (type == TYPE_WAV)
+            {
+               hrmp_wav_get_metadata(fn, &fm);
+
+               if (fm != NULL)
+               {
+                  if (hrmp_is_file_metadata_supported(active_device, fm))
+                  {
+                     hrmp_playback_wav(active_device, i + 1, hrmp_dlist_size(files), fm);
+                  }
+               }
+            }
+
+            free(fm);
          }
       }
    }

@@ -85,7 +85,7 @@ hrmp_flac_get_metadata(char* filename, struct file_metadata** file_metadata)
    if (fm->channels != 2)
    {
       /* hrmp_print_file_metadata(fm); */
-      printf("Unsupported number of channels for '%s' (%d channels)", filename, fm->channels);
+      printf("Unsupported number of channels for '%s' (%d channels)\n", filename, fm->channels);
       goto error;
    }
 

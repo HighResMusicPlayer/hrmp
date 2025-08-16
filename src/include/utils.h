@@ -34,6 +34,7 @@ extern "C" {
 #endif
 
 #include <hrmp.h>
+#include <dlist.h>
 
 #include <stdbool.h>
 #include <stdlib.h>
@@ -52,6 +53,41 @@ hrmp_get_home_directory(void);
  */
 size_t
 hrmp_get_file_size(char* file_path);
+
+/**
+ * File/directory exists
+ * @param f The file/directory
+ * @return The result
+ */
+bool
+hrmp_exists(char* f);
+
+/**
+ * Is the path a directory
+ * @param directory The directory
+ * @return The result
+ */
+bool
+hrmp_is_directory(char* directory);
+
+/**
+ * Is the path a file
+ * @param file The file
+ * @return The result
+ */
+bool
+hrmp_is_file(char* file);
+
+/**
+ * Get the files of a directory
+ * @param device The device
+ * @param base The directory
+ * @param recursive Should we recurse down
+ * @param files The files
+ * @return The result
+ */
+int
+hrmp_get_files(int device, char* base, bool recursive, struct dlist* files);
 
 /**
  * Does a string start with another string

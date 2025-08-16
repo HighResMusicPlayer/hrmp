@@ -171,10 +171,12 @@ struct configuration
 {
    char configuration_path[MAX_PATH]; /**< The configuration path */
 
-   char device[MISC_LENGTH]; /**< The name of the default device */
-   int volume;               /**< The general volume */
+   char device[MISC_LENGTH];          /**< The name of the default device */
+   int volume;                        /**< The general volume */
 
    bool quiet;                        /**< The quiet the output */
+
+   bool experimental;                 /**< Allow experimental features */
 
    int log_type;                      /**< The logging type */
    int log_level;                     /**< The logging level */
@@ -185,9 +187,9 @@ struct configuration
 
    unsigned int update_process_title; /**< Behaviour for updating the process title */
 
-   unsigned char hugepage; /**< Huge page support */
+   unsigned char hugepage;            /**< Huge page support */
 
-   int number_of_devices; /**< The number of devices */
+   int number_of_devices;             /**< The number of devices */
 
    struct device devices[NUMBER_OF_DEVICES]; /**< The devices */
 } __attribute__((aligned(64)));

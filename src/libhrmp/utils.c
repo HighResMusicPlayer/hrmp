@@ -28,10 +28,13 @@
 
 /* hrmp */
 #include <hrmp.h>
+#include <dlist.h>
+#include <files.h>
 #include <logging.h>
 #include <utils.h>
 
 /* system */
+#include <dirent.h>
 #include <err.h>
 #include <errno.h>
 #ifdef HAVE_EXECINFO_H
@@ -59,6 +62,140 @@ hrmp_get_home_directory(void)
    }
 
    return pw->pw_dir;
+}
+
+bool
+hrmp_is_directory(char* directory)
+{
+   struct stat statbuf;
+
+   memset(&statbuf, 0, sizeof(struct stat));
+
+   if (!lstat(directory, &statbuf))
+   {
+      if (S_ISDIR(statbuf.st_mode))
+      {
+         return true;
+      }
+   }
+
+   return false;
+}
+
+bool
+hrmp_is_file(char* file)
+{
+   struct stat statbuf;
+
+   memset(&statbuf, 0, sizeof(struct stat));
+
+   if (!lstat(file, &statbuf))
+   {
+      if (S_ISREG(statbuf.st_mode))
+      {
+         return true;
+      }
+   }
+
+   return false;
+}
+
+bool
+hrmp_exists(char* f)
+{
+   if (f != NULL)
+   {
+      if (access(f, F_OK) == 0)
+      {
+         return true;
+      }
+   }
+
+   return false;
+}
+
+int
+hrmp_get_files(int device, char* base, bool recursive, struct dlist* files)
+{
+   DIR* dir = NULL;
+   struct dirent* entry;
+
+   if (base == NULL)
+   {
+      goto error;
+   }
+
+   if (files == NULL)
+   {
+      goto error;
+   }
+
+   if (!(dir = opendir(base)))
+   {
+      goto error;
+   }
+
+   while ((entry = readdir(dir)) != NULL)
+   {
+      char* d = NULL;
+
+      if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+      {
+         continue;
+      }
+
+      d = hrmp_append(d, base);
+      if (!hrmp_ends_with(d, "/"))
+      {
+         d = hrmp_append_char(d, '/');
+      }
+      d = hrmp_append(d, entry->d_name);
+
+      if (hrmp_is_file(d))
+      {
+         if (hrmp_is_file_supported(d))
+         {
+            struct file_metadata* fm = NULL;
+
+            if (hrmp_file_metadata(d, &fm) == 0)
+            {
+               if (hrmp_is_file_metadata_supported(device, fm))
+               {
+                  char* v = NULL;
+
+                  v = hrmp_append(v, d);
+                  hrmp_dlist_append(files, v);
+               }
+            }
+
+            free(fm);
+         }
+      }
+      else
+      {
+         if (recursive && hrmp_is_directory(d))
+         {
+            hrmp_get_files(device, d, recursive, files);
+         }
+      }
+
+      free(d);
+      d = NULL;
+   }
+
+   closedir(dir);
+   dir = NULL;
+
+   return 0;
+
+error:
+
+   if (dir != NULL)
+   {
+      closedir(dir);
+   }
+
+   return 1;
 }
 
 bool
@@ -95,7 +232,7 @@ hrmp_get_file_size(char* file_path)
 
    if (stat(file_path, &file_stat) != 0)
    {
-      hrmp_log_warn("pgmoneta_get_file_size: %s (%s)", file_path, strerror(errno));
+      hrmp_log_warn("hrmp_get_file_size: %s (%s)", file_path, strerror(errno));
       errno = 0;
       return 0;
    }

@@ -68,6 +68,15 @@ int
 hrmp_is_file_supported(char* f);
 
 /**
+ * Get the file metadata
+ * @param f The file
+ * @param fm The file metadata
+ * @return The result
+ */
+int
+hrmp_file_metadata(char* f, struct file_metadata** fm);
+
+/**
  * Is the file metadata supported
  * @param device The device
  * @param fm The file metadata

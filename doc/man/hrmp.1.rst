@@ -27,6 +27,9 @@ OPTIONS
 -D, --device
   Set the device name
 
+-R, --recursive
+  Add files recursive of the directory
+
 -I, --sample-configuration
   Generate a sample configuration
 

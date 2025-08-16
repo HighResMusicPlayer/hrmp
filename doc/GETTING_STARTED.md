@@ -14,6 +14,7 @@ Options:
   -c, --config CONFIG_FILE   Set the path to the hrmp.conf file
                              Default: $HOME/.hrmp/hrmp.conf
   -D, --device               Set the device name
+  -R, --recursive            Add files recursive of the directory
   -I, --sample-configuration Generate a sample configuration
   -s, --status               Status of the devices
   -q, --quiet                Quiet the player
