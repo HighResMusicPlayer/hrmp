@@ -63,7 +63,11 @@ hrmp_is_file_metadata_supported(int device, struct file_metadata* fm)
 
    if (device >= 0 && fm != NULL)
    {
-      if (fm->bits_per_sample == 16)
+      if (fm->bits_per_sample == 8)
+      {
+         hrmp_log_error("Unsupported sample rate: %d", fm->sample_rate);
+      }
+      else if (fm->bits_per_sample == 16)
       {
          if (config->devices[device].capabilities.s16_le)
          {
