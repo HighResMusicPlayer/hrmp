@@ -119,17 +119,28 @@ Now that we have `hrmp` installed, we can continue to enhance its functionality.
 
 ### Direct Stream Digital (DSD)
 
+* [Introduction](https://dsd-guide.com/dsd-new-addiction-andreas-koch)
+
 * DSD64 (2.8224 MHz)
 * DSD128 (5.6448 MHz)
 * DSD256 (11.2896 MHz)
 * DSD512 (22.5792 MHz)
 * DSD1024 (45.1584 MHz)
 
+* [Sony's DSF file format specification](https://dsd-guide.com/sonys-dsf-file-format-spec)
+* [Sony's DSF disc format specification](https://dsd-guide.com/sonys-dsd-disc-format-specs)
+
 Digital Stream Digital (DSD) over Pulse Code Modulation (PCM) (DoP)
 
 * DSD 64 requires a 176400Hz PCM package
 * DSD 128 requires a 352800Hz PCM package
 * DSD 256 requires a 705600Hz PCM package (WAV only)
+
+* [DSD over PCM specification](https://dsd-guide.com/dop-open-standard)
+
+Direct Stream Digital (DSD) Interchange File Format (IFF)
+
+* [Philips' DSDIFF specification](https://dsd-guide.com/philips-dsdiff-spec-15)
 
 ## C programming
 
