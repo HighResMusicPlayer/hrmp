@@ -56,7 +56,6 @@ static int as_logging_type(char* str);
 static int as_logging_level(char* str);
 static int as_logging_mode(char* str);
 
-static int as_hugepage(char* str);
 static unsigned int as_update_process_title(char* str, unsigned int* policy, unsigned int default_policy);
 
 static bool is_empty_string(char* s);
@@ -69,7 +68,6 @@ static bool section_line(char* line, char* section);
 static int hrmp_write_device_config_value(char* buffer, char* device_name, char* config_key, size_t buffer_size);
 
 static int to_string(char* where, char* value, size_t max_length);
-static int to_bool(char* where, bool value);
 static int to_update_process_title(char* where, int value);
 static int to_log_mode(char* where, int value);
 static int to_log_level(char* where, int value);
@@ -98,8 +96,6 @@ hrmp_init_configuration(void* shm)
    struct configuration* config;
 
    config = (struct configuration*)shm;
-
-   config->hugepage = HUGEPAGE_TRY;
 
    config->log_type = HRMP_LOGGING_TYPE_CONSOLE;
    config->log_level = HRMP_LOGGING_LEVEL_INFO;
@@ -276,10 +272,6 @@ hrmp_read_configuration(void* shm, char* filename, bool emitWarnings)
                else if (key_in_section("log_mode", section, key, true, &unknown))
                {
                   config->log_mode = as_logging_mode(value);
-               }
-               else if (key_in_section("hugepage", section, key, true, &unknown))
-               {
-                  config->hugepage = as_hugepage(value);
                }
                else if (key_in_section("update_process_title", section, key, true, &unknown))
                {
@@ -733,27 +725,6 @@ as_logging_mode(char* str)
    return HRMP_LOGGING_MODE_APPEND;
 }
 
-static int
-as_hugepage(char* str)
-{
-   if (!strcasecmp(str, "off"))
-   {
-      return HUGEPAGE_OFF;
-   }
-
-   if (!strcasecmp(str, "try"))
-   {
-      return HUGEPAGE_TRY;
-   }
-
-   if (!strcasecmp(str, "on"))
-   {
-      return HUGEPAGE_ON;
-   }
-
-   return HUGEPAGE_OFF;
-}
-
 /**
  * Checks if the configuration of the first server
  * is the same as the configuration of the second server.
@@ -1081,10 +1052,6 @@ hrmp_write_config_value(char* buffer, char* config_key, size_t buffer_size)
       {
          return to_update_process_title(buffer, config->update_process_title);
       }
-      else if (!strncmp(key, "hugepage", MISC_LENGTH))
-      {
-         return to_bool(buffer, config->hugepage);
-      }
       else
       {
          goto error;
@@ -1139,26 +1106,6 @@ hrmp_write_device_config_value(char* buffer, char* device_name, char* config_key
 
 error:
    return 1;
-}
-
-/**
- * An utility function to place a boolean value into a string.
- * The value is always converted in either "on" or "off".
- *
- * @param where the string where to print the value, must be already allocated
- * @param value the value to convert into a string
- * @return 0 on success, 1 otherwise
- */
-static int
-to_bool(char* where, bool value)
-{
-   if (!where)
-   {
-      return 1;
-   }
-
-   snprintf(where, MISC_LENGTH, "%s", value ? "on" : "off");
-   return 0;
 }
 
 /**

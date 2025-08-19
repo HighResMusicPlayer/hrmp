@@ -46,9 +46,6 @@ log_line_prefix
 log_mode
   Append to or create the log file (append, create). Default is append
 
-hugepage
-  Huge page support. Default is try
-
 update_process_title
   The behavior for updating the operating system process title. Allowed settings are: never (or off),
   does not update the process title; strict to set the process title without overriding the existing

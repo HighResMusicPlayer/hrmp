@@ -38,12 +38,11 @@ extern "C" {
 /**
  * Create a shared memory segment
  * @param size The size of the segment
- * @param hp Huge page value
  * @parma shmem The shared memory segment
  * @return 0 upon success, otherwise 1
  */
 int
-hrmp_create_shared_memory(size_t size, unsigned char hp, void** shmem);
+hrmp_create_shared_memory(size_t size, void** shmem);
 
 /**
  * Destroy a shared memory segment

@@ -200,7 +200,7 @@ main(int argc, char** argv)
    }
 
    shmem_size = sizeof(struct configuration);
-   if (hrmp_create_shared_memory(shmem_size, HUGEPAGE_TRY, &shmem))
+   if (hrmp_create_shared_memory(shmem_size, &shmem))
    {
       errx(1, "Error in creating shared memory");
       goto error;

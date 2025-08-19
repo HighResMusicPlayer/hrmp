@@ -39,7 +39,7 @@
 void* shmem = NULL;
 
 int
-hrmp_create_shared_memory(size_t size, unsigned char hp, void** shmem)
+hrmp_create_shared_memory(size_t size, void** shmem)
 {
    void* s = NULL;
    int protection = PROT_READ | PROT_WRITE;
@@ -47,24 +47,11 @@ hrmp_create_shared_memory(size_t size, unsigned char hp, void** shmem)
 
    *shmem = NULL;
 
-#ifdef HAVE_LINUX
-   if (hp == HUGEPAGE_TRY || hp == HUGEPAGE_ON)
-   {
-      visibility = visibility | MAP_HUGETLB;
-   }
-
-#endif
-
    s = mmap(NULL, size, protection, visibility, -1, 0);
    if (s == (void*)-1)
    {
       errno = 0;
       s = NULL;
-
-      if (hp == HUGEPAGE_OFF || hp == HUGEPAGE_ON)
-      {
-         return 1;
-      }
    }
 
    if (s == NULL)
