@@ -349,7 +349,10 @@ main(int argc, char** argv)
 
                if (!added)
                {
-                  printf("Unsupported file '%s'\n", argv[i]);
+                  if (!config->quiet)
+                  {
+                     printf("Unsupported file '%s'\n", argv[i]);
+                  }
                }
             }
          }

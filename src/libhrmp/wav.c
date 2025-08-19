@@ -141,7 +141,7 @@ error:
 int
 hrmp_wav_open(char* path, enum wav_channel_format chanfmt, struct wav** w)
 {
-   bool additional_data = false;
+   /* bool additional_data = false; */
    size_t ret;
    struct wav* wav;
 
@@ -149,37 +149,45 @@ hrmp_wav_open(char* path, enum wav_channel_format chanfmt, struct wav** w)
 
    wav = (struct wav*)malloc(sizeof(struct wav));
    wav->file = fopen(path, "rb");
+   if (wav->file == NULL)
+   {
+      hrmp_log_error("Could not open WAV for '%s'", path);
+      goto error;
+   }
 
    ret = fread(&wav->header, 1, sizeof(struct wav_header), wav->file);
    if (ret < sizeof(struct wav_header))
    {
+      hrmp_log_error("Could not read WAV header for '%s'", path);
       goto error;
    }
 
-   /* Skip over any other chunks before the "data" chunk */
-   while (wav->header.subchunk2_id != htonl(0x64617461))
-   {
-      fseek(wav->file, 4, SEEK_CUR);
-      ret = fread(&wav->header.subchunk2_id, 1, 4, wav->file);
+   /* /\* Skip over any other chunks before the "data" chunk *\/ */
+   /* while (wav->header.subchunk2_id != htonl(0x64617461)) */
+   /* { */
+   /*    fseek(wav->file, 4, SEEK_CUR); */
+   /*    ret = fread(&wav->header.subchunk2_id, 4, 1, wav->file); */
 
-      if (ret < 4)
-      {
-         goto error;
-      }
+   /*    if (ret < 4) */
+   /*    { */
+   /*      hrmp_log_error("Could not read WAV subchunk2_id for '%s'", path); */
+   /*      goto error; */
+   /*    } */
 
-      additional_data = true;
-   }
+   /*    additional_data = true; */
+   /* } */
 
-   /* Update the value of subchunk2_size */
-   if (additional_data)
-   {
-      ret = fread(&wav->header.subchunk2_size, 1, 4, wav->file);
+   /* /\* Update the value of subchunk2_size *\/ */
+   /* if (additional_data) */
+   /* { */
+   /*    ret = fread(&wav->header.subchunk2_size, 4, 1, wav->file); */
 
-      if (ret < 4)
-      {
-         goto error;
-      }
-   }
+   /*    if (ret < 4) */
+   /*    { */
+   /*      hrmp_log_error("Could not read WAV subchunk2_size for '%s'", path); */
+   /*      goto error; */
+   /*    } */
+   /* } */
 
    wav->channel_format = chanfmt;
 
@@ -219,11 +227,17 @@ hrmp_wav_close(struct wav* wav)
       {
          fclose(wav->file);
       }
-
       wav->file = NULL;
+
+      if (wav->buffer != NULL)
+      {
+         free(wav->buffer);
+      }
+      wav->buffer = NULL;
    }
 
    free(wav);
+   wav = NULL;
 }
 
 __attribute__((used))

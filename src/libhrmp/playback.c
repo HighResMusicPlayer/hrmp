@@ -27,7 +27,6 @@
  */
 
 /* hrmp */
-#include "utils.h"
 #include <hrmp.h>
 #include <alsa.h>
 #include <devices.h>
@@ -36,13 +35,13 @@
 #include <playback.h>
 #include <stdint.h>
 #include <string.h>
+#include <utils.h>
 #include <wav.h>
 
 /* system */
 #include <stdio.h>
 #include <stdlib.h>
 #include <FLAC/all.h>
-//#include <FLAC/stream_decoder.h>
 #include <alsa/asoundlib.h>
 
 /* static int wav_read(struct wav* wav, void* data, int length); */
@@ -61,17 +60,17 @@ hrmp_playback_wav(int device, int number, int total, struct file_metadata* fm)
 {
    char* desc = NULL;
    snd_pcm_t* pcm_handle = NULL;
+   snd_pcm_uframes_t pcm_buffer_size = 0;
+   snd_pcm_uframes_t pcm_period_size = 0;
    struct wav* wav = NULL;
    struct playback* pb = NULL;
    struct configuration* config = NULL;
 
    config = (struct configuration*)shmem;
 
-   if (hrmp_alsa_init_handle(config->devices[device].device, fm->format,
-                             fm->sample_rate, &pcm_handle))
+   if (hrmp_alsa_init_handle(config->devices[device].device, fm->format, fm->sample_rate, &pcm_handle))
    {
-      hrmp_log_error("Could not initialize '%s' for '%s'",
-                     config->devices[device].name, fm->name);
+      hrmp_log_error("Could not initialize '%s' for '%s'", config->devices[device].name, fm->name);
       goto error;
    }
 
@@ -94,7 +93,41 @@ hrmp_playback_wav(int device, int number, int total, struct file_metadata* fm)
       goto error;
    }
 
-   // TODO - Play the file
+   if (snd_pcm_get_params(pcm_handle, &pcm_buffer_size, &pcm_period_size) < 0)
+   {
+      printf("Could not get parameters for '%s'\n", fm->name);
+      goto error;
+   }
+
+   wav->buffer_size = (size_t)(pcm_period_size * wav->header.channels * (wav->header.bits_per_sample / 8));
+   wav->buffer = malloc(wav->buffer_size);
+
+   fseek(wav->file, sizeof(struct wav_header), SEEK_SET);
+
+   while (1)
+   {
+      int read = fread(wav->buffer, 1, wav->buffer_size, wav->file);
+
+      if (read == 0)
+      {
+         break;
+      }
+
+      if (read < wav->buffer_size)
+      {
+         memset(wav->buffer + read, 0, wav->buffer_size - read);
+      }
+
+      if (snd_pcm_writei(pcm_handle, wav->buffer, pcm_period_size) < 0)
+      {
+         snd_pcm_prepare(pcm_handle);
+      }
+
+      print_progress(pb);
+      pb->current_samples += pcm_period_size;
+   }
+
+   free(desc);
 
    hrmp_wav_close(wav);
 
@@ -105,6 +138,8 @@ hrmp_playback_wav(int device, int number, int total, struct file_metadata* fm)
    return 0;
 
 error:
+
+   free(desc);
 
    hrmp_wav_close(wav);
 
@@ -451,10 +486,15 @@ playback_identifier(struct file_metadata* fm, char** identifer)
       case 384000:
          id = hrmp_append(id, "384kHz");
          break;
+      case 705600:
+         id = hrmp_append(id, "705.6kHz");
+         break;
       case 768000:
          id = hrmp_append(id, "768kHz");
          break;
       default:
+         id = hrmp_append_int(id, (int)fm->sample_rate);
+         id = hrmp_append(id, "Hz");
          hrmp_log_error("Unsupported sample rate: %dkHz/%dbits", fm->sample_rate, fm->bits_per_sample);
          break;
    }
@@ -473,6 +513,8 @@ playback_identifier(struct file_metadata* fm, char** identifer)
          id = hrmp_append(id, "32bits");
          break;
       default:
+         id = hrmp_append_int(id, (int)fm->bits_per_sample);
+         id = hrmp_append(id, "bits");
          hrmp_log_error("Unsupported bits per sample: %dkHz/%dbits", fm->sample_rate, fm->bits_per_sample);
          break;
    }

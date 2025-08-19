@@ -160,6 +160,15 @@ char*
 hrmp_append_char(char* orig, char c);
 
 /**
+ * Append an integer
+ * @param orig The original string
+ * @param i The integer
+ * @return The resulting string
+ */
+char*
+hrmp_append_int(char* orig, int i);
+
+/**
  * Remove whitespace from a string
  * @param orig The original string
  * @return The resulting string

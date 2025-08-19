@@ -8,6 +8,7 @@ high-resolution loss-less files (44.1kHz+/16bit+).
 ## Features
 
 * FLAC (44.1kHz/16bit) (Stereo)
+* WAV (44.1kHz/16bit) (Stereo)
 * By-pass PulseAudio for native bit-stream
 
 See [Getting Started](./doc/GETTING_STARTED.md) on how to get started with `hrmp`.

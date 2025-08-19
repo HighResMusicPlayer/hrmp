@@ -90,6 +90,8 @@ struct wav
    uint32_t total_frames_read;             /**< The number of frames read */
    enum wav_channel_format channel_format; /**< The channel format */
    enum wav_sample_format sample_format;   /**< The sample format */
+   void* buffer;                           /**< The buffer */
+   size_t buffer_size;                     /**< The buffer size */
 };
 
 /**
