@@ -371,6 +371,7 @@ main(int argc, char** argv)
                {
                   if (hrmp_is_file_metadata_supported(active_device, fm))
                   {
+                     hrmp_set_proc_title(argc, argv, fn);
                      hrmp_playback_flac(active_device, i + 1, hrmp_dlist_size(files), fm);
                   }
                }
@@ -383,6 +384,7 @@ main(int argc, char** argv)
                {
                   if (hrmp_is_file_metadata_supported(active_device, fm))
                   {
+                     hrmp_set_proc_title(argc, argv, fn);
                      hrmp_playback_wav(active_device, i + 1, hrmp_dlist_size(files), fm);
                   }
                }

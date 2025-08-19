@@ -53,6 +53,12 @@
 
 static int string_compare(const void* a, const void* b);
 
+extern char** environ;
+#if defined(HAVE_LINUX) || defined(HAVE_OSX)
+static bool env_changed = false;
+static int max_process_title_size = 0;
+#endif
+
 char*
 hrmp_get_home_directory(void)
 {
@@ -463,6 +469,94 @@ error:
 
 #else
    return 1;
+
+#endif
+}
+
+void
+hrmp_set_proc_title(int argc, char** argv, char* s)
+{
+#if defined(HAVE_LINUX) || defined(HAVE_OSX)
+   char title[MAX_PROCESS_TITLE_LENGTH];
+   size_t size;
+   char** env = environ;
+   int es = 0;
+   struct configuration* config;
+
+   config = (struct configuration*)shmem;
+
+   // sanity check: if the user does not want to
+   // update the process title, do nothing
+   if (config->update_process_title == UPDATE_PROCESS_TITLE_NEVER)
+   {
+      return;
+   }
+
+   if (!env_changed)
+   {
+      for (int i = 0; env[i] != NULL; i++)
+      {
+         es++;
+      }
+
+      environ = (char**)malloc(sizeof(char*) * (es + 1));
+      if (environ == NULL)
+      {
+         return;
+      }
+
+      for (int i = 0; env[i] != NULL; i++)
+      {
+         size = strlen(env[i]);
+         environ[i] = (char*)calloc(1, size + 1);
+
+         if (environ[i] == NULL)
+         {
+            return;
+         }
+         memcpy(environ[i], env[i], size);
+      }
+      environ[es] = NULL;
+      env_changed = true;
+   }
+
+   // compute how long was the command line
+   // when the application was started
+   if (max_process_title_size == 0)
+   {
+      for (int i = 0; i < argc; i++)
+      {
+         max_process_title_size += strlen(argv[i]) + 1;
+      }
+   }
+
+   // compose the new title
+   memset(&title, 0, sizeof(title));
+   snprintf(title, sizeof(title) - 1, "hrmp: %s", s != NULL ? s : "");
+
+   // nuke the command line info
+   memset(*argv, 0, max_process_title_size);
+
+   // copy the new title over argv checking
+   // the update_process_title policy
+   if (config->update_process_title == UPDATE_PROCESS_TITLE_STRICT)
+   {
+      size = max_process_title_size;
+   }
+   else
+   {
+      // here we can set the title to a full description
+      size = strlen(title) + 1;
+   }
+
+   memcpy(*argv, title, size);
+   memset(*argv + size, 0, 1);
+
+   // keep track of how long is now the title
+   max_process_title_size = size;
+
+#else
+   setproctitle("-hrmp: %s", s1 != NULL ? s1 : "");
 
 #endif
 }

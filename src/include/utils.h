@@ -179,6 +179,29 @@ char*
 hrmp_remove_whitespace(char* orig);
 
 /**
+ * Set process title.
+ *
+ * The function will autonomously check the update policy set
+ * via the configuration option `update_process_title` and
+ * will do nothing if the setting is `never`.
+ * In the case the policy is set to `strict`, the process title
+ * will not overflow the initial command line length (i.e., strlen(argv[*]))
+ * otherwise it will do its best to set the title to the desired string.
+ *
+ * The policies `strict` and `minimal` will be honored only on Linux platforms
+ * where a native call to set the process title is not available.
+ *
+ * The resulting process title will be set to either `s1` or `s1/s2` if there
+ * both strings and the length is allowed by the policy.
+ *
+ * @param argc The number of arguments
+ * @param argv The argv pointer
+ * @param s The string
+ */
+void
+hrmp_set_proc_title(int argc, char** argv, char* s);
+
+/**
  * Generate a backtrace in the log
  * @return 0 if success, otherwise 1
  */
