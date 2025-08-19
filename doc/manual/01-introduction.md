@@ -7,7 +7,8 @@
 ## Features
 
 * FLAC (44.1kHz/16bits) (Stereo)
-* By-pass PulseAudio
+* WAV (44.1kHz/16bits) (Stereo)
+* By-pass PulseAudio for native bit-stream
 
 ## Platforms
 

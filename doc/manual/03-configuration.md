@@ -24,7 +24,6 @@ The `Bool` data type supports the following values: `on`, `yes`, `1`, `true`, `o
 | Property | Default | Unit | Required | Description |
 |----------|---------|------|----------|-------------|
 | device | | String | No | The default device name |
-| volume | | Int | No | The default volume |
 | log_type | console | String | No | The logging type (console, file, syslog) |
 | log_level | info | String | No | The logging level, any of the (case insensitive) strings `FATAL`, `ERROR`, `WARN`, `INFO` and `DEBUG` (that can be more specific as `DEBUG1` thru `DEBUG5`). Debug level greater than 5 will be set to `DEBUG5`. Not recognized values will make the log_level be `INFO` |
 | log_path | hrmp.log | String | No | The log file location. Can be a strftime(3) compatible string. |
@@ -40,4 +39,3 @@ The `Bool` data type supports the following values: `on`, `yes`, `1`, `true`, `o
 |----------|---------|------|----------|-------------|
 | device | | String | Yes | The device address |
 | description | | String | No | The description of the device |
-| volume | | String | No | The device volume |

@@ -216,8 +216,6 @@ hrmp_sample_configuration(void)
          memcpy(config->devices[dn].name, ptr, strlen(ptr));
          memcpy(config->devices[dn].device, name, strlen(name));
 
-         config->devices[dn].volume = 50;
-
          if (is_device_active(config->devices[dn].device))
          {
             config->devices[dn].active = true;
@@ -275,7 +273,6 @@ hrmp_sample_configuration(void)
       printf("device=%s\n", config->devices[0].name);
    }
 
-   printf("volume = 70\n");
    printf("\n");
 
    printf("log_type = console\n");
@@ -293,101 +290,6 @@ hrmp_sample_configuration(void)
          printf("\n");
       }
    }
-}
-
-__attribute__((disable_sanitizer_instrumentation))
-int
-hrmp_set_master_volume(int volume)
-{
-   int err;
-   long min, max, vol;
-   snd_mixer_t* handle = NULL;
-   snd_mixer_selem_id_t* sid = NULL;
-   snd_mixer_elem_t* elem = NULL;
-   const char* card = "default";
-   const char* selem_name = "Master";
-
-   if ((err = snd_mixer_open(&handle, 0)) < 0)
-   {
-      hrmp_log_error("Master volume: Unable to open handle (%s)", snd_strerror(err));
-      goto error;
-   }
-
-   if ((err = snd_mixer_attach(handle, card)) < 0)
-   {
-      hrmp_log_error("Master volume: Unable to attach handle (%s)", snd_strerror(err));
-      goto error;
-   }
-
-   if ((err = snd_mixer_selem_register(handle, NULL, NULL)) < 0)
-   {
-      hrmp_log_error("Master volume: Unable to register handle (%s)", snd_strerror(err));
-      goto error;
-   }
-
-   if ((err = snd_mixer_load(handle)) < 0)
-   {
-      hrmp_log_error("Master volume: Unable to load handle (%s)", snd_strerror(err));
-      goto error;
-   }
-
-   snd_mixer_selem_id_alloca(&sid);
-   if (sid == NULL)
-   {
-      hrmp_log_error("Master volume: Unable to initialize handle (%s)", snd_strerror(err));
-      goto error;
-   }
-
-   snd_mixer_selem_id_set_index(sid, 0);
-   snd_mixer_selem_id_set_name(sid, selem_name);
-
-   elem = snd_mixer_find_selem(handle, sid);
-   if (elem == NULL)
-   {
-      hrmp_log_error("Master volume: Unable to find handle (%s)", snd_strerror(err));
-      goto error;
-   }
-
-   if ((err = snd_mixer_selem_get_playback_volume_range(elem, &min, &max)) < 0)
-   {
-      hrmp_log_error("Master volume: Unable to get playback volume (%s)", snd_strerror(err));
-      goto error;
-   }
-
-   vol = (long)((volume / 100.0) * (max - min)) + min;
-
-   if ((err = snd_mixer_selem_set_playback_volume_all(elem, vol)) < 0)
-   {
-      hrmp_log_error("Master volume: Unable to set playback volume (%s)", snd_strerror(err));
-      goto error;
-   }
-
-   /* if ((err = snd_mixer_detach(handle, card)) < 0) */
-   /* { */
-   /*    hrmp_log_error("Master volume: Unable to detach handle (%s)", snd_strerror(err)); */
-   /*    goto error; */
-   /* } */
-
-   if ((err = snd_mixer_close(handle)) < 0)
-   {
-      hrmp_log_error("Master volume: Unable to close handle (%s)", snd_strerror(err));
-      goto error;
-   }
-
-   return 0;
-
-error:
-
-   if (handle != NULL)
-   {
-      if (snd_mixer_close(handle) < 0)
-      {
-         hrmp_log_error("Master volume: Unable to close handle");
-         return 2;
-      }
-   }
-
-   return 1;
 }
 
 static void

@@ -19,7 +19,7 @@
 dnf install git gcc clang clang-analyzer cmake make python3-docutils libasan libasan-static alsa-lib alsa-lib-devel flac-libs flac-libs-devel
 ```
 
-### Generate user and developer guide
+### Generate the guide
 
 This process is optional. If you choose not to generate the PDF and HTML files, you can opt out of downloading these dependencies, and the process will automatically skip the generation.
 
@@ -48,9 +48,9 @@ mv Eisvogel-3.2.0/eisvogel.latex $HOME/.local/share/pandoc/templates/
 
 ```sh
 dnf install 'tex(footnote.sty)' 'tex(footnotebackref.sty)' 'tex(pagecolor.sty)' 'tex(hardwrap.sty)' 'tex(mdframed.sty)' 'tex(sourcesanspro.sty)' 'tex(ly1enc.def)' 'tex(sourcecodepro.sty)' 'tex(titling.sty)' 'tex(csquotes.sty)' 'tex(zref-abspage.sty)' 'tex(needspace.sty)' 'tex(selnolig.sty)'
-```
+``**
 
-#### Generate API guide
+**Generate API guide**
 
 This process is optional. If you choose not to generate the API HTML files, you can opt out of downloading these dependencies, and the process will automatically skip the generation.
 

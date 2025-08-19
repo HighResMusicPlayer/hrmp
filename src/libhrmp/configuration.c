@@ -70,7 +70,6 @@ static int hrmp_write_device_config_value(char* buffer, char* device_name, char*
 
 static int to_string(char* where, char* value, size_t max_length);
 static int to_bool(char* where, bool value);
-static int to_int(char* where, int value);
 static int to_update_process_title(char* where, int value);
 static int to_log_mode(char* where, int value);
 static int to_log_level(char* where, int value);
@@ -189,7 +188,6 @@ hrmp_read_configuration(void* shm, char* filename, bool emitWarnings)
                }
 
                memset(&drv, 0, sizeof(struct device));
-               drv.volume = -1;
                drv.active = false;
                memset(&drv.name, 0, sizeof(drv.name));
                memcpy(&drv.name, &section, strlen(section));
@@ -246,23 +244,6 @@ hrmp_read_configuration(void* shm, char* filename, bool emitWarnings)
                   }
                   memset(&drv.description, 0, sizeof(drv.description));
                   memcpy(&drv.description, value, max);
-                  drv.active = false;
-               }
-               else if (key_in_section("volume", section, key, true, NULL))
-               {
-                  if (as_int(value, &config->volume))
-                  {
-                     unknown = true;
-                  }
-               }
-               else if (key_in_section("volume", section, key, false, &unknown))
-               {
-                  memset(&drv.name, 0, sizeof(drv.name));
-                  memcpy(&drv.name, section, strlen(section));
-                  if (as_int(value, &drv.volume))
-                  {
-                     unknown = true;
-                  }
                   drv.active = false;
                }
                else if (key_in_section("log_type", section, key, true, &unknown))
@@ -402,11 +383,6 @@ hrmp_validate_configuration(void* shm)
    struct configuration* config;
 
    config = (struct configuration*)shm;
-
-   if (config->volume < 0 || config->volume > 100)
-   {
-      config->volume = 40;
-   }
 
    if (config->number_of_devices <= 0)
    {
@@ -1080,17 +1056,6 @@ hrmp_write_config_value(char* buffer, char* config_key, size_t buffer_size)
    }
    else if (main_section)
    {
-
-      /* global configuration settings */
-
-      /* if (!strncmp(key, "host", MISC_LENGTH)) */
-      /* { */
-      /*    return to_string(buffer, config->host, buffer_size); */
-      /* } */
-      /* else if (!strncmp(key, "port", MISC_LENGTH)) */
-      /* { */
-      /*    return to_int(buffer, config->port); */
-      /* } */
       if (!strncmp(key, "log_type", MISC_LENGTH))
       {
          return to_log_type(buffer, config->log_type);
@@ -1170,37 +1135,10 @@ hrmp_write_device_config_value(char* buffer, char* device_name, char* config_key
       goto error;
    }
 
-   if (!strncmp(config_key, "volume", MISC_LENGTH))
-   {
-      return to_int(buffer, config->devices[device_index].volume);
-   }
-   else
-   {
-      goto error;
-   }
-
    return 0;
 
 error:
    return 1;
-}
-
-/**
- * An utility function to place an integer value into a string.
- * @param where the string where to print the value, must be already allocated
- * @param value the value to convert into a string
- * @return 0 on success, 1 otherwise
- */
-static int
-to_int(char* where, int value)
-{
-   if (!where)
-   {
-      return 1;
-   }
-
-   snprintf(where, MISC_LENGTH, "%d", value);
-   return 0;
 }
 
 /**

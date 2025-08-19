@@ -357,9 +357,6 @@ main(int argc, char** argv)
             }
          }
 
-         /* Set the master volume */
-         /* hrmp_set_master_volume(config->volume); */
-
          for (int i = 0; i < hrmp_dlist_size(files); i++)
          {
             char* fn = hrmp_dlist_get(files, i);

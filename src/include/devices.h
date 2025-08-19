@@ -72,14 +72,6 @@ hrmp_print_devices(void);
 void
 hrmp_sample_configuration(void);
 
-/**
- * Set the master volume
- * @param volume The volume
- * @return 0 upon success, 1 is failure
- */
-int
-hrmp_set_master_volume(int volume);
-
 #ifdef __cplusplus
 }
 #endif

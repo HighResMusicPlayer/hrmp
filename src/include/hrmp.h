@@ -160,7 +160,6 @@ struct device
    char device[MISC_LENGTH];         /**< The device */
    char description[MISC_LENGTH];    /**< The description of the device */
    struct capabilities capabilities; /**< The capabilities of the device */
-   int volume;                       /**< The volume for the device */
    bool active;                      /**< Is the device active ? */
 } __attribute__((aligned(64)));
 
@@ -172,7 +171,6 @@ struct configuration
    char configuration_path[MAX_PATH]; /**< The configuration path */
 
    char device[MISC_LENGTH];          /**< The name of the default device */
-   int volume;                        /**< The general volume */
 
    bool quiet;                        /**< The quiet the output */
 
