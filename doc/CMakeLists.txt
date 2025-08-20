@@ -51,26 +51,26 @@ if (generation)
   get_filename_component(PARENT_DIR ${CMAKE_BINARY_DIR} DIRECTORY)
 
   add_custom_command(
-    OUTPUT ${MANUAL_OUTPUT_DIR}/hrmp-guide.pdf
-    COMMAND ${PANDOC_EXECUTABLE} -o ${MANUAL_OUTPUT_DIR}/hrmp-guide.pdf --from markdown --template eisvogel --listings -N --toc ${MAN_EN}
+    OUTPUT ${MANUAL_OUTPUT_DIR}/hrmp-en.pdf
+    COMMAND ${PANDOC_EXECUTABLE} -o ${MANUAL_OUTPUT_DIR}/hrmp-en.pdf --from markdown --template eisvogel --listings -N --toc ${MAN_EN}
     DEPENDS ${MAN_EN}
-    COMMENT "Generating Guide PDF documentation"
+    COMMENT "Generating English PDF documentation"
   )
 
   add_custom_command(
-    OUTPUT ${MANUAL_OUTPUT_DIR}/hrmp-guide.html
-    COMMAND ${PANDOC_EXECUTABLE} -o ${MANUAL_OUTPUT_DIR}/hrmp-guide.html -s -f markdown-smart -N --toc -t html5 ${MAN_EN}
+    OUTPUT ${MANUAL_OUTPUT_DIR}/hrmp-en.html
+    COMMAND ${PANDOC_EXECUTABLE} -o ${MANUAL_OUTPUT_DIR}/hrmp-en.html -s -f markdown-smart -N --toc -t html5 ${MAN_EN}
     DEPENDS ${MAN_EN}
-    COMMENT "Generating Guide HTML documentation"
+    COMMENT "Generating English HTML documentation"
   )
 
   add_custom_target(
     all_docs ALL
-    DEPENDS ${MANUAL_OUTPUT_DIR}/hrmp-guide.pdf ${MANUAL_OUTPUT_DIR}/hrmp-guide.html
+    DEPENDS ${MANUAL_OUTPUT_DIR}/hrmp-en.pdf ${MANUAL_OUTPUT_DIR}/hrmp-en.html
   )
 
-  install(FILES ${MANUAL_OUTPUT_DIR}/hrmp-guide.pdf DESTINATION share/doc/hrmp/manual)
-  install(FILES ${MANUAL_OUTPUT_DIR}/hrmp-guide.html DESTINATION share/doc/hrmp/manual)
+  install(FILES ${MANUAL_OUTPUT_DIR}/hrmp-en.pdf DESTINATION share/doc/hrmp/manual)
+  install(FILES ${MANUAL_OUTPUT_DIR}/hrmp-en.html DESTINATION share/doc/hrmp/manual)
 endif()
 
 #
@@ -91,7 +91,8 @@ if (DOXYGEN_FOUND)
       ${DOXYGEN_VERSION} STREQUAL "1.12.0" OR
       ${DOXYGEN_VERSION} STREQUAL "1.13.0" OR
       ${DOXYGEN_VERSION} STREQUAL "1.13.1" OR
-      ${DOXYGEN_VERSION} STREQUAL "1.13.2")
+      ${DOXYGEN_VERSION} STREQUAL "1.13.2" OR
+      ${DOXYGEN_VERSION} STREQUAL "1.14.0")
     add_custom_command(
       TARGET api
       COMMAND ${DOXYGEN_EXECUTABLE} -q ${DOXYFILE_OUT}

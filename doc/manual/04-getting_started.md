@@ -1,6 +1,8 @@
+\newpage
+
 # Getting started with hrmp
 
-First of all, make sure that `hrmp` is installed and in your path by
+First of all, make sure that **hrmp** is installed and in your path by
 using `hrmp -?`. You should see
 
 ```
@@ -25,8 +27,8 @@ hrmp: https://hrmp.github.io/
 Report bugs: https://github.com/HighResMusicPlayer/hrmp/issues
 ```
 
-If you don't have `hrmp` in your path see [README](../README.md) on how to
-compile and install `hrmp` in your system.
+If you don't have **hrmp** in your path see [README](../README.md) on how to
+compile and install **hrmp** in your system.
 
 ## Configuration
 
@@ -52,19 +54,19 @@ The default device will be "FIIO K19".
 Next we create a section called `[FIIO K19]` which has the information about our
 device with its device address.
 
-We are now ready to run `hrmp`.
+We are now ready to run **hrmp**.
 
 See [Configuration](./CONFIGURATION.md) for all configuration options.
 
 ## Running
 
-We will run `hrmp` using the command
+We will run **hrmp** using the command
 
 ```
 hrmp -c hrmp.conf <directory|files>
 ```
 
-The default configuration of `hrmp` is loaded from `~/.hrmp/hrmp.conf`.
+The default configuration of **hrmp** is loaded from `~/.hrmp/hrmp.conf`.
 
 ## Closing
 

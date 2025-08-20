@@ -48,7 +48,7 @@ mv Eisvogel-3.2.0/eisvogel.latex $HOME/.local/share/pandoc/templates/
 
 ```sh
 dnf install 'tex(footnote.sty)' 'tex(footnotebackref.sty)' 'tex(pagecolor.sty)' 'tex(hardwrap.sty)' 'tex(mdframed.sty)' 'tex(sourcesanspro.sty)' 'tex(ly1enc.def)' 'tex(sourcecodepro.sty)' 'tex(titling.sty)' 'tex(csquotes.sty)' 'tex(zref-abspage.sty)' 'tex(needspace.sty)' 'tex(selnolig.sty)'
-``**
+```
 
 **Generate API guide**
 
