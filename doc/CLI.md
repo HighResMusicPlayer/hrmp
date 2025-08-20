@@ -1,0 +1,50 @@
+# hrmp
+
+**hrmp** is a high resolution music player.
+
+```
+hrmp 0.1.0
+  High resolution music player
+
+Usage:
+  hrmp <FILES>
+
+Options:
+  -c, --config CONFIG_FILE   Set the path to the hrmp.conf file
+                             Default: $HOME/.hrmp/hrmp.conf
+  -D, --device               Set the device name
+  -R, --recursive            Add files recursive of the directory
+  -I, --sample-configuration Generate a sample configuration
+  -s, --status               Status of the devices
+  -q, --quiet                Quiet the player
+  -V, --version              Display version information
+  -?, --help                 Display help
+
+hrmp: https://hrmp.github.io/
+Report bugs: https://github.com/HighResMusicPlayer/hrmp/issues
+```
+
+## -I
+
+Create a sample configuration based on the connected DACs
+
+
+```sh
+hrmp -I
+```
+
+## -D
+
+Select a non-default device for output
+
+```sh
+hrmp -D "MyDAC" .
+```
+
+## -R
+
+Play supported music files, and recurse through directories
+
+```sh
+hrmp -R .
+```
