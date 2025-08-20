@@ -27,22 +27,25 @@
  */
 
 /* hrmp */
+#include "value.h"
 #include <hrmp.h>
 #include <alsa.h>
 #include <cmd.h>
 #include <configuration.h>
+#include <deque.h>
 #include <devices.h>
-#include <dlist.h>
 #include <files.h>
 #include <flac.h>
 #include <logging.h>
 #include <playback.h>
 #include <shmem.h>
 #include <utils.h>
+#include <value.h>
 #include <wav.h>
 
 /* system */
 #include <err.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -96,10 +99,10 @@ main(int argc, char** argv)
    struct configuration* config = NULL;
    int ret;
    char message[MISC_LENGTH];
-   /* int vol; */
    bool recursive = false;
    bool q = false;
    bool e = false;
+   bool d = false;
    int files_index = 1;
    int action = ACTION_NOTHING;
    int active_device = -1;
@@ -107,7 +110,9 @@ main(int argc, char** argv)
    int optind = 0;
    int num_options = 0;
    int num_results = 0;
-   struct dlist* files = NULL;
+   int num_files = 0;
+   struct deque* files = NULL;
+   struct deque_iterator* files_iterator = NULL;
 
    cli_option options[] =
    {
@@ -119,6 +124,7 @@ main(int argc, char** argv)
       {"q", "quiet", false},
       {"V", "version", false},
       {"", "experimental", false},
+      {"", "developer", false},
       {"?", "help", false}
    };
 
@@ -184,6 +190,11 @@ main(int argc, char** argv)
       else if (!strcmp(optname, "experimental"))
       {
          e = true;
+         files_index += 1;
+      }
+      else if (!strcmp(optname, "developer"))
+      {
+         d = true;
          files_index += 1;
       }
       else if (!strcmp(optname, "?") || !strcmp(optname, "help"))
@@ -263,6 +274,7 @@ main(int argc, char** argv)
 
    config->quiet = q;
    config->experimental = e;
+   config->developer = d;
 
    if (action == ACTION_HELP)
    {
@@ -312,7 +324,7 @@ main(int argc, char** argv)
 
       if (active_device >= 0)
       {
-         if (hrmp_dlist_create(&files))
+         if (hrmp_deque_create(false, &files))
          {
             printf("Error creating files list\n");
             goto error;
@@ -338,7 +350,7 @@ main(int argc, char** argv)
                      {
                         if (hrmp_is_file_metadata_supported(active_device, fm))
                         {
-                           hrmp_dlist_append(files, argv[i]);
+                           hrmp_deque_add(files, NULL, (uintptr_t)argv[i], ValueString);
                            added = true;
                         }
                      }
@@ -357,9 +369,31 @@ main(int argc, char** argv)
             }
          }
 
-         for (int i = 0; i < hrmp_dlist_size(files); i++)
+         if (config->developer && !config->quiet)
          {
-            char* fn = hrmp_dlist_get(files, i);
+            if (hrmp_deque_iterator_create(files, &files_iterator))
+            {
+               goto error;
+            }
+
+            while (hrmp_deque_iterator_next(files_iterator))
+            {
+               printf("Queued: %s\n", (char*)hrmp_value_data(files_iterator->value));
+            }
+
+            hrmp_deque_iterator_destroy(files_iterator);
+            files_iterator = NULL;
+         }
+
+         if (hrmp_deque_iterator_create(files, &files_iterator))
+         {
+            goto error;
+         }
+
+         num_files = 0;
+         while (hrmp_deque_iterator_next(files_iterator))
+         {
+            char* fn = (char*)hrmp_value_data(files_iterator->value);
             int type = hrmp_is_file_supported(fn);
             struct file_metadata* fm = NULL;
 
@@ -372,7 +406,7 @@ main(int argc, char** argv)
                   if (hrmp_is_file_metadata_supported(active_device, fm))
                   {
                      hrmp_set_proc_title(argc, argv, fn);
-                     hrmp_playback_flac(active_device, i + 1, hrmp_dlist_size(files), fm);
+                     hrmp_playback_flac(active_device, num_files + 1, files->size, fm);
                   }
                }
             }
@@ -385,12 +419,14 @@ main(int argc, char** argv)
                   if (hrmp_is_file_metadata_supported(active_device, fm))
                   {
                      hrmp_set_proc_title(argc, argv, fn);
-                     hrmp_playback_wav(active_device, i + 1, hrmp_dlist_size(files), fm);
+                     hrmp_playback_wav(active_device, num_files + 1, files->size, fm);
                   }
                }
             }
 
             free(fm);
+
+            num_files++;
          }
       }
    }
@@ -398,7 +434,8 @@ main(int argc, char** argv)
    hrmp_stop_logging();
    hrmp_destroy_shared_memory(shmem, shmem_size);
 
-   hrmp_dlist_destroy(files);
+   hrmp_deque_iterator_destroy(files_iterator);
+   hrmp_deque_destroy(files);
 
    free(cp);
 
@@ -409,7 +446,8 @@ error:
    hrmp_stop_logging();
    hrmp_destroy_shared_memory(shmem, shmem_size);
 
-   hrmp_dlist_destroy(files);
+   hrmp_deque_iterator_destroy(files_iterator);
+   hrmp_deque_destroy(files);
 
    free(cp);
 

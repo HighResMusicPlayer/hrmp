@@ -30,10 +30,11 @@
 
 /* hrmp */
 #include <hrmp.h>
-#include <dlist.h>
+#include <deque.h>
 #include <files.h>
 #include <logging.h>
 #include <utils.h>
+#include <value.h>
 
 /* system */
 #include <dirent.h>
@@ -123,7 +124,7 @@ hrmp_exists(char* f)
 }
 
 int
-hrmp_get_files(int device, char* base, bool recursive, struct dlist* files)
+hrmp_get_files(int device, char* base, bool recursive, struct deque* files)
 {
    DIR* dir = NULL;
    struct dirent* entry;
@@ -172,7 +173,7 @@ hrmp_get_files(int device, char* base, bool recursive, struct dlist* files)
                   char* v = NULL;
 
                   v = hrmp_append(v, d);
-                  hrmp_dlist_append(files, v);
+                  hrmp_deque_add(files, NULL, (uintptr_t)v, ValueString);
                }
             }
 
@@ -473,6 +474,110 @@ error:
 #endif
 }
 
+bool
+hrmp_compare_string(const char* str1, const char* str2)
+{
+   if (str1 == NULL && str2 == NULL)
+   {
+      return true;
+   }
+   if ((str1 == NULL && str2 != NULL) || (str1 != NULL && str2 == NULL))
+   {
+      return false;
+   }
+   return strcmp(str1, str2) == 0;
+}
+
+char*
+hrmp_indent(char* str, char* tag, int indent)
+{
+   for (int i = 0; i < indent; i++)
+   {
+      str = hrmp_append(str, " ");
+   }
+   if (tag != NULL)
+   {
+      str = hrmp_append(str, tag);
+   }
+   return str;
+}
+
+char*
+hrmp_escape_string(char* str)
+{
+   char* translated_ec_string = NULL;
+   int len = 0;
+   int idx = 0;
+   size_t translated_len = 0;
+
+   if (str == NULL)
+   {
+      return NULL;
+   }
+
+   len = strlen(str);
+   for (int i = 0; i < len; i++)
+   {
+      if (str[i] == '\"' || str[i] == '\\' || str[i] == '\n' || str[i] == '\t' || str[i] == '\r')
+      {
+         translated_len++;
+      }
+      translated_len++;
+   }
+   translated_ec_string = (char*)malloc(translated_len + 1);
+
+   for (int i = 0; i < len; i++, idx++)
+   {
+      switch (str[i])
+      {
+         case '\\':
+         case '\"':
+            translated_ec_string[idx] = '\\';
+            idx++;
+            translated_ec_string[idx] = str[i];
+            break;
+         case '\n':
+            translated_ec_string[idx] = '\\';
+            idx++;
+            translated_ec_string[idx] = 'n';
+            break;
+         case '\t':
+            translated_ec_string[idx] = '\\';
+            idx++;
+            translated_ec_string[idx] = 't';
+            break;
+         case '\r':
+            translated_ec_string[idx] = '\\';
+            idx++;
+            translated_ec_string[idx] = 'r';
+            break;
+         default:
+            translated_ec_string[idx] = str[i];
+            break;
+      }
+   }
+   translated_ec_string[idx] = '\0'; // terminator
+
+   return translated_ec_string;
+}
+
+size_t
+hrmp_get_aligned_size(size_t size)
+{
+   size_t allocate = 0;
+
+   allocate = size / 512;
+
+   if (size % 512 != 0)
+   {
+      allocate += 1;
+   }
+
+   allocate *= 512;
+
+   return allocate;
+}
+
 void
 hrmp_set_proc_title(int argc, char** argv, char* s)
 {
@@ -564,10 +669,30 @@ hrmp_set_proc_title(int argc, char** argv, char* s)
 int
 hrmp_backtrace(void)
 {
+   char* s = NULL;
+   int ret = 0;
+
+   ret = hrmp_backtrace_string(&s);
+
+   if (s != NULL)
+   {
+      hrmp_log_debug(s);
+   }
+
+   free(s);
+
+   return ret;
+}
+
+int
+hrmp_backtrace_string(char** s)
+{
 #ifdef  HAVE_EXECINFO_H
    void* bt[1024];
    char* log_str = NULL;
    size_t bt_size;
+
+   *s = NULL;
 
    bt_size = backtrace(bt, 1024);
    if (bt_size == 0)
@@ -638,8 +763,8 @@ hrmp_backtrace(void)
       }
    }
 
-   hrmp_log_debug("%s", log_str);
-   free(log_str);
+   *s = log_str;
+
    return 0;
 
 error:

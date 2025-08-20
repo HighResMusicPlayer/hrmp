@@ -31,6 +31,7 @@
 /* hrmp */
 #include <hrmp.h>
 #include <logging.h>
+#include <utils.h>
 
 /* system */
 #include <errno.h>
@@ -47,11 +48,12 @@
 #define LINE_LENGTH 32
 
 FILE* log_file;
+
 char current_log_path[MAX_PATH]; /* the current log file */
 
 static int log_file_open(void);
 
-static const char *levels[] =
+static char *levels[] =
 {
    "TRACE",
    "DEBUG",
@@ -61,7 +63,7 @@ static const char *levels[] =
    "FATAL"
 };
 
-static const char* colors[] =
+static char* colors[] =
 {
    "\x1b[37m",
    "\x1b[36m",
@@ -100,50 +102,6 @@ hrmp_start_logging(void)
    return 0;
 }
 
-static int
-log_file_open(void)
-{
-   struct configuration* config;
-   time_t htime;
-   struct tm* tm;
-
-   config = (struct configuration*)shmem;
-
-   if (config->log_type == HRMP_LOGGING_TYPE_FILE)
-   {
-      htime = time(NULL);
-      if (!htime)
-      {
-         log_file = NULL;
-         return 1;
-      }
-
-      tm = localtime(&htime);
-      if (tm == NULL)
-      {
-         log_file = NULL;
-         return 1;
-      }
-
-      if (strftime(current_log_path, sizeof(current_log_path), config->log_path, tm) <= 0)
-      {
-         // cannot parse the format string, fallback to default logging
-         memcpy(current_log_path, "hrmp.log", strlen("hrmp.log"));
-      }
-
-      log_file = fopen(current_log_path, config->log_mode == HRMP_LOGGING_MODE_APPEND ? "a" : "w");
-
-      if (!log_file)
-      {
-         return 1;
-      }
-
-      return 0;
-   }
-
-   return 1;
-}
-
 /**
  *
  */
@@ -173,9 +131,25 @@ hrmp_stop_logging(void)
    return 0;
 }
 
+bool
+hrmp_log_is_enabled(int level)
+{
+   struct configuration* config;
+
+   config = (struct configuration*)shmem;
+
+   if (level >= config->log_level)
+   {
+      return true;
+   }
+
+   return false;
+}
+
 void
 hrmp_log_line(int level, char* file, int line, char* fmt, ...)
 {
+   FILE* output = NULL;
    signed char isfree;
    struct configuration* config;
 
@@ -188,12 +162,21 @@ hrmp_log_line(int level, char* file, int line, char* fmt, ...)
 
    if (level >= config->log_level)
    {
+      if (config->log_type == HRMP_LOGGING_TYPE_CONSOLE)
+      {
+         output = stdout;
+      }
+      else if (config->log_type == HRMP_LOGGING_TYPE_FILE)
+      {
+         output = log_file;
+      }
+
 retry:
       isfree = STATE_FREE;
 
       if (atomic_compare_exchange_strong(&config->log_lock, &isfree, STATE_IN_USE))
       {
-         char buf[256];
+         char buf[1024];
          va_list vl;
          struct tm* tm;
          time_t t;
@@ -217,26 +200,43 @@ retry:
             memcpy(config->log_line_prefix, HRMP_LOGGING_DEFAULT_LOG_LINE_PREFIX, strlen(HRMP_LOGGING_DEFAULT_LOG_LINE_PREFIX));
          }
 
+         memset(&buf[0], 0, sizeof(buf));
+
+#ifdef DEBUG
+         if (level > 4)
+         {
+            char *bt = NULL;
+            hrmp_backtrace_string(&bt);
+            if (bt != NULL)
+            {
+               fprintf(output, "%s", bt);
+               fflush(output);
+            }
+            free(bt);
+            memset(&buf[0], 0, sizeof(buf));
+         }
+#endif
+
          va_start(vl, fmt);
 
          if (config->log_type == HRMP_LOGGING_TYPE_CONSOLE)
          {
             buf[strftime(buf, sizeof(buf), config->log_line_prefix, tm)] = '\0';
-            fprintf(stdout, "%s %s%-5s\x1b[0m \x1b[90m%s:%d\x1b[0m ",
+            fprintf(output, "%s %s%-5s\x1b[0m \x1b[90m%s:%d\x1b[0m ",
                     buf, colors[level - 1], levels[level - 1],
                     filename, line);
-            vfprintf(stdout, fmt, vl);
-            fprintf(stdout, "\n");
-            fflush(stdout);
+            vfprintf(output, fmt, vl);
+            fprintf(output, "\n");
+            fflush(output);
          }
          else if (config->log_type == HRMP_LOGGING_TYPE_FILE)
          {
             buf[strftime(buf, sizeof(buf), config->log_line_prefix, tm)] = '\0';
-            fprintf(log_file, "%s %-5s %s:%d ",
+            fprintf(output, "%s %-5s %s:%d ",
                     buf, levels[level - 1], filename, line);
-            vfprintf(log_file, fmt, vl);
-            fprintf(log_file, "\n");
-            fflush(log_file);
+            vfprintf(output, fmt, vl);
+            fprintf(output, "\n");
+            fflush(output);
          }
          else if (config->log_type == HRMP_LOGGING_TYPE_SYSLOG)
          {
@@ -303,7 +303,7 @@ retry:
 
          memset(&buf, 0, sizeof(buf));
 
-         for (int i = 0; i < size; i++)
+         for (size_t i = 0; i < size; i++)
          {
             if (k == LINE_LENGTH)
             {
@@ -320,7 +320,7 @@ retry:
          j++;
          k = 0;
 
-         for (int i = 0; i < size; i++)
+         for (size_t i = 0; i < size; i++)
          {
             signed char c = (signed char) *((char*)data + i);
             if (k == LINE_LENGTH)
@@ -329,7 +329,7 @@ retry:
                j++;
                k = 0;
             }
-            if (c >= 32 && c <= 127)
+            if (c >= 32)
             {
                buf[j] = c;
             }
@@ -359,4 +359,49 @@ retry:
       else
         SLEEP_AND_GOTO(1000000L,retry)
    }
+}
+
+
+static int
+log_file_open(void)
+{
+   struct configuration* config;
+   time_t htime;
+   struct tm* tm;
+
+   config = (struct configuration*)shmem;
+
+   if (config->log_type == HRMP_LOGGING_TYPE_FILE)
+   {
+      htime = time(NULL);
+      if (!htime)
+      {
+         log_file = NULL;
+         return 1;
+      }
+
+      tm = localtime(&htime);
+      if (tm == NULL)
+      {
+         log_file = NULL;
+         return 1;
+      }
+
+      if (strftime(current_log_path, sizeof(current_log_path), config->log_path, tm) <= 0)
+      {
+         // cannot parse the format string, fallback to default logging
+         memcpy(current_log_path, "hrmp.log", strlen("hrmp.log"));
+      }
+
+      log_file = fopen(current_log_path, config->log_mode == HRMP_LOGGING_MODE_APPEND ? "a" : "w");
+
+      if (!log_file)
+      {
+         return 1;
+      }
+
+      return 0;
+   }
+
+   return 1;
 }

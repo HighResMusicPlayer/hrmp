@@ -56,6 +56,7 @@ static void flac_error_callback(const FLAC__StreamDecoder* decoder, FLAC__Stream
 static int playback_identifier(struct file_metadata* fm, char** identifer);
 
 static void print_progress(struct playback* pb);
+static void print_progress_done(struct playback* pb);
 
 int
 hrmp_playback_wav(int device, int number, int total, struct file_metadata* fm)
@@ -128,6 +129,8 @@ hrmp_playback_wav(int device, int number, int total, struct file_metadata* fm)
       print_progress(pb);
       pb->current_samples += pcm_period_size;
    }
+
+   print_progress_done(pb);
 
    free(desc);
 
@@ -233,6 +236,8 @@ hrmp_playback_flac(int device, int number, int total, struct file_metadata* fm)
 
    /* Decode and play */
    FLAC__stream_decoder_process_until_end_of_stream(decoder);
+
+   print_progress_done(pb);
 
    if (!config->quiet)
    {
@@ -537,7 +542,7 @@ print_progress(struct playback* pb)
 
    if (!config->quiet)
    {
-      char t[MISC_LENGTH];
+      char t[MAX_PATH];
       double current = 0.0;
       int current_min = 0;
       int current_sec = 0;
@@ -563,6 +568,35 @@ print_progress(struct playback* pb)
       printf("\r[%d/%d] %s: %s %s (%s) (%d%%)", pb->file_number, pb->total_number,
              config->devices[pb->device].name, pb->fm->name, pb->identifier,
              &t[0], percent);
+
+      fflush(stdout);
+   }
+}
+
+static void
+print_progress_done(struct playback* pb)
+{
+   struct configuration* config = NULL;
+
+   config = (struct configuration*)shmem;
+
+   if (!config->quiet)
+   {
+      char t[MAX_PATH];
+      int total_min = 0;
+      int total_sec = 0;
+
+      memset(&t[0], 0, sizeof(t));
+
+      total_min = (int)(pb->fm->duration) / 60;
+      total_sec = pb->fm->duration - (total_min * 60);
+
+      snprintf(&t[0], sizeof(t), "%d:%02d/%d:%02d", total_min, total_sec,
+               total_min, total_sec);
+
+      printf("\r[%d/%d] %s: %s %s (%s) (100%%)", pb->file_number, pb->total_number,
+             config->devices[pb->device].name, pb->fm->name, pb->identifier,
+             &t[0]);
 
       fflush(stdout);
    }

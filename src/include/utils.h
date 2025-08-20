@@ -36,7 +36,7 @@ extern "C" {
 #endif
 
 #include <hrmp.h>
-#include <dlist.h>
+#include <deque.h>
 
 #include <stdbool.h>
 #include <stdlib.h>
@@ -89,7 +89,7 @@ hrmp_is_file(char* file);
  * @return The result
  */
 int
-hrmp_get_files(int device, char* base, bool recursive, struct dlist* files);
+hrmp_get_files(int device, char* base, bool recursive, struct deque* files);
 
 /**
  * Does a string start with another string
@@ -179,6 +179,42 @@ char*
 hrmp_remove_whitespace(char* orig);
 
 /**
+ * Compare two strings
+ * @param str1 The first string
+ * @param str2 The second string
+ * @return true if the strings are the same, otherwise false
+ */
+bool
+hrmp_compare_string(const char* str1, const char* str2);
+
+/**
+ * Indent a string
+ * @param str The string
+ * @param tag [Optional] The tag, which will be applied after indentation if not
+ * NULL
+ * @param indent The indent
+ * @return The indented string
+ */
+char*
+hrmp_indent(char* str, char* tag, int indent);
+
+/**
+ * Escape a string
+ * @param str The original string
+ * @return The escaped string
+ */
+char*
+hrmp_escape_string(char* str);
+
+/**
+ * Get a memory aligned size
+ * @param size The requested size
+ * @return The aligned size
+ */
+size_t
+hrmp_get_aligned_size(size_t size);
+
+/**
  * Set process title.
  *
  * The function will autonomously check the update policy set
@@ -207,6 +243,14 @@ hrmp_set_proc_title(int argc, char** argv, char* s);
  */
 int
 hrmp_backtrace(void);
+
+/**
+ * Get the backtrace
+ * @param s The backtrace
+ * @return 0 if success, otherwise 1
+ */
+int
+hrmp_backtrace_string(char** s);
 
 #ifdef __cplusplus
 }

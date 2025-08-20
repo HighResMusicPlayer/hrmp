@@ -35,6 +35,9 @@
 extern "C" {
 #endif
 
+#include <hrmp.h>
+
+#include <stdbool.h>
 #include <stdlib.h>
 
 #define HRMP_LOGGING_TYPE_CONSOLE 0
@@ -53,6 +56,8 @@ extern "C" {
 
 #define HRMP_LOGGING_MODE_CREATE 0
 #define HRMP_LOGGING_MODE_APPEND 1
+
+#define HRMP_LOGGING_ROTATION_DISABLED 0
 
 #define HRMP_LOGGING_DEFAULT_LOG_LINE_PREFIX "%Y-%m-%d %H:%M:%S"
 
@@ -76,6 +81,14 @@ hrmp_start_logging(void);
  */
 int
 hrmp_stop_logging(void);
+
+/**
+ * Is the logging level enabled
+ * @param level The level
+ * @return True if enabled, otherwise false
+ */
+bool
+hrmp_log_is_enabled(int level);
 
 /**
  * Log a line

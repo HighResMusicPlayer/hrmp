@@ -55,6 +55,19 @@ extern "C" {
 #define UPDATE_PROCESS_TITLE_MINIMAL 2
 #define UPDATE_PROCESS_TITLE_VERBOSE 3
 
+#define DEFAULT_BUFFER_SIZE 131072
+#define ALIGNMENT_SIZE         512
+
+#define INDENT_PER_LEVEL 2
+#define FORMAT_JSON 0
+#define FORMAT_TEXT 1
+#define FORMAT_JSON_COMPACT 2
+#define BULLET_POINT "- "
+
+#define MESSAGE_STATUS_ZERO  0
+#define MESSAGE_STATUS_OK    1
+#define MESSAGE_STATUS_ERROR 2
+
 #define NUMBER_OF_DEVICES 8
 
 #define MISC_LENGTH  512
@@ -175,6 +188,7 @@ struct configuration
    bool quiet;                        /**< The quiet the output */
 
    bool experimental;                 /**< Allow experimental features */
+   bool developer;                    /**< Enable developer features */
 
    int log_type;                      /**< The logging type */
    int log_level;                     /**< The logging level */
