@@ -27,7 +27,6 @@
  */
 
 /* hrmp */
-#include "value.h"
 #include <hrmp.h>
 #include <alsa.h>
 #include <cmd.h>
@@ -36,6 +35,7 @@
 #include <devices.h>
 #include <files.h>
 #include <flac.h>
+#include <keyboard.h>
 #include <logging.h>
 #include <playback.h>
 #include <shmem.h>
@@ -376,6 +376,9 @@ main(int argc, char** argv)
             }
          }
 
+         /* Keyboard */
+         hrmp_keyboard_mode(true);
+
          if (config->developer && !config->quiet)
          {
             if (hrmp_deque_iterator_create(files, &files_iterator))
@@ -435,6 +438,8 @@ main(int argc, char** argv)
 
             num_files++;
          }
+
+         hrmp_keyboard_mode(false);
       }
    }
 

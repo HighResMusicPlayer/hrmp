@@ -47,6 +47,7 @@ static void wav_print_header(struct wav_header* header);
 int
 hrmp_wav_get_metadata(char* filename, struct file_metadata** file_metadata)
 {
+   FILE* file = NULL;
    size_t ret;
    struct file_metadata* fm = NULL;
    struct wav* wav = NULL;
@@ -62,14 +63,14 @@ hrmp_wav_get_metadata(char* filename, struct file_metadata** file_metadata)
 
    memset(wav, 0, sizeof(struct wav));
 
-   wav->file = fopen(filename, "rb");
-   if (wav->file == NULL)
+   file = fopen(filename, "rb");
+   if (file == NULL)
    {
       hrmp_log_error("Unable to open '%s'", filename);
       goto error;
    }
 
-   ret = fread(&wav->header, 1, sizeof(struct wav_header), wav->file);
+   ret = fread(&wav->header, 1, sizeof(struct wav_header), file);
    if (ret < sizeof(struct wav_header))
    {
       hrmp_log_error("Unable to read '%s'", filename);
@@ -127,6 +128,8 @@ hrmp_wav_get_metadata(char* filename, struct file_metadata** file_metadata)
          goto error;
    }
 
+   fclose(file);
+
    hrmp_wav_close(wav);
 
    *file_metadata = fm;
@@ -134,6 +137,11 @@ hrmp_wav_get_metadata(char* filename, struct file_metadata** file_metadata)
    return 0;
 
 error:
+
+   if (file != NULL)
+   {
+      fclose(file);
+   }
 
    hrmp_wav_close(wav);
 
@@ -144,20 +152,21 @@ int
 hrmp_wav_open(char* path, enum wav_channel_format chanfmt, struct wav** w)
 {
    /* bool additional_data = false; */
+   FILE* file = NULL;
    size_t ret;
    struct wav* wav;
 
    *w = NULL;
 
    wav = (struct wav*)malloc(sizeof(struct wav));
-   wav->file = fopen(path, "rb");
-   if (wav->file == NULL)
+   file = fopen(path, "rb");
+   if (file == NULL)
    {
       hrmp_log_error("Could not open WAV for '%s'", path);
       goto error;
    }
 
-   ret = fread(&wav->header, 1, sizeof(struct wav_header), wav->file);
+   ret = fread(&wav->header, 1, sizeof(struct wav_header), file);
    if (ret < sizeof(struct wav_header))
    {
       hrmp_log_error("Could not read WAV header for '%s'", path);
@@ -211,11 +220,18 @@ hrmp_wav_open(char* path, enum wav_channel_format chanfmt, struct wav** w)
    wav->number_of_frames = wav->header.subchunk2_size / (wav->header.channels * wav->sample_format);
    wav->total_frames_read = 0;
 
+   fclose(file);
+
    *w = wav;
 
    return 0;
 
 error:
+
+   if (file != NULL)
+   {
+      fclose(file);
+   }
 
    return 1;
 }
@@ -225,12 +241,6 @@ hrmp_wav_close(struct wav* wav)
 {
    if (wav != NULL)
    {
-      if (wav->file != NULL)
-      {
-         fclose(wav->file);
-      }
-      wav->file = NULL;
-
       if (wav->buffer != NULL)
       {
          free(wav->buffer);

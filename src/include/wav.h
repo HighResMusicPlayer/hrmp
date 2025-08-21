@@ -84,7 +84,6 @@ enum wav_sample_format
  */
 struct wav
 {
-   FILE* file;                             /**< The WAV file */
    struct wav_header header;               /**< The WAV header */
    int32_t number_of_frames;               /**< The number of frames */
    uint32_t total_frames_read;             /**< The number of frames read */

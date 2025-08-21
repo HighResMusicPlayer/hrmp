@@ -28,60 +28,34 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef HRMP_PLAYBACK_H
-#define HRMP_PLAYBACK_H
-
-#ifdef __cplusplus
-extern "C" {
-#endif
+#ifndef KEYBOARD_H
+#define KEYBOARD_H
 
 #include <hrmp.h>
-#include <files.h>
 
+#include <stdbool.h>
 #include <stdio.h>
-#include <stdlib.h>
-#include <alsa/asoundlib.h>
 
-/** @struct playback
- * Defines a playback
- */
-struct playback
-{
-   int device;                    /**< The device */
-   FILE* file;                    /**< The file */
-   size_t file_size;              /**< The file size */
-   int file_number;               /**< The file number */
-   int total_number;              /**< The total number */
-   char identifier[MISC_LENGTH];  /**< The file identifier */
-   unsigned long current_samples; /**< The total number of samples */
-   snd_pcm_t* pcm_handle;         /**< The PCM handle */
-   struct file_metadata* fm;      /**< The file metadata */
-};
+#define KEYBOARD_IGNORE 0
+#define KEYBOARD_Q      1
+#define KEYBOARD_UP     2
+#define KEYBOARD_DOWN   3
+#define KEYBOARD_LEFT   4
+#define KEYBOARD_RIGHT  5
+#define KEYBOARD_ENTER  6
 
 /**
- * Play back a WAV file
- * @param device The device
- * @param number The file number
- * @param total The total number of files
- * @param fm The file metadata
- * @return 0 upon success, otherwise 1
+ * Get a keyboard command
+ * @return The command, otherwise empty
  */
 int
-hrmp_playback_wav(int device, int number, int total, struct file_metadata* fm);
+hrmp_keyboard_mode(bool enable);
 
 /**
- * Play back a FLAC file
- * @param device The device
- * @param number The file number
- * @param total The total number of files
- * @param fm The file metadata
- * @return 0 upon success, otherwise 1
+ * Get a keyboard command
+ * @return The command, otherwise KEYBOARD_IGNORE
  */
 int
-hrmp_playback_flac(int device, int number, int total, struct file_metadata* fm);
-
-#ifdef __cplusplus
-}
-#endif
+hrmp_keyboard_get(void);
 
 #endif

@@ -1,4 +1,6 @@
-# hrmp
+\newpage
+
+# Command line interface
 
 **hrmp** is a high resolution music player.
 

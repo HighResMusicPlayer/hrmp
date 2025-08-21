@@ -28,60 +28,76 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef HRMP_PLAYBACK_H
-#define HRMP_PLAYBACK_H
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #include <hrmp.h>
-#include <files.h>
+#include <keyboard.h>
 
+#include <fcntl.h>
+#include <stdint.h>
 #include <stdio.h>
-#include <stdlib.h>
-#include <alsa/asoundlib.h>
+#include <termios.h>
+#include <unistd.h>
 
-/** @struct playback
- * Defines a playback
- */
-struct playback
+int
+hrmp_keyboard_mode(bool enable)
 {
-   int device;                    /**< The device */
-   FILE* file;                    /**< The file */
-   size_t file_size;              /**< The file size */
-   int file_number;               /**< The file number */
-   int total_number;              /**< The total number */
-   char identifier[MISC_LENGTH];  /**< The file identifier */
-   unsigned long current_samples; /**< The total number of samples */
-   snd_pcm_t* pcm_handle;         /**< The PCM handle */
-   struct file_metadata* fm;      /**< The file metadata */
-};
+   int flags;
+   struct termios term;
 
-/**
- * Play back a WAV file
- * @param device The device
- * @param number The file number
- * @param total The total number of files
- * @param fm The file metadata
- * @return 0 upon success, otherwise 1
- */
-int
-hrmp_playback_wav(int device, int number, int total, struct file_metadata* fm);
+   tcgetattr(STDIN_FILENO, &term);
+   flags = fcntl(STDIN_FILENO, F_GETFL, 0);
 
-/**
- * Play back a FLAC file
- * @param device The device
- * @param number The file number
- * @param total The total number of files
- * @param fm The file metadata
- * @return 0 upon success, otherwise 1
- */
-int
-hrmp_playback_flac(int device, int number, int total, struct file_metadata* fm);
+   if (enable)
+   {
+      term.c_lflag &= ~(ICANON | ECHO);
+      tcsetattr(STDIN_FILENO, TCSANOW, &term);
 
-#ifdef __cplusplus
+      fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK);
+   }
+   else
+   {
+      term.c_lflag |= (ICANON | ECHO);
+      tcsetattr(STDIN_FILENO, TCSANOW, &term);
+
+      fcntl(STDIN_FILENO, F_SETFL, flags & ~O_NONBLOCK);
+   }
+
+   return 0;
 }
-#endif
 
-#endif
+int
+hrmp_keyboard_get(void)
+{
+   int ret = KEYBOARD_IGNORE;
+   int c = 0;
+
+   c = getchar();
+
+   if (c >= 0)
+   {
+      switch (c)
+      {
+         case 10:
+            ret = KEYBOARD_ENTER;
+            break;
+         case 68:
+            ret = KEYBOARD_LEFT;
+            break;
+         case 65:
+            ret = KEYBOARD_UP;
+            break;
+         case 67:
+            ret = KEYBOARD_RIGHT;
+            break;
+         case 66:
+            ret = KEYBOARD_DOWN;
+            break;
+         case 'q':
+            ret = KEYBOARD_Q;
+            break;
+         default:
+            break;
+      }
+   }
+
+   return ret;
+}
