@@ -45,8 +45,11 @@ hrmp_flac_get_metadata(char* filename, struct file_metadata** file_metadata)
    FLAC__StreamMetadata* metadata = NULL;
    FLAC__StreamMetadata_StreamInfo* info = NULL;
    struct file_metadata* fm = NULL;
+   struct configuration *config = NULL;
 
    *file_metadata = NULL;
+
+   config = (struct configuration *)shmem;
 
    metadata = (FLAC__StreamMetadata*)malloc(sizeof(FLAC__StreamMetadata));
    if (metadata == NULL)
@@ -86,8 +89,10 @@ hrmp_flac_get_metadata(char* filename, struct file_metadata** file_metadata)
 
    if (fm->channels != 2)
    {
-      /* hrmp_print_file_metadata(fm); */
-      printf("Unsupported number of channels for '%s' (%d channels)\n", filename, fm->channels);
+      if (config->experimental)
+      {
+         printf("Unsupported number of channels for '%s' (%d channels)\n", filename, fm->channels);
+      }
       goto error;
    }
 
