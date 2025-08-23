@@ -467,6 +467,15 @@ playback_identifier(struct file_metadata* fm, char** identifer)
 
    id = hrmp_append_char(id, '[');
 
+   if (fm->type == TYPE_WAV)
+   {
+      id = hrmp_append(id, "WAV/");
+   }
+   else if (fm->type == TYPE_FLAC)
+   {
+      id = hrmp_append(id, "FLAC/");
+   }
+
    switch (fm->sample_rate)
    {
       case 44100:
@@ -565,9 +574,8 @@ print_progress(struct playback* pb)
       snprintf(&t[0], sizeof(t), "%d:%02d/%d:%02d", current_min, current_sec,
                total_min, total_sec);
 
-      printf("\r[%d/%d] %s: %s %s (%s) (%d%%)", pb->file_number, pb->total_number,
-             config->devices[pb->device].name, pb->fm->name, pb->identifier,
-             &t[0], percent);
+      printf("\r[%d/%d] %s: %s %s (%s) (%d%%)", pb->file_number, pb->total_number, config->devices[pb->device].name,
+             pb->fm->name, pb->identifier, &t[0], percent);
 
       fflush(stdout);
    }
