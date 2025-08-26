@@ -3,6 +3,10 @@
 [hrmp]: https://github.com/HighResMusicPlayer/hrmp/
 [hrmp_web]: https://hrmp.github.io/
 
+[git_squash]: https://www.git-tower.com/learn/git/faq/git-squash
+[progit]: https://github.com/progit/progit2/releases
+
+
 [ask]: https://github.com/HighResMusicPlayer/hrmp/discussions
 [issue]: https://github.com/HighResMusicPlayer/hrmp/issues
 [request]: https://github.com/HighResMusicPlayer/hrmp/issues
