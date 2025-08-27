@@ -53,7 +53,7 @@ jobs:
           else
             export CC=/usr/bin/clang
           fi
-          cmake -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}  ..
+          cmake -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DDOCS=FALSE ..
           make -j$(nproc)
         working-directory: /home/runner/work/hrmp/hrmp
 
