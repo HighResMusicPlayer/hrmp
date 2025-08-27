@@ -12,7 +12,7 @@ dnf install git gcc clang clang-analyzer cmake make python3-docutils libasan lib
 
 #### Generate user and developer guide
 
-This process is optional. If you choose not to generate the PDF and HTML files, you can opt out of downloading these dependencies, and the process will automatically skip the generation.
+This process is optional. If you choose not to generate the PDF and HTML files by `-DDOCS=FALSE`, you can opt out of downloading these dependencies, and the process will automatically skip the generation.
 
 1. Download dependencies
 
