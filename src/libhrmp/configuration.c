@@ -33,6 +33,7 @@
 #include <configuration.h>
 #include <logging.h>
 #include <shmem.h>
+#include <stddef.h>
 #include <utils.h>
 
 /* system */
@@ -763,7 +764,7 @@ is_empty_string(char* s)
       return true;
    }
 
-   for (int i = 0; i < strlen(s); i++)
+   for (size_t i = 0; i < strlen(s); i++)
    {
       if (s[i] == ' ' || s[i] == '\t' || s[i] == '\r' || s[i] == '\n')
       {
@@ -973,7 +974,7 @@ hrmp_write_config_value(char* buffer, char* config_key, size_t buffer_size)
    memset(context, 0, MISC_LENGTH);
    memset(key, 0, MISC_LENGTH);
 
-   for (int i = 0; i < strlen(config_key); i++)
+   for (size_t i = 0; i < strlen(config_key); i++)
    {
       if (config_key[i] == '.')
       {
@@ -1144,7 +1145,7 @@ to_string(char* where, char* value, size_t max_length)
    }
 
    // assume strings with spaces must be quoted
-   for (int i = 0; i < strlen(value); i++)
+   for (size_t i = 0; i < strlen(value); i++)
    {
       if (value[i] == ' ')
       {
