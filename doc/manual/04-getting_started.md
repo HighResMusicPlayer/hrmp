@@ -6,7 +6,7 @@ First of all, make sure that **hrmp** is installed and in your path by
 using `hrmp -?`. You should see
 
 ```
-hrmp 0.1.1
+hrmp 0.1.2
   High resolution music player
 
 Usage:
