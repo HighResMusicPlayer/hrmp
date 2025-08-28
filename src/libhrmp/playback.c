@@ -632,21 +632,22 @@ flac_write_callback(const FLAC__StreamDecoder* decoder,
 
       new_position += delta;
 
-      if (new_position >= pb->fm->total_samples)
+      if (new_position <= 0)
+      {
+         pb->current_samples = 0;
+         FLAC__stream_decoder_reset((FLAC__StreamDecoder*)decoder);
+         FLAC__stream_decoder_set_md5_checking((FLAC__StreamDecoder*)decoder, false);
+      }
+      else if ((unsigned long)new_position >= pb->fm->total_samples)
       {
          pb->current_samples = pb->fm->total_samples;
          goto quit;
       }
-      else if (new_position <= 0)
-      {
-         pb->current_samples = 0;
-      }
       else
       {
          pb->current_samples += delta;
+         FLAC__stream_decoder_seek_absolute((FLAC__StreamDecoder*)decoder, pb->current_samples);
       }
-
-      FLAC__stream_decoder_seek_absolute((FLAC__StreamDecoder*)decoder, pb->current_samples);
 
       print_progress(pb);
    }
@@ -676,7 +677,7 @@ flac_error_callback(const FLAC__StreamDecoder* decoder,
 {
    if (status == FLAC__STREAM_DECODER_ERROR_STATUS_LOST_SYNC)
    {
-      hrmp_log_error("LOST_SYNC");
+      /* Forward / rewind */
    }
    else if (status == FLAC__STREAM_DECODER_ERROR_STATUS_BAD_HEADER)
    {
