@@ -37,6 +37,7 @@
 #include <logging.h>
 #include <playback.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <string.h>
 #include <utils.h>
@@ -113,7 +114,7 @@ hrmp_playback_wav(int device, int number, int total, struct file_metadata* fm)
    while (1)
    {
       int keyboard_action;
-      int read = fread(wav->buffer, 1, wav->buffer_size, pb->file);
+      size_t read = fread(wav->buffer, 1, wav->buffer_size, pb->file);
 
       if (read == 0)
       {
@@ -147,8 +148,8 @@ hrmp_playback_wav(int device, int number, int total, struct file_metadata* fm)
       else if (keyboard_action == KEYBOARD_UP || keyboard_action == KEYBOARD_DOWN ||
                keyboard_action == KEYBOARD_LEFT || keyboard_action == KEYBOARD_RIGHT)
       {
-         int delta = pcm_period_size;
-         int new_position = pb->current_samples;
+         size_t delta = (size_t)pcm_period_size;
+         size_t new_position = (size_t)pb->current_samples;
 
          if (keyboard_action == KEYBOARD_UP)
          {
@@ -160,11 +161,11 @@ hrmp_playback_wav(int device, int number, int total, struct file_metadata* fm)
          }
          else if (keyboard_action == KEYBOARD_LEFT)
          {
-            delta = (int)(7.5 * delta);
+            delta = (size_t)(7.5 * delta);
          }
          else if (keyboard_action == KEYBOARD_DOWN)
          {
-            delta = (int)(-7.5 * delta);
+            delta = (size_t)(-7.5 * delta);
          }
 
          new_position += delta;
