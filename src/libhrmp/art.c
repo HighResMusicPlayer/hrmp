@@ -1,31 +1,29 @@
 /*
  * Copyright (C) 2025 The HighResMusicPlayer community
  *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
+ * Redistribution and use in source and binary forms, with or without modification,
+ * are permitted provided that the following conditions are met:
  *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
+ * 1. Redistributions of source code must retain the above copyright notice, this list
+ * of conditions and the following disclaimer.
  *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
+ * 2. Redistributions in binary form must reproduce the above copyright notice, this
+ * list of conditions and the following disclaimer in the documentation and/or other
+ * materials provided with the distribution.
  *
- * 3. Neither the name of the copyright holder nor the names of its contributors
- * may be used to endorse or promote products derived from this software without
- * specific prior written permission.
+ * 3. Neither the name of the copyright holder nor the names of its contributors may
+ * be used to endorse or promote products derived from this software without specific
+ * prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL
+ * THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT
+ * OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR
+ * TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 #include <art.h>
@@ -489,8 +487,12 @@ hrmp_art_delete(struct art* t, char* key)
       return 1;
    }
    l = art_node_delete(t->root, &t->root, 0, (unsigned char*)key, strlen(key) + 1);
-   t->size--;
-   hrmp_value_destroy(l->value);
+   if (l != NULL)
+   {
+      t->size--;
+      hrmp_value_destroy(l->value);
+   }
+
    free(l);
    return 0;
 }
@@ -767,7 +769,14 @@ art_node_insert(struct art_node* node, struct art_node** node_ref, uint32_t dept
       if (leaf_match(GET_LEAF(node), key, key_len))
       {
          old_val = GET_LEAF(node)->value;
-         hrmp_value_create(type, value, &(GET_LEAF(node)->value));
+         if (config != NULL)
+         {
+            hrmp_value_create_with_config(value, config, &(GET_LEAF(node)->value));
+         }
+         else
+         {
+            hrmp_value_create(type, value, &(GET_LEAF(node)->value));
+         }
          return old_val;
       }
       // If the key does not match with existing key, old key and new key diverged some point after depth
@@ -1333,6 +1342,7 @@ node4_remove_child(struct art_node4* node, struct art_node** node_ref, unsigned 
       if (IS_LEAF(child))
       {
          // replace directly
+         free(node);
          *node_ref = child;
          return;
       }
