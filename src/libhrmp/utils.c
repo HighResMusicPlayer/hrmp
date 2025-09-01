@@ -392,7 +392,7 @@ hrmp_remove_whitespace(char* orig)
 
    length = strlen(orig);
 
-   for (int i = 0; i < length; i++)
+   for (size_t i = 0; i < length; i++)
    {
       c = *(orig + i);
       if (c == ' ' || c == '\t' || c == '\r' || c == '\n')
