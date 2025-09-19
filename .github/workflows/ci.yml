@@ -28,7 +28,7 @@ jobs:
           sudo apt install -y \
           git gcc clang clang-tools cmake make \
           libasound2-dev \
-          flac libflac-dev \
+          libsndfile libsndfile-dev \
           python3-docutils \
           check graphviz doxygen \
           pandoc texlive texlive-latex-extra \

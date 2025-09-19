@@ -34,14 +34,12 @@
 #include <deque.h>
 #include <devices.h>
 #include <files.h>
-#include <flac.h>
 #include <keyboard.h>
 #include <logging.h>
 #include <playback.h>
 #include <shmem.h>
 #include <utils.h>
 #include <value.h>
-#include <wav.h>
 
 /* system */
 #include <err.h>
@@ -291,6 +289,9 @@ main(int argc, char** argv)
    else if (action == ACTION_STATUS)
    {
       hrmp_check_devices();
+#ifdef DEBUG
+      hrmp_print_devices();
+#endif
    }
    else
    {
@@ -409,27 +410,27 @@ main(int argc, char** argv)
 
             if (type == TYPE_FLAC)
             {
-               hrmp_flac_get_metadata(fn, &fm);
+               hrmp_file_metadata(fn, &fm);
 
                if (fm != NULL)
                {
                   if (hrmp_is_file_metadata_supported(active_device, fm))
                   {
                      hrmp_set_proc_title(argc, argv, fn);
-                     hrmp_playback_flac(active_device, num_files + 1, files->size, fm);
+                     hrmp_playback(active_device, num_files + 1, files->size, fm);
                   }
                }
             }
             else if (type == TYPE_WAV)
             {
-               hrmp_wav_get_metadata(fn, &fm);
+               hrmp_file_metadata(fn, &fm);
 
                if (fm != NULL)
                {
                   if (hrmp_is_file_metadata_supported(active_device, fm))
                   {
                      hrmp_set_proc_title(argc, argv, fn);
-                     hrmp_playback_wav(active_device, num_files + 1, files->size, fm);
+                     hrmp_playback(active_device, num_files + 1, files->size, fm);
                   }
                }
             }

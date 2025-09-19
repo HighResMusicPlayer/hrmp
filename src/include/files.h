@@ -51,7 +51,7 @@ extern "C" {
 struct file_metadata
 {
    int type;                     /**< The type of file */
-   char name[MISC_LENGTH];       /**< The name of the file */
+   char name[MAX_PATH];          /**< The name of the file */
    int format;                   /**< The format */
    size_t file_size;             /**< The file size */
    unsigned int sample_rate;     /**< The sample rate */
@@ -59,7 +59,7 @@ struct file_metadata
    unsigned int bits_per_sample; /**< The bits per sample */
    unsigned long total_samples;  /**< The total number of samples */
    double duration;              /**< The number of seconds */
-} __attribute__((aligned(64)));
+};
 
 /**
  * Is the file supported

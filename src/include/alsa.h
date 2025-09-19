@@ -48,10 +48,11 @@ extern "C" {
  * @param format The file format
  * @param rate The file sample rate
  * @param handle The resulting handle
+ * @param container The resulting container
  * @return 0 upon success, 1 is failure
  */
 int
-hrmp_alsa_init_handle(char* device, int format, int rate, snd_pcm_t** handle);
+hrmp_alsa_init_handle(char* device, int format, int rate, snd_pcm_t** handle, int* container);
 
 /**
  * Close the ALSA handle

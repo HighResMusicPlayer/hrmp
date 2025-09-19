@@ -152,8 +152,9 @@ hrmp_print_devices(void)
              config->devices[i].capabilities.u16 ? "Yes" : "No",
              config->devices[i].capabilities.u16_le ? "Yes" : "No",
              config->devices[i].capabilities.u16_be ? "Yes" : "No");
-      printf("  24bit: %s/%s/%s/%s/%s/%s\n",
+      printf("  24bit: %s/%s/%s/%s/%s/%s/%s\n",
              config->devices[i].capabilities.s24 ? "Yes" : "No",
+             config->devices[i].capabilities.s24_3le ? "Yes" : "No",
              config->devices[i].capabilities.s24_le ? "Yes" : "No",
              config->devices[i].capabilities.s24_be ? "Yes" : "No",
              config->devices[i].capabilities.u24 ? "Yes" : "No",
@@ -355,6 +356,8 @@ check_capabilities(char* device, int index)
    /* 24-bit */
    config->devices[index].capabilities.s24 =
       support_mask(device, fm, SND_PCM_FORMAT_S24);
+   config->devices[index].capabilities.s24_3le =
+      support_mask(device, fm, SND_PCM_FORMAT_S24_3LE);
    config->devices[index].capabilities.s24_le =
       support_mask(device, fm, SND_PCM_FORMAT_S24_LE);
    config->devices[index].capabilities.s24_be =

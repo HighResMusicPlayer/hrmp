@@ -36,32 +36,19 @@
 #include <keyboard.h>
 #include <logging.h>
 #include <playback.h>
+#include <utils.h>
+
+/* system */
+#include <sndfile.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <string.h>
-#include <utils.h>
-#include <wav.h>
-
-/* system */
 #include <stdio.h>
 #include <stdlib.h>
-#include <FLAC/all.h>
-#include <FLAC/stream_decoder.h>
+#include <string.h>
 #include <alsa/asoundlib.h>
 
 /* static int wav_read(struct wav* wav, void* data, int length); */
-
-static int flac_open(struct playback* playback);
-
-static FLAC__StreamDecoderReadStatus flac_read_callback(const FLAC__StreamDecoder* decoder, FLAC__byte buffer[], size_t* bytes, void* client_data);
-static FLAC__StreamDecoderSeekStatus flac_seek_callback(const FLAC__StreamDecoder* decoder, FLAC__uint64 absolute_byte_offset, void* client_data);
-static FLAC__StreamDecoderTellStatus flac_tell_callback(const FLAC__StreamDecoder* decoder, FLAC__uint64* absolute_byte_offset, void* client_data);
-static FLAC__StreamDecoderLengthStatus flac_length_callback(const FLAC__StreamDecoder* decoder, FLAC__uint64* stream_length, void* client_data);
-static FLAC__bool flac_eof_callback(const FLAC__StreamDecoder* decoder, void* client_data);
-static FLAC__StreamDecoderWriteStatus flac_write_callback(const FLAC__StreamDecoder* decoder, const FLAC__Frame* frame, const FLAC__int32*const buffer[], void* client_data);
-static void flac_metadata_callback(const FLAC__StreamDecoder* decoder, const FLAC__StreamMetadata* metadata, void* client_data);
-static void flac_error_callback(const FLAC__StreamDecoder* decoder, FLAC__StreamDecoderErrorStatus status, void* client_data);
 
 static int playback_init(int device, int number, int total, snd_pcm_t* pcm_handle, struct file_metadata* fm, struct playback** playback);
 static int playback_identifier(struct file_metadata* fm, char** identifer);
@@ -70,21 +57,28 @@ static void print_progress(struct playback* pb);
 static void print_progress_done(struct playback* pb);
 
 int
-hrmp_playback_wav(int device, int number, int total, struct file_metadata* fm)
+hrmp_playback(int device, int number, int total, struct file_metadata* fm)
 {
-   char* desc = NULL;
+   int keyboard_action;
+   SNDFILE* f = NULL;
+   SF_INFO* info = NULL;
    snd_pcm_t* pcm_handle = NULL;
+   int container;
    snd_pcm_uframes_t pcm_buffer_size = 0;
    snd_pcm_uframes_t pcm_period_size = 0;
-   struct wav* wav = NULL;
+   size_t buffer_size = 0;
+   int16_t* buffer = NULL;
+   sf_count_t read_count = 0;
    struct playback* pb = NULL;
    struct configuration* config = NULL;
 
    config = (struct configuration*)shmem;
 
-   if (hrmp_alsa_init_handle(config->devices[device].device, fm->format, fm->sample_rate, &pcm_handle))
+   if (hrmp_alsa_init_handle(config->devices[device].device, fm->format,
+                             fm->sample_rate, &pcm_handle, &container))
    {
-      hrmp_log_error("Could not initialize '%s' for '%s'", config->devices[device].name, fm->name);
+      hrmp_log_error("Could not initialize '%s' for '%s'",
+                     config->devices[device].name, fm->name);
       goto error;
    }
 
@@ -94,9 +88,16 @@ hrmp_playback_wav(int device, int number, int total, struct file_metadata* fm)
       goto error;
    }
 
-   if (hrmp_wav_open(fm->name, WAV_INTERLEAVED, &wav))
+   info = (SF_INFO*)malloc(sizeof(SF_INFO));
+   if (info == NULL)
    {
-      printf("Could not open '%s'\n", fm->name);
+      goto error;
+   }
+   memset(info, 0, sizeof(SF_INFO));
+
+   f = sf_open(fm->name, SFM_READ, info);
+   if (f == NULL)
+   {
       goto error;
    }
 
@@ -106,602 +107,121 @@ hrmp_playback_wav(int device, int number, int total, struct file_metadata* fm)
       goto error;
    }
 
-   wav->buffer_size = (size_t)(pcm_period_size * wav->header.channels * (wav->header.bits_per_sample / 8));
-   wav->buffer = malloc(wav->buffer_size);
+   // Playback loop
+   buffer_size = 4096 * fm->channels;
 
-   fseek(pb->file, sizeof(struct wav_header), SEEK_SET);
-
-   while (1)
+   if (container == SND_PCM_FORMAT_S16_LE)
    {
-      int keyboard_action;
-      size_t read = fread(wav->buffer, 1, wav->buffer_size, pb->file);
+      buffer_size = buffer_size * 2;
+   }
+   else if (container == SND_PCM_FORMAT_S24_3LE || container == SND_PCM_FORMAT_S24_LE)
+   {
+      buffer_size = buffer_size * 3;
+   }
+   else
+   {
+      buffer_size = buffer_size * 4;
+   }
 
-      if (read == 0)
-      {
-         break;
-      }
-
-      if (read < wav->buffer_size)
-      {
-         memset(wav->buffer + read, 0, wav->buffer_size - read);
-      }
-
-      if (snd_pcm_writei(pcm_handle, wav->buffer, pcm_period_size) < 0)
+   buffer = malloc(buffer_size * sizeof(int16_t));
+   memset(buffer, 0, buffer_size);
+   while ((read_count = sf_readf_short(f, buffer, pcm_period_size)) > 0)
+   {
+      if ((snd_pcm_writei(pcm_handle, buffer, pcm_period_size)) < 0)
       {
          snd_pcm_prepare(pcm_handle);
       }
-
-      print_progress(pb);
-      pb->current_samples += pcm_period_size;
-
-      keyboard_action = hrmp_keyboard_get();
-      if (keyboard_action == KEYBOARD_Q)
+      else
       {
-         printf("\n");
-         hrmp_keyboard_mode(false);
-         exit(0);
-      }
-      else if (keyboard_action == KEYBOARD_ENTER)
-      {
-         break;
-      }
-      else if (keyboard_action == KEYBOARD_UP || keyboard_action == KEYBOARD_DOWN ||
-               keyboard_action == KEYBOARD_LEFT || keyboard_action == KEYBOARD_RIGHT)
-      {
-         size_t delta = (size_t)pcm_period_size;
-         size_t new_position = (size_t)pb->current_samples;
-
-         if (keyboard_action == KEYBOARD_UP)
-         {
-            delta = 30 * delta;
-         }
-         else if (keyboard_action == KEYBOARD_DOWN)
-         {
-            delta = -30 * delta;
-         }
-         else if (keyboard_action == KEYBOARD_LEFT)
-         {
-            delta = (size_t)(7.5 * delta);
-         }
-         else if (keyboard_action == KEYBOARD_DOWN)
-         {
-            delta = (size_t)(-7.5 * delta);
-         }
-
-         new_position += delta;
-
-         if (new_position >= pb->fm->total_samples)
-         {
-            fseek(pb->file, 0, SEEK_END);
-            pb->current_samples = pb->fm->total_samples;
-         }
-         else if (new_position <= 0)
-         {
-            fseek(pb->file, sizeof(struct wav_header), SEEK_SET);
-            pb->current_samples = 0;
-         }
-         else
-         {
-            fseek(pb->file, delta, SEEK_CUR);
-            pb->current_samples += delta;
-         }
-
          print_progress(pb);
-      }
-   }
+         pb->current_samples += pcm_period_size;
 
-   print_progress_done(pb);
-
-   free(desc);
-
-   hrmp_wav_close(wav);
-
-   hrmp_alsa_close_handle(pcm_handle);
-
-   free(pb);
-
-   return 0;
-
-error:
-
-   free(desc);
-
-   hrmp_wav_close(wav);
-
-   hrmp_alsa_close_handle(pcm_handle);
-
-   free(pb);
-
-   return 1;
-}
-
-int
-hrmp_playback_flac(int device, int number, int total, struct file_metadata* fm)
-{
-   char* desc = NULL;
-   FLAC__StreamDecoder* decoder = NULL;
-   FLAC__StreamDecoderInitStatus status;
-   snd_pcm_t* pcm_handle = NULL;
-   struct playback* pb = NULL;
-   struct configuration* config = NULL;
-
-   config = (struct configuration*)shmem;
-
-   if (hrmp_alsa_init_handle(config->devices[device].device, fm->format, fm->sample_rate, &pcm_handle))
-   {
-      hrmp_log_error("Could not initialize '%s' for '%s'", config->devices[device].name, fm->name);
-      goto error;
-   }
-
-   decoder = FLAC__stream_decoder_new();
-   if (decoder == NULL)
-   {
-      hrmp_log_error("Could not initialize decoder for '%s'", fm->name);
-      goto error;
-   }
-   FLAC__stream_decoder_set_md5_checking(decoder, false);
-
-   if (playback_init(device, number, total, pcm_handle, fm, &pb))
-   {
-      hrmp_log_error("Could not initialize '%s' for '%s'", config->devices[device].name, fm->name);
-      goto error;
-   }
-
-   status = FLAC__stream_decoder_init_stream(decoder,
-                                             flac_read_callback,
-                                             flac_seek_callback,
-                                             flac_tell_callback,
-                                             flac_length_callback,
-                                             flac_eof_callback,
-                                             flac_write_callback,
-                                             flac_metadata_callback,
-                                             flac_error_callback,
-                                             pb);
-
-   if (status == FLAC__STREAM_DECODER_INIT_STATUS_OK)
-   {
-      fflush(stdout);
-   }
-   else if (status == FLAC__STREAM_DECODER_INIT_STATUS_UNSUPPORTED_CONTAINER)
-   {
-      hrmp_log_error("UNSUPPORTED_CONTAINER: %s", fm->name);
-      goto error;
-   }
-   else if (status == FLAC__STREAM_DECODER_INIT_STATUS_INVALID_CALLBACKS)
-   {
-      hrmp_log_error("INVALID_CALLBACKS: %s", fm->name);
-      goto error;
-   }
-   else if (status == FLAC__STREAM_DECODER_INIT_STATUS_MEMORY_ALLOCATION_ERROR)
-   {
-      hrmp_log_error("MEMORY_ALLOCATION_ERROR: %s", fm->name);
-      goto error;
-   }
-   else if (status == FLAC__STREAM_DECODER_INIT_STATUS_ERROR_OPENING_FILE)
-   {
-      hrmp_log_error("ERROR_OPENING_FILE: %s", fm->name);
-      goto error;
-   }
-   else if (status == FLAC__STREAM_DECODER_INIT_STATUS_ALREADY_INITIALIZED)
-   {
-      hrmp_log_error("ALREADY_INITIALIZED: %s", fm->name);
-      goto error;
-   }
-   else
-   {
-      hrmp_log_debug("Unknown %d for %s", status, fm->name);
-   }
-
-   /* Metadata */
-   FLAC__stream_decoder_process_until_end_of_metadata(decoder);
-
-   /* Decode and play */
-   FLAC__stream_decoder_process_until_end_of_stream(decoder);
-
-   print_progress_done(pb);
-
-   hrmp_alsa_close_handle(pcm_handle);
-   FLAC__stream_decoder_delete(decoder);
-
-   free(pb);
-   free(desc);
-
-   return 0;
-
-error:
-
-   hrmp_alsa_close_handle(pcm_handle);
-
-   if (decoder != NULL)
-   {
-      FLAC__stream_decoder_delete(decoder);
-   }
-
-   free(pb);
-   free(desc);
-
-   return 1;
-}
-
-/* static int */
-/* wav_read(struct wav* wav, void* data, int length) */
-/* { */
-/*    switch (wav->sample_format) */
-/*    { */
-/*       case WAV_INT16: */
-/*       { */
-/*          int16_t* interleaved_data = (int16_t*)alloca(wav->header.channels * length * sizeof(int16_t)); */
-/*          size_t samples_read = fread(interleaved_data, sizeof(int16_t), wav->header.channels * length, pb->file); */
-/*          int valid_length = (int) samples_read / wav->header.channels; */
-/*          switch (wav->channel_format) */
-/*          { */
-/*             case WAV_INTERLEAVED: /\* [LRLRLRLR] *\/ */
-/*             { */
-/*                for (int pos = 0; pos < wav->header.channels * valid_length; pos++) */
-/*                { */
-/*                   ((float*)data)[pos] = (float)interleaved_data[pos] / INT16_MAX; */
-/*                } */
-/*                return valid_length; */
-/*             } */
-/*             case WAV_INLINE: /\* [LLLLRRRR] *\/ */
-/*             { */
-/*                for (int i = 0, pos = 0; i < wav->header.channels; i++) */
-/*                { */
-/*                   for (int j = i; j < valid_length * wav->header.channels; j += wav->header.channels, ++pos) */
-/*                   { */
-/*                      ((float*)data)[pos] = (float)interleaved_data[j] / INT16_MAX; */
-/*                   } */
-/*                } */
-/*                return valid_length; */
-/*             } */
-/*             case WAV_SPLIT: /\* [[LLLL],[RRRR]] *\/ */
-/*             { */
-/*                for (int i = 0, pos = 0; i < wav->header.channels; i++) */
-/*                { */
-/*                   for (int j = 0; j < valid_length; j++, ++pos) */
-/*                   { */
-/*                      ((float**)data)[i][j] = (float)interleaved_data[j * wav->header.channels + i] / INT16_MAX; */
-/*                   } */
-/*                } */
-/*                return valid_length; */
-/*             } */
-/*             default: */
-/*                return 0; */
-/*          } */
-/*       } */
-/*       case WAV_FLOAT32: */
-/*       { */
-/*          float* interleaved_data = (float*) alloca(wav->header.channels * length * sizeof(float)); */
-/*          size_t samples_read = fread(interleaved_data, sizeof(float), wav->header.channels * length, pb->file); */
-/*          int valid_length = (int) samples_read / wav->header.channels; */
-/*          switch (wav->channel_format) */
-/*          { */
-/*             case WAV_INTERLEAVED: /\* [LRLRLRLR] *\/ */
-/*             { */
-/*                memcpy(data, interleaved_data, wav->header.channels * valid_length * sizeof(float)); */
-/*                return valid_length; */
-/*             } */
-/*             case WAV_INLINE: /\* [LLLLRRRR] *\/ */
-/*             { */
-/*                for (int i = 0, pos = 0; i < wav->header.channels; i++) */
-/*                { */
-/*                   for (int j = i; j < valid_length * wav->header.channels; j += wav->header.channels, ++pos) */
-/*                   { */
-/*                      ((float*) data)[pos] = interleaved_data[j]; */
-/*                   } */
-/*                } */
-/*                return valid_length; */
-/*             } */
-/*             case WAV_SPLIT: /\* [[LLLL],[RRRR]] *\/ */
-/*             { */
-/*                for (int i = 0, pos = 0; i < wav->header.channels; i++) */
-/*                { */
-/*                   for (int j = 0; j < valid_length; j++, ++pos) */
-/*                   { */
-/*                      ((float**) data)[i][j] = interleaved_data[j * wav->header.channels + i]; */
-/*                   } */
-/*                } */
-/*                return valid_length; */
-/*             } */
-/*             default: */
-/*                return 0; */
-/*          } */
-/*       } */
-/*       default: */
-/*          return 0; */
-/*    } */
-
-/*    return length; */
-/* } */
-
-static int
-flac_open(struct playback* pb)
-{
-   FILE* file = NULL;
-
-   file = pb->file;
-
-   if (file == NULL)
-   {
-      file = fopen(pb->fm->name, "rb");
-
-      if (file == NULL)
-      {
-         goto error;
-      }
-
-      fseek(file, 0, SEEK_SET);
-
-      pb->file = file;
-   }
-
-   return 0;
-
-error:
-
-   return 1;
-}
-
-static FLAC__StreamDecoderReadStatus
-flac_read_callback(const FLAC__StreamDecoder* decoder, FLAC__byte buffer[], size_t* bytes, void* client_data)
-{
-   struct playback* pb = NULL;
-
-   pb = (struct playback*)client_data;
-
-   flac_open(pb);
-
-   if (*bytes > 0)
-   {
-      *bytes = fread(buffer, sizeof(FLAC__byte), *bytes, pb->file);
-      if (ferror(pb->file))
-      {
-         return FLAC__STREAM_DECODER_READ_STATUS_ABORT;
-      }
-      else if (*bytes == 0)
-      {
-         return FLAC__STREAM_DECODER_READ_STATUS_END_OF_STREAM;
-      }
-      else
-      {
-         return FLAC__STREAM_DECODER_READ_STATUS_CONTINUE;
-      }
-   }
-   else
-   {
-      return FLAC__STREAM_DECODER_READ_STATUS_ABORT;
-   }
-
-   return FLAC__STREAM_DECODER_READ_STATUS_CONTINUE;
-}
-
-static FLAC__StreamDecoderSeekStatus
-flac_seek_callback(const FLAC__StreamDecoder* decoder, FLAC__uint64 absolute_byte_offset, void* client_data)
-{
-   struct playback* pb = NULL;
-
-   pb = (struct playback*)client_data;
-
-   if (fseek(pb->file, (long)absolute_byte_offset, SEEK_SET) < 0)
-   {
-      goto error;
-   }
-
-   return FLAC__STREAM_DECODER_SEEK_STATUS_OK;
-
-error:
-
-   return FLAC__STREAM_DECODER_SEEK_STATUS_ERROR;
-}
-
-static FLAC__StreamDecoderTellStatus
-flac_tell_callback(const FLAC__StreamDecoder* decoder, FLAC__uint64* absolute_byte_offset, void* client_data)
-{
-   long v = 0;
-   struct playback* pb = NULL;
-
-   pb = (struct playback*)client_data;
-
-   v = ftell(pb->file);
-
-   if (v < 0)
-   {
-      return FLAC__STREAM_DECODER_TELL_STATUS_ERROR;
-   }
-
-   *absolute_byte_offset = (FLAC__uint64)v;
-
-   return FLAC__STREAM_DECODER_TELL_STATUS_OK;
-}
-
-static FLAC__StreamDecoderLengthStatus
-flac_length_callback(const FLAC__StreamDecoder* decoder, FLAC__uint64* stream_length, void* client_data)
-{
-   struct playback* pb = NULL;
-
-   pb = (struct playback*)client_data;
-
-   *stream_length = (FLAC__uint64)pb->file_size;
-
-   return FLAC__STREAM_DECODER_LENGTH_STATUS_OK;
-}
-
-static FLAC__bool
-flac_eof_callback(const FLAC__StreamDecoder* decoder, void* client_data)
-{
-   struct playback* pb = NULL;
-
-   pb = (struct playback*)client_data;
-
-   flac_open(pb);
-
-   return feof(pb->file) ? true : false;
-}
-
-static FLAC__StreamDecoderWriteStatus
-flac_write_callback(const FLAC__StreamDecoder* decoder,
-                    const FLAC__Frame* frame, const FLAC__int32*const buffer[],
-                    void* client_data)
-{
-   int keyboard_action = KEYBOARD_IGNORE;
-   int byte_per_frame = 0;
-   int frame_size = 0;
-   size_t bs = 0;
-   snd_pcm_uframes_t samples = frame->header.blocksize;
-   unsigned char* out = NULL;
-   struct playback* pb = NULL;
-
-   pb = (struct playback*)client_data;
-
-   byte_per_frame = pb->fm->format == SND_PCM_FORMAT_S16_LE ? 2 : 4;
-   frame_size = pb->fm->channels * byte_per_frame;
-   bs = samples * frame_size;
-
-   out = (unsigned char*)malloc(bs);
-   if (out == NULL)
-   {
-      return false;
-   }
-
-   memset(out, 0, bs);
-
-   for (size_t i = 0; i < samples; i++)
-   {
-      int root = (i * frame_size);
-      for (size_t ch = 0; ch < pb->fm->channels; ch++)
-      {
-         int32_t sample = buffer[ch][i];
-         int base = root + (ch * byte_per_frame);
-
-         out[base] = sample & 0xFF;
-         out[base + 1] = (sample >> 8) & 0xFF;
-
-         if (byte_per_frame == 4)
+         keyboard_action = hrmp_keyboard_get();
+         if (keyboard_action == KEYBOARD_Q)
          {
-            out[base + 2] = (sample >> 16) & 0xFF;
-            if (pb->fm->bits_per_sample == 32)
+            printf("\n");
+            hrmp_keyboard_mode(false);
+            exit(0);
+         }
+         else if (keyboard_action == KEYBOARD_ENTER)
+         {
+            break;
+         }
+         else if (keyboard_action == KEYBOARD_UP ||
+                  keyboard_action == KEYBOARD_DOWN ||
+                  keyboard_action == KEYBOARD_LEFT ||
+                  keyboard_action == KEYBOARD_RIGHT)
+         {
+            size_t delta = (size_t)(fm->total_samples / fm->duration);
+            size_t new_position = (size_t)pb->current_samples;
+
+            if (keyboard_action == KEYBOARD_UP)
             {
-               out[base + 3] = (sample >> 24) & 0xFF;
+               delta = 60 * delta;
             }
+            else if (keyboard_action == KEYBOARD_DOWN)
+            {
+               delta = -60 * delta;
+            }
+            else if (keyboard_action == KEYBOARD_LEFT)
+            {
+               delta = -15 * delta;
+            }
+            else if (keyboard_action == KEYBOARD_RIGHT)
+            {
+               delta = 15 * delta;
+            }
+
+            new_position += delta;
+
+            if (new_position >= pb->fm->total_samples)
+            {
+               sf_seek(f, 0, SEEK_END);
+               pb->current_samples = pb->fm->total_samples;
+            }
+            else if (new_position <= 0)
+            {
+               sf_seek(f, 0, SEEK_SET);
+               pb->current_samples = 0;
+            }
+            else
+            {
+               sf_seek(f, delta, SEEK_CUR);
+               pb->current_samples += delta;
+            }
+
+            print_progress(pb);
          }
       }
+
+      memset(buffer, 0, buffer_size);
    }
 
-   print_progress(pb);
+   print_progress_done(pb);
 
-   /* pcm_handle has the format and channels which are multiplied with samples  */
-   snd_pcm_writei(pb->pcm_handle, (const void*)out, samples);
+   free(buffer);
+   free(info);
 
-   pb->current_samples += samples;
+   hrmp_alsa_close_handle(pcm_handle);
 
-   keyboard_action = hrmp_keyboard_get();
-   if (keyboard_action == KEYBOARD_Q)
-   {
-      printf("\n");
-      hrmp_keyboard_mode(false);
-      free(out);
-      exit(0);
-   }
-   else if (keyboard_action == KEYBOARD_ENTER)
-   {
-      goto quit;
-   }
-   else if (keyboard_action == KEYBOARD_UP || keyboard_action == KEYBOARD_DOWN ||
-            keyboard_action == KEYBOARD_LEFT || keyboard_action == KEYBOARD_RIGHT)
-   {
-      long delta = pb->fm->sample_rate;
-      long new_position = pb->current_samples;
+   sf_close(f);
 
-      if (keyboard_action == KEYBOARD_UP)
-      {
-         delta = 60 * delta;
-      }
-      else if (keyboard_action == KEYBOARD_DOWN)
-      {
-         delta = -60 * delta;
-      }
-      else if (keyboard_action == KEYBOARD_LEFT)
-      {
-         delta = -15 * delta;
-      }
-      else if (keyboard_action == KEYBOARD_RIGHT)
-      {
-         delta = 15 * delta;
-      }
+   free(pb);
 
-      FLAC__stream_decoder_flush((FLAC__StreamDecoder*)decoder);
+   return 0;
 
-      new_position += delta;
+error:
 
-      if (new_position <= 0)
-      {
-         pb->current_samples = 0;
-         FLAC__stream_decoder_reset((FLAC__StreamDecoder*)decoder);
-         FLAC__stream_decoder_set_md5_checking((FLAC__StreamDecoder*)decoder, false);
-      }
-      else if ((unsigned long)new_position >= pb->fm->total_samples)
-      {
-         pb->current_samples = pb->fm->total_samples;
-         goto quit;
-      }
-      else
-      {
-         pb->current_samples += delta;
-         FLAC__stream_decoder_seek_absolute((FLAC__StreamDecoder*)decoder, pb->current_samples);
-      }
+   free(buffer);
+   free(info);
 
-      print_progress(pb);
-   }
+   hrmp_alsa_close_handle(pcm_handle);
 
-   free(out);
+   sf_close(f);
 
-   return FLAC__STREAM_DECODER_WRITE_STATUS_CONTINUE;
+   free(pb);
 
-quit:
-
-   free(out);
-
-   return FLAC__STREAM_DECODER_WRITE_STATUS_ABORT;
-}
-
-static void
-flac_metadata_callback(const FLAC__StreamDecoder* decoder,
-                       const FLAC__StreamMetadata* metadata,
-                       void* client_data)
-{
-}
-
-static void
-flac_error_callback(const FLAC__StreamDecoder* decoder,
-                    FLAC__StreamDecoderErrorStatus status,
-                    void* client_data)
-{
-   if (status == FLAC__STREAM_DECODER_ERROR_STATUS_LOST_SYNC)
-   {
-      /* Forward / rewind */
-   }
-   else if (status == FLAC__STREAM_DECODER_ERROR_STATUS_BAD_HEADER)
-   {
-      hrmp_log_error("BAD_HEADER");
-   }
-   else if (status == FLAC__STREAM_DECODER_ERROR_STATUS_FRAME_CRC_MISMATCH)
-   {
-      hrmp_log_error("FRAME_CRC_MISMATCH");
-   }
-   else if (status == FLAC__STREAM_DECODER_ERROR_STATUS_BAD_METADATA)
-   {
-      hrmp_log_error("BAD_METADATA");
-   }
-   /* else if (status == FLAC__STREAM_DECODER_ERROR_STATUS_OUT_OF_BOUNDS) */
-   /* { */
-   /* } */
-   /* else if (status == FLAC__STREAM_DECODER_ERROR_STATUS_MISSING_FRAME) */
-   /* { */
-   /* } */
-   else
-   {
-      hrmp_log_error("UNKNOWN %d", status);
-   }
+   return 1;
 }
 
 static int
@@ -724,7 +244,6 @@ playback_init(int device, int number, int total, snd_pcm_t* pcm_handle, struct f
    playback_identifier(fm, &desc);
 
    pb->device = device;
-   pb->file = NULL;
    pb->file_size = hrmp_get_file_size(fm->name);
    pb->file_number = number;
    pb->total_number = total;
@@ -753,6 +272,10 @@ playback_identifier(struct file_metadata* fm, char** identifer)
    char* id = NULL;
 
    *identifer = NULL;
+
+#ifdef DEBUG
+   hrmp_print_file_metadata(fm);
+#endif
 
    id = hrmp_append_char(id, '[');
 

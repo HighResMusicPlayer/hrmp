@@ -31,17 +31,17 @@
 /* hrmp */
 #include <hrmp.h>
 #include <files.h>
-#include <flac.h>
 #include <logging.h>
 #include <utils.h>
-#include <wav.h>
 
 /* system */
+#include <sndfile.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <alsa/asoundlib.h>
 
 static char* get_format_string(int format);
+static int get_metadata(char* filename, unsigned long type, struct file_metadata** file_metadata);
 
 int
 hrmp_is_file_supported(char* f)
@@ -68,14 +68,14 @@ hrmp_file_metadata(char* f, struct file_metadata** fm)
 
    if (type == TYPE_FLAC)
    {
-      if (hrmp_flac_get_metadata(f, &m))
+      if (get_metadata(f, SF_FORMAT_FLAC, &m))
       {
          goto error;
       }
    }
    else if (type == TYPE_WAV)
    {
-      if (hrmp_wav_get_metadata(f, &m))
+      if (get_metadata(f, SF_FORMAT_WAV, &m))
       {
          goto error;
       }
@@ -193,6 +193,10 @@ hrmp_is_file_metadata_supported(int device, struct file_metadata* fm)
             }
          }
       }
+      else
+      {
+         hrmp_log_error("Unsupported: %d/%dbits", fm->sample_rate, fm->bits_per_sample);
+      }
    }
 
    return false;
@@ -203,11 +207,25 @@ hrmp_print_file_metadata(struct file_metadata* fm)
 {
    if (fm != NULL)
    {
-      printf("%s\n", fm->name);
+      if (fm->type == TYPE_UNKNOWN)
+      {
+         printf("  Type: TYPE_UNKNOWN\n");
+      }
+      else if (fm->type == TYPE_WAV)
+      {
+         printf("  Type: TYPE_WAV\n");
+      }
+      else if (fm->type == TYPE_FLAC)
+      {
+         printf("  Type: TYPE_FLAC\n");
+      }
+      printf("  Name: %s\n", fm->name);
       printf("  Bits: %d\n", fm->bits_per_sample);
       printf("  Format: %s\n", get_format_string(fm->format));
+      printf("  Channels: %d\n", fm->channels);
       printf("  Size: %zu\n", fm->file_size);
       printf("  Rate: %d\n", fm->sample_rate);
+      printf("  Samples: %lu\n", fm->total_samples);
       printf("  Duration: %lf\n", fm->duration);
    }
 
@@ -243,6 +261,9 @@ get_format_string(int format)
       case SND_PCM_FORMAT_U32_BE:
          return "U32_BE";
          break;
+      case SND_PCM_FORMAT_S24_3LE:
+         return "S24_3LE";
+         break;
       case SND_PCM_FORMAT_S24_LE:
          return "S24_LE";
          break;
@@ -272,4 +293,126 @@ get_format_string(int format)
    }
 
    return "Unkwown";
+}
+
+static int
+get_metadata(char* filename, unsigned long type, struct file_metadata** file_metadata)
+{
+   SNDFILE* f = NULL;
+   SF_INFO* info = NULL;
+   struct file_metadata* fm = NULL;
+   struct configuration* config = NULL;
+
+   *file_metadata = NULL;
+
+   config = (struct configuration*)shmem;
+
+   info = (SF_INFO*)malloc(sizeof(SF_INFO));
+   if (info == NULL)
+   {
+      goto error;
+   }
+   memset(info, 0, sizeof(SF_INFO));
+
+   fm = (struct file_metadata*)malloc(sizeof(struct file_metadata));
+   if (fm == NULL)
+   {
+      goto error;
+   }
+   memset(fm, 0, sizeof(struct file_metadata));
+
+   if (type == SF_FORMAT_WAV)
+   {
+      fm->type = TYPE_WAV;
+   }
+   else if (type == SF_FORMAT_FLAC)
+   {
+      fm->type = TYPE_FLAC;
+   }
+
+   memcpy(fm->name, filename, strlen(filename));
+
+   f = sf_open(filename, SFM_READ, info);
+   if (f == NULL)
+   {
+      hrmp_log_error("Error opening %s (%s)", filename, sf_strerror(f));
+   }
+
+   if (!(info->format & type))
+   {
+      goto error;
+   }
+
+   fm->file_size = hrmp_get_file_size(filename);
+
+   fm->sample_rate = info->samplerate;
+   fm->channels = info->channels;
+
+   if (fm->channels != 2)
+   {
+      if (config->experimental)
+      {
+         printf("Unsupported number of channels for '%s' (%d channels)\n", filename, fm->channels);
+      }
+      goto error;
+   }
+
+   if (info->format & SF_FORMAT_PCM_16)
+   {
+      fm->bits_per_sample = 16;
+   }
+   else if (info->format & SF_FORMAT_PCM_24)
+   {
+      fm->bits_per_sample = 24;
+   }
+   else if (info->format & SF_FORMAT_PCM_32)
+   {
+      fm->bits_per_sample = 32;
+   }
+
+   fm->total_samples = info->frames;
+   if (fm->sample_rate > 0)
+   {
+      fm->duration = (double)((double)fm->total_samples / fm->sample_rate);
+   }
+   else
+   {
+      fm->duration = 0.0;
+   }
+
+   switch (fm->bits_per_sample)
+   {
+      case 16:
+         fm->format = SND_PCM_FORMAT_S16_LE;
+         break;
+      case 24:
+         fm->format = SND_PCM_FORMAT_S24_3LE;
+         break;
+      case 32:
+         fm->format = SND_PCM_FORMAT_S32_LE;
+         break;
+      default:
+         hrmp_log_error("Unsupported bit rate for '%s' (%d rate)", filename, fm->bits_per_sample);
+         goto error;
+   }
+
+   *file_metadata = fm;
+
+   sf_close(f);
+
+   free(info);
+
+   return 0;
+
+error:
+
+   if (f != NULL)
+   {
+      sf_close(f);
+   }
+
+   free(info);
+   free(fm);
+
+   return 1;
 }

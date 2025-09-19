@@ -10,13 +10,13 @@
 * [cmake](https://cmake.org)
 * [make](https://www.gnu.org/software/make/)
 * [ALSA](https://www.alsa-project.org/wiki/Main_Page)
-* [libflac](https://xiph.org/flac/)
+* [libsndfile](https://libsndfile.github.io/libsndfile/)
 * [rst2man](https://docutils.sourceforge.io/)
 * [pandoc](https://pandoc.org/)
 * [texlive](https://www.tug.org/texlive/)
 
 ```sh
-dnf install git gcc clang clang-analyzer cmake make python3-docutils libasan libasan-static alsa-lib alsa-lib-devel flac-libs flac-libs-devel
+dnf install git gcc clang clang-analyzer cmake make python3-docutils libasan libasan-static alsa-lib alsa-lib-devel libsndfile libsndfile-devel
 ```
 
 ### Generate the guide

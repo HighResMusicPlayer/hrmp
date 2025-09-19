@@ -143,12 +143,13 @@ struct capabilities
    bool u16_le; /**< Support unsigned 16bit (LE) decoding */
    bool u16_be; /**< Support unsigned 16bit (BE) decoding */
 
-   bool s24;    /**< Support signed 24bit decoding */
-   bool s24_le; /**< Support signed 24bit (LE) decoding */
-   bool s24_be; /**< Support signed 24bit (BE) decoding */
-   bool u24;    /**< Support unsigned 24bit decoding */
-   bool u24_le; /**< Support unsigned 24bit (LE) decoding */
-   bool u24_be; /**< Support unsigned 24bit (BE) decoding */
+   bool s24;     /**< Support signed 24bit decoding */
+   bool s24_3le; /**< Support signed 24bit 3-packed (LE) decoding */
+   bool s24_le;  /**< Support signed 24bit (LE) decoding */
+   bool s24_be;  /**< Support signed 24bit (BE) decoding */
+   bool u24;     /**< Support unsigned 24bit decoding */
+   bool u24_le;  /**< Support unsigned 24bit (LE) decoding */
+   bool u24_be;  /**< Support unsigned 24bit (BE) decoding */
 
    bool s32;    /**< Support signed 32bit decoding */
    bool s32_le; /**< Support signed 32bit (LE) decoding */
@@ -161,7 +162,7 @@ struct capabilities
    bool dsd_u16_be; /**< Support DSD unsigned 16bit (BE) decoding */
    bool dsd_u32_le; /**< Support DSD unsigned 32bit (LE) decoding */
    bool dsd_u32_be; /**< Support DSD unsigned 32bit (BE) decoding */
-} __attribute__((aligned(64)));
+};
 
 /** @struct device
  * Defines a device
@@ -174,7 +175,7 @@ struct device
    char description[MISC_LENGTH];    /**< The description of the device */
    struct capabilities capabilities; /**< The capabilities of the device */
    bool active;                      /**< Is the device active ? */
-} __attribute__((aligned(64)));
+};
 
 /** @struct configuration
  * Defines the configuration and state of hrmp
@@ -202,7 +203,7 @@ struct configuration
    int number_of_devices;             /**< The number of devices */
 
    struct device devices[NUMBER_OF_DEVICES]; /**< The devices */
-} __attribute__((aligned(64)));
+};
 
 #ifdef __cplusplus
 }

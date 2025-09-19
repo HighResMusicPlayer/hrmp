@@ -24,7 +24,7 @@ if (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
   include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${LIBASOUND_INCLUDE_DIRS}
-    ${LIBFLAC_INCLUDE_DIRS}
+    ${LIBSNDFILE_INCLUDE_DIR}
   )
 
   #
@@ -33,7 +33,7 @@ if (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
   link_libraries(
     ${LIBATOMIC_LIBRARY}
     ${LIBASOUND_LIBRARIES}
-    ${LIBFLAC_LIBRARIES}
+    ${LIBSNDFILE_LIBRARY}
   )
 
   set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--no-undefined")
@@ -51,7 +51,7 @@ else()
   include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${LIBASOUND_INCLUDE_DIRS}
-    ${LIBFLAC_INCLUDE_DIRS}
+    ${LIBSNDFILE_INCLUDE_DIR}
   )
 
   #
@@ -59,7 +59,7 @@ else()
   #
   link_libraries(
     ${LIBASOUND_LIBRARIES}
-    ${LIBFLAC_LIBRARIES}
+    ${LIBSNDFILE_LIBRARY}
   )
 
   if (${CMAKE_SYSTEM_NAME} STREQUAL "OpenBSD")
