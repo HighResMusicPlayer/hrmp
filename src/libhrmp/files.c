@@ -110,20 +110,20 @@ hrmp_is_file_metadata_supported(int device, struct file_metadata* fm)
             switch (fm->sample_rate)
             {
                case 44100:
-                  return true;
-                  break;
+               case 48000:
+               case 88200:
+               case 96000:
+               case 176400:
+               case 192000:
+               case 352800:
+               case 384000:
+                 return true;
+                 break;
                default:
                   if (config->experimental)
                   {
                      switch (fm->sample_rate)
                      {
-                        case 48000:
-                        case 88200:
-                        case 96000:
-                        case 176400:
-                        case 192000:
-                        case 352800:
-                        case 384000:
                         case 705600:
                         case 768000:
                            return true;

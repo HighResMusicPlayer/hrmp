@@ -6,8 +6,8 @@
 
 ## Features
 
-* FLAC (44.1kHz/16bits) (Stereo)
-* WAV (44.1kHz/16bits) (Stereo)
+* FLAC (44.1kHz/16bit, 48kHz/16bit, 88.2kHz/16bit, 96kHz/16bit, 176.4kHz/16bit, 192kHz/16bit, 352.8kHz/16bit, 384kHz/16bit) (Stereo)
+* WAV (44.1kHz/16bit, 48kHz/16bit, 88.2kHz/16bit, 96kHz/16bit, 176.4kHz/16bit, 192kHz/16bit, 352.8kHz/16bit, 384kHz/16bit) (Stereo)
 * By-pass PulseAudio for native bit-stream
 
 ## Platforms
