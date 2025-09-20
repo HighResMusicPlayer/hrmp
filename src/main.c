@@ -368,11 +368,7 @@ main(int argc, char** argv)
                {
                   if (!config->quiet)
                   {
-                     if (hrmp_exists(argv[i]))
-                     {
-                        printf("Unsupported file '%s'\n", argv[i]);
-                     }
-                     else
+                     if (!hrmp_exists(argv[i]))
                      {
                         printf("File not found '%s'\n", argv[i]);
                      }

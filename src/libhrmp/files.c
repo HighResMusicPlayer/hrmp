@@ -103,11 +103,7 @@ hrmp_is_file_metadata_supported(int device, struct file_metadata* fm)
 
    if (device >= 0 && fm != NULL)
    {
-      if (fm->bits_per_sample == 8)
-      {
-         hrmp_log_error("Unsupported sample rate: %d", fm->sample_rate);
-      }
-      else if (fm->bits_per_sample == 16)
+      if (fm->bits_per_sample == 16)
       {
          if (config->devices[device].capabilities.s16_le)
          {
@@ -133,15 +129,9 @@ hrmp_is_file_metadata_supported(int device, struct file_metadata* fm)
                            return true;
                            break;
                         default:
-                           printf("Unsupported sample rate %dkHz/16bits for '%s'\n", fm->sample_rate, fm->name);
                            break;
                      }
                   }
-                  else
-                  {
-                     printf("Unsupported sample rate %d/16bits for '%s'\n", fm->sample_rate, fm->name);
-                  }
-                  break;
             }
          }
       }
@@ -165,7 +155,6 @@ hrmp_is_file_metadata_supported(int device, struct file_metadata* fm)
                   return true;
                   break;
                default:
-                  printf("Unsupported sample rate %dkHz/%dbits for '%s'\n", fm->sample_rate, fm->bits_per_sample, fm->name);
                   break;
             }
          }
@@ -188,16 +177,13 @@ hrmp_is_file_metadata_supported(int device, struct file_metadata* fm)
                   return true;
                   break;
                default:
-                  printf("Unsupported sample rate %dkHz/%dbits for '%s'\n", fm->sample_rate, fm->bits_per_sample, fm->name);
                   break;
             }
          }
       }
-      else
-      {
-         hrmp_log_error("Unsupported: %d/%dbits", fm->sample_rate, fm->bits_per_sample);
-      }
    }
+
+   printf("%s %d/%dbits (Unsupported)\n", fm->name, fm->sample_rate, fm->bits_per_sample);
 
    return false;
 }
