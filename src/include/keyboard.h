@@ -43,6 +43,7 @@
 #define KEYBOARD_LEFT   4
 #define KEYBOARD_RIGHT  5
 #define KEYBOARD_ENTER  6
+#define KEYBOARD_SPACE  7
 
 /**
  * Get a keyboard command

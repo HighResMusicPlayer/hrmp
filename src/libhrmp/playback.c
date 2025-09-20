@@ -48,8 +48,6 @@
 #include <string.h>
 #include <alsa/asoundlib.h>
 
-/* static int wav_read(struct wav* wav, void* data, int length); */
-
 static int playback_init(int device, int number, int total, snd_pcm_t* pcm_handle, struct file_metadata* fm, struct playback** playback);
 static int playback_identifier(struct file_metadata* fm, char** identifer);
 
@@ -81,6 +79,8 @@ hrmp_playback(int device, int number, int total, struct file_metadata* fm)
                      config->devices[device].name, fm->name);
       goto error;
    }
+
+   config->devices[device].is_paused = false;
 
    if (playback_init(device, number, total, pcm_handle, fm, &pb))
    {
@@ -136,6 +136,7 @@ hrmp_playback(int device, int number, int total, struct file_metadata* fm)
          print_progress(pb);
          pb->current_samples += pcm_period_size;
 
+keyboard:
          keyboard_action = hrmp_keyboard_get();
          if (keyboard_action == KEYBOARD_Q)
          {
@@ -146,6 +147,18 @@ hrmp_playback(int device, int number, int total, struct file_metadata* fm)
          else if (keyboard_action == KEYBOARD_ENTER)
          {
             break;
+         }
+         else if (keyboard_action == KEYBOARD_SPACE)
+         {
+            if (config->devices[device].is_paused)
+            {
+               config->devices[device].is_paused = false;
+            }
+            else
+            {
+               config->devices[device].is_paused = true;
+               SLEEP_AND_GOTO(10000L, keyboard);
+            }
          }
          else if (keyboard_action == KEYBOARD_UP ||
                   keyboard_action == KEYBOARD_DOWN ||
@@ -192,8 +205,14 @@ hrmp_playback(int device, int number, int total, struct file_metadata* fm)
 
             print_progress(pb);
          }
+         else
+         {
+            if (config->devices[device].is_paused)
+            {
+               SLEEP_AND_GOTO(10000L, keyboard);
+            }
+         }
       }
-
       memset(buffer, 0, buffer_size);
    }
 

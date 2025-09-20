@@ -174,6 +174,7 @@ struct device
    char device[MISC_LENGTH];         /**< The device */
    char description[MISC_LENGTH];    /**< The description of the device */
    struct capabilities capabilities; /**< The capabilities of the device */
+   bool is_paused;                   /**< Is the device paused ? */
    bool active;                      /**< Is the device active ? */
 };
 

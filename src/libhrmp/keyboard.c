@@ -79,6 +79,9 @@ hrmp_keyboard_get(void)
          case 10:
             ret = KEYBOARD_ENTER;
             break;
+         case 32:
+            ret = KEYBOARD_SPACE;
+            break;
          case 68:
             ret = KEYBOARD_LEFT;
             break;

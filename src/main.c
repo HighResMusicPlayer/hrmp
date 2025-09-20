@@ -307,6 +307,10 @@ main(int argc, char** argv)
 
       hrmp_check_devices();
 
+#ifdef DEBUG
+      hrmp_print_devices();
+#endif
+
       if (device_name != NULL)
       {
          if (hrmp_is_device_known(device_name))
