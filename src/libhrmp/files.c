@@ -32,6 +32,7 @@
 #include <hrmp.h>
 #include <files.h>
 #include <logging.h>
+#include <sndfile-64.h>
 #include <utils.h>
 
 /* system */
@@ -46,16 +47,50 @@ static int get_metadata(char* filename, unsigned long type, struct file_metadata
 int
 hrmp_is_file_supported(char* f)
 {
+   int type = TYPE_UNKNOWN;
+   SNDFILE* file = NULL;
+   SF_INFO* info = NULL;
+
    if (hrmp_ends_with(f, ".flac"))
    {
-      return TYPE_FLAC;
+      info = (SF_INFO*)malloc(sizeof(SF_INFO));
+      if (info != NULL)
+      {
+         memset(info, 0, sizeof(SF_INFO));
+
+         file = sf_open(f, SFM_READ, info);
+
+         if (info->format & SF_FORMAT_FLAC)
+         {
+            type = TYPE_FLAC;
+         }
+      }
    }
    else if (hrmp_ends_with(f, ".wav"))
    {
-      return TYPE_WAV;
+      info = (SF_INFO*)malloc(sizeof(SF_INFO));
+      if (info != NULL)
+      {
+         memset(info, 0, sizeof(SF_INFO));
+
+         file = sf_open(f, SFM_READ, info);
+
+         if (info->format & SF_FORMAT_WAV)
+         {
+            type = TYPE_WAV;
+         }
+      }
    }
 
-   return TYPE_UNKNOWN;
+   if (type == TYPE_UNKNOWN)
+   {
+      printf("%s (Unsupported)\n", f);
+   }
+
+   free(info);
+   sf_close(file);
+
+   return type;
 }
 
 int
