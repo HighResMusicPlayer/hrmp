@@ -57,23 +57,29 @@ static void print_progress_done(struct playback* pb);
 int
 hrmp_playback(int device, int number, int total, struct file_metadata* fm)
 {
+   int err;
    int keyboard_action;
    SNDFILE* f = NULL;
    SF_INFO* info = NULL;
    snd_pcm_t* pcm_handle = NULL;
-   int container;
+   int container = 16;
+   int bytes_per_sample = 2;
+   size_t bytes_per_frame;
    snd_pcm_uframes_t pcm_buffer_size = 0;
    snd_pcm_uframes_t pcm_period_size = 0;
-   size_t buffer_size = 0;
-   int16_t* buffer = NULL;
-   sf_count_t read_count = 0;
+   snd_pcm_sframes_t frames_to_write;
+   snd_pcm_sframes_t w;
+   sf_count_t frames_read;
+   size_t input_buffer_size = 0;
+   int32_t* input_buffer = NULL;
+   size_t output_buffer_size = 0;
+   unsigned char* output_buffer = NULL;
    struct playback* pb = NULL;
    struct configuration* config = NULL;
 
    config = (struct configuration*)shmem;
 
-   if (hrmp_alsa_init_handle(config->devices[device].device, fm->format,
-                             fm->sample_rate, &pcm_handle, &container))
+   if (hrmp_alsa_init_handle(config->devices[device].device, fm->format, fm->sample_rate, &pcm_handle, &container))
    {
       hrmp_log_error("Could not initialize '%s' for '%s'",
                      config->devices[device].name, fm->name);
@@ -108,117 +114,185 @@ hrmp_playback(int device, int number, int total, struct file_metadata* fm)
    }
 
    // Playback loop
-   buffer_size = 4096 * fm->channels;
+   switch (container)
+   {
+      case 16:
+         bytes_per_sample = 2;
+         break;
+      case 24:
+         bytes_per_sample = 3;
+         break;
+      case 32:
+         bytes_per_sample = 4;
+         break;
+      default:
+         bytes_per_sample = 4;
+         break;
+   }
+   bytes_per_frame = (size_t)(bytes_per_sample * info->channels);
 
-   if (container == SND_PCM_FORMAT_S16_LE)
+   /* We'll read libsndfile data into a 32-bit int buffer (interleaved) */
+   input_buffer_size = sizeof(int32_t) * pcm_period_size * info->channels;
+   input_buffer = (int32_t*)malloc(input_buffer_size);
+   if (input_buffer == NULL)
    {
-      buffer_size = buffer_size * 2;
-   }
-   else if (container == SND_PCM_FORMAT_S24_3LE || container == SND_PCM_FORMAT_S24_LE)
-   {
-      buffer_size = buffer_size * 3;
-   }
-   else
-   {
-      buffer_size = buffer_size * 4;
+      goto error;
    }
 
-   buffer = malloc(buffer_size * sizeof(int16_t));
-   memset(buffer, 0, buffer_size);
-   while ((read_count = sf_readf_short(f, buffer, pcm_period_size)) > 0)
+   output_buffer_size = bytes_per_frame * pcm_period_size;
+   output_buffer = (unsigned char*)malloc(output_buffer_size);
+   if (output_buffer == NULL)
    {
-      if ((snd_pcm_writei(pcm_handle, buffer, pcm_period_size)) < 0)
+      goto error;
+   }
+
+   memset(input_buffer, 0, input_buffer_size);
+   memset(output_buffer, 0, output_buffer_size);
+
+   /* Playback loop */
+   while ((frames_read = sf_readf_int(f, input_buffer, pcm_period_size)) > 0)
+   {
+      /* Pack samples into output_buffer according to chosen_format */
+      size_t outpos = 0;
+      for (sf_count_t f = 0; f < frames_read; ++f)
       {
-         snd_pcm_prepare(pcm_handle);
-      }
-      else
-      {
-         print_progress(pb);
-         pb->current_samples += pcm_period_size;
-
-keyboard:
-         keyboard_action = hrmp_keyboard_get();
-         if (keyboard_action == KEYBOARD_Q)
+         for (int ch = 0; ch < info->channels; ++ch)
          {
-            printf("\n");
-            hrmp_keyboard_mode(false);
-            exit(0);
+            int32_t sample = input_buffer[f * info->channels + ch];
+            /* libsndfile gives signed int32_t; if file is 24-bit it returns it in low 24 bits. */
+            if (container == 16)
+            {
+               /* convert 32-bit to 16-bit by shifting (arith shift) */
+               int16_t s16 = (int16_t)(sample >> 16); /* lose lower bits */
+               output_buffer[outpos++] = (uint8_t)(s16 & 0xFF);
+               output_buffer[outpos++] = (uint8_t)((s16 >> 8) & 0xFF);
+            }
+            else if (container == 24)
+            {
+               /* pack lower 3 bytes little-endian */
+               output_buffer[outpos++] = (uint8_t)(sample & 0xFF);
+               output_buffer[outpos++] = (uint8_t)((sample >> 8) & 0xFF);
+               output_buffer[outpos++] = (uint8_t)((sample >> 16) & 0xFF);
+            }
+            else
+            {
+               /* 4 bytes little-endian */
+               output_buffer[outpos++] = (uint8_t)(sample & 0xFF);
+               output_buffer[outpos++] = (uint8_t)((sample >> 8) & 0xFF);
+               output_buffer[outpos++] = (uint8_t)((sample >> 16) & 0xFF);
+               output_buffer[outpos++] = (uint8_t)((sample >> 24) & 0xFF);
+            }
          }
-         else if (keyboard_action == KEYBOARD_ENTER)
+      }
+
+      /* writei expects frames, not bytes; compute frames to write */
+      frames_to_write = frames_read;
+      w = snd_pcm_writei(pcm_handle, output_buffer, frames_to_write);
+
+      if (w == -EPIPE)
+      {
+         /* underrun */
+         snd_pcm_prepare(pcm_handle);
+         w = snd_pcm_writei(pcm_handle, output_buffer, frames_to_write);
+      }
+
+      if (w < 0)
+      {
+         /* attempt recovery and continue */
+         if ((err = snd_pcm_recover(pcm_handle, (int)w, 0)) < 0)
          {
             break;
          }
-         else if (keyboard_action == KEYBOARD_SPACE)
+      }
+
+      print_progress(pb);
+      pb->current_samples += pcm_period_size;
+
+keyboard:
+      keyboard_action = hrmp_keyboard_get();
+      if (keyboard_action == KEYBOARD_Q)
+      {
+         printf("\n");
+         hrmp_keyboard_mode(false);
+         exit(0);
+      }
+      else if (keyboard_action == KEYBOARD_ENTER)
+      {
+         break;
+      }
+      else if (keyboard_action == KEYBOARD_SPACE)
+      {
+         if (config->devices[device].is_paused)
          {
-            if (config->devices[device].is_paused)
-            {
-               config->devices[device].is_paused = false;
-            }
-            else
-            {
-               config->devices[device].is_paused = true;
-               SLEEP_AND_GOTO(10000L, keyboard);
-            }
-         }
-         else if (keyboard_action == KEYBOARD_UP ||
-                  keyboard_action == KEYBOARD_DOWN ||
-                  keyboard_action == KEYBOARD_LEFT ||
-                  keyboard_action == KEYBOARD_RIGHT)
-         {
-            size_t delta = (size_t)(fm->total_samples / fm->duration);
-            size_t new_position = (size_t)pb->current_samples;
-
-            if (keyboard_action == KEYBOARD_UP)
-            {
-               delta = 60 * delta;
-            }
-            else if (keyboard_action == KEYBOARD_DOWN)
-            {
-               delta = -60 * delta;
-            }
-            else if (keyboard_action == KEYBOARD_LEFT)
-            {
-               delta = -15 * delta;
-            }
-            else if (keyboard_action == KEYBOARD_RIGHT)
-            {
-               delta = 15 * delta;
-            }
-
-            new_position += delta;
-
-            if (new_position >= pb->fm->total_samples)
-            {
-               sf_seek(f, 0, SEEK_END);
-               pb->current_samples = pb->fm->total_samples;
-            }
-            else if (new_position <= 0)
-            {
-               sf_seek(f, 0, SEEK_SET);
-               pb->current_samples = 0;
-            }
-            else
-            {
-               sf_seek(f, delta, SEEK_CUR);
-               pb->current_samples += delta;
-            }
-
-            print_progress(pb);
+            config->devices[device].is_paused = false;
          }
          else
          {
-            if (config->devices[device].is_paused)
-            {
-               SLEEP_AND_GOTO(10000L, keyboard);
-            }
+            config->devices[device].is_paused = true;
+            SLEEP_AND_GOTO(10000L, keyboard);
          }
       }
-      memset(buffer, 0, buffer_size);
+      else if (keyboard_action == KEYBOARD_UP ||
+               keyboard_action == KEYBOARD_DOWN ||
+               keyboard_action == KEYBOARD_LEFT ||
+               keyboard_action == KEYBOARD_RIGHT)
+      {
+         size_t delta = (size_t)(fm->total_samples / fm->duration);
+         size_t new_position = (size_t)pb->current_samples;
+
+         if (keyboard_action == KEYBOARD_UP)
+         {
+            delta = 60 * delta;
+         }
+         else if (keyboard_action == KEYBOARD_DOWN)
+         {
+            delta = -60 * delta;
+         }
+         else if (keyboard_action == KEYBOARD_LEFT)
+         {
+            delta = -15 * delta;
+         }
+         else if (keyboard_action == KEYBOARD_RIGHT)
+         {
+            delta = 15 * delta;
+         }
+
+         new_position += delta;
+
+         if (new_position >= pb->fm->total_samples)
+         {
+            sf_seek(f, 0, SEEK_END);
+            pb->current_samples = pb->fm->total_samples;
+         }
+         else if (new_position <= 0)
+         {
+            sf_seek(f, 0, SEEK_SET);
+            pb->current_samples = 0;
+         }
+         else
+         {
+            sf_seek(f, delta, SEEK_CUR);
+            pb->current_samples += delta;
+         }
+
+         print_progress(pb);
+      }
+      else
+      {
+         if (config->devices[device].is_paused)
+         {
+            SLEEP_AND_GOTO(10000L, keyboard);
+         }
+      }
+
+      memset(input_buffer, 0, input_buffer_size);
+      memset(output_buffer, 0, output_buffer_size);
    }
 
    print_progress_done(pb);
 
-   free(buffer);
+   free(input_buffer);
+   free(output_buffer);
    free(info);
 
    hrmp_alsa_close_handle(pcm_handle);
@@ -231,7 +305,8 @@ keyboard:
 
 error:
 
-   free(buffer);
+   free(input_buffer);
+   free(output_buffer);
    free(info);
 
    hrmp_alsa_close_handle(pcm_handle);

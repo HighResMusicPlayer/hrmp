@@ -117,8 +117,8 @@ hrmp_is_file_metadata_supported(int device, struct file_metadata* fm)
                case 192000:
                case 352800:
                case 384000:
-                 return true;
-                 break;
+                  return true;
+                  break;
                default:
                   if (config->experimental)
                   {
@@ -135,10 +135,9 @@ hrmp_is_file_metadata_supported(int device, struct file_metadata* fm)
             }
          }
       }
-      else if (config->experimental && fm->bits_per_sample == 24)
+      else if (fm->bits_per_sample == 24)
       {
-         if (config->devices[device].capabilities.s24_le &&
-             config->devices[device].capabilities.s32_le)
+         if (config->devices[device].capabilities.s24_3le)
          {
             switch (fm->sample_rate)
             {
@@ -150,19 +149,34 @@ hrmp_is_file_metadata_supported(int device, struct file_metadata* fm)
                case 192000:
                case 352800:
                case 384000:
-               case 705600:
-               case 768000:
                   return true;
                   break;
                default:
-                  break;
+                  if (config->experimental)
+                  {
+                     switch (fm->sample_rate)
+                     {
+                        case 705600:
+                        case 768000:
+                           return true;
+                           break;
+                        default:
+                           break;
+                     }
+                  }
             }
          }
       }
-      else if (config->experimental && fm->bits_per_sample == 32)
+      else if (fm->bits_per_sample == 32)
       {
-         if (config->devices[device].capabilities.s32_le)
+         if (config->devices[device].capabilities.s24_le ||
+             config->devices[device].capabilities.s32_le)
          {
+            if (fm->type == TYPE_FLAC)
+            {
+               return false;
+            }
+
             switch (fm->sample_rate)
             {
                case 44100:
@@ -173,11 +187,21 @@ hrmp_is_file_metadata_supported(int device, struct file_metadata* fm)
                case 192000:
                case 352800:
                case 384000:
-               case 768000:
                   return true;
                   break;
                default:
-                  break;
+                  if (config->experimental)
+                  {
+                     switch (fm->sample_rate)
+                     {
+                        case 705600:
+                        case 768000:
+                           return true;
+                           break;
+                        default:
+                           break;
+                     }
+                  }
             }
          }
       }
@@ -193,6 +217,7 @@ hrmp_print_file_metadata(struct file_metadata* fm)
 {
    if (fm != NULL)
    {
+      printf("%s\n", fm->name);
       if (fm->type == TYPE_UNKNOWN)
       {
          printf("  Type: TYPE_UNKNOWN\n");
@@ -205,7 +230,6 @@ hrmp_print_file_metadata(struct file_metadata* fm)
       {
          printf("  Type: TYPE_FLAC\n");
       }
-      printf("  Name: %s\n", fm->name);
       printf("  Bits: %d\n", fm->bits_per_sample);
       printf("  Format: %s\n", get_format_string(fm->format));
       printf("  Channels: %d\n", fm->channels);
@@ -321,7 +345,8 @@ get_metadata(char* filename, unsigned long type, struct file_metadata** file_met
    f = sf_open(filename, SFM_READ, info);
    if (f == NULL)
    {
-      hrmp_log_error("Error opening %s (%s)", filename, sf_strerror(f));
+      printf("%s (Unsupported due to %s)\n", filename, sf_strerror(f));
+      goto error;
    }
 
    if (!(info->format & type))

@@ -48,7 +48,20 @@ hrmp_alsa_init_handle(char* device, int format, int rate, snd_pcm_t** handle, in
    unsigned int r = (unsigned int)rate;
 
    *handle = NULL;
-   *container = format;
+
+   if (format == SND_PCM_FORMAT_S16_LE)
+   {
+      *container = 16;
+   }
+   else if (format == SND_PCM_FORMAT_S24_3LE)
+   {
+      *container = 24;
+   }
+   else
+   {
+      format = SND_PCM_FORMAT_S32_LE;
+      *container = 32;
+   }
 
    // TODO: flags - SND_PCM_NONBLOCK ?
    if ((err = snd_pcm_open(&h, device, SND_PCM_STREAM_PLAYBACK, 0)) < 0)
@@ -114,10 +127,10 @@ hrmp_alsa_init_handle(char* device, int format, int rate, snd_pcm_t** handle, in
 
    if ((err = snd_pcm_hw_params_set_format(h, hw_params, format)) < 0)
    {
-      if (format == SND_PCM_FORMAT_S24_3LE || format == SND_PCM_FORMAT_S24_LE)
+      if (format == SND_PCM_FORMAT_S24_3LE)
       {
          format = SND_PCM_FORMAT_S32_LE;
-         *container = format;
+         *container = 32;
          if ((err = snd_pcm_hw_params_set_format(h, hw_params, format)) < 0)
          {
             hrmp_log_error("snd_pcm_hw_params_set_format %s/%s", device, snd_strerror(err));
