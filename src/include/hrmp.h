@@ -158,6 +158,7 @@ struct capabilities
    bool u32_le; /**< Support unsigned 32bit (LE) decoding */
    bool u32_be; /**< Support unsigned 32bit (BE) decoding */
 
+   bool dsd_u8;     /**< Support DSD unsigned 8bit decoding */
    bool dsd_u16_le; /**< Support DSD unsigned 16bit (LE) decoding */
    bool dsd_u16_be; /**< Support DSD unsigned 16bit (BE) decoding */
    bool dsd_u32_le; /**< Support DSD unsigned 32bit (LE) decoding */

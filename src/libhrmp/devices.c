@@ -168,6 +168,7 @@ hrmp_print_devices(void)
       printf("    U32_LE: %s\n", config->devices[i].capabilities.u32_le ? "Yes" : "No");
       printf("    U32_BE: %s\n", config->devices[i].capabilities.u32_be ? "Yes" : "No");
       printf("  DSD:\n");
+      printf("    U8: %s\n", config->devices[i].capabilities.dsd_u8 ? "Yes" : "No");
       printf("    U16_LE: %s\n", config->devices[i].capabilities.dsd_u16_le ? "Yes" : "No");
       printf("    U16_BE: %s\n", config->devices[i].capabilities.dsd_u16_be ? "Yes" : "No");
       printf("    U32_LE: %s\n", config->devices[i].capabilities.dsd_u32_le ? "Yes" : "No");
@@ -328,6 +329,8 @@ check_capabilities(char* device, int index)
    snd_pcm_hw_params_get_format_mask(hw, fm);
 
    /* DSD */
+   config->devices[index].capabilities.dsd_u8 =
+       support_mask(device, fm, SND_PCM_FORMAT_DSD_U8);
    config->devices[index].capabilities.dsd_u16_le =
       support_mask(device, fm, SND_PCM_FORMAT_DSD_U16_LE);
    config->devices[index].capabilities.dsd_u16_be =
