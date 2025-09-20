@@ -343,15 +343,15 @@ get_metadata(char* filename, unsigned long type, struct file_metadata** file_met
       goto error;
    }
 
-   if (info->format & SF_FORMAT_PCM_16)
+   if ((info->format & 0xFF) == SF_FORMAT_PCM_16)
    {
       fm->bits_per_sample = 16;
    }
-   else if (info->format & SF_FORMAT_PCM_24)
+   else if ((info->format & 0xFF) == SF_FORMAT_PCM_24)
    {
       fm->bits_per_sample = 24;
    }
-   else if (info->format & SF_FORMAT_PCM_32)
+   else if ((info->format & 0xFF) == SF_FORMAT_PCM_32)
    {
       fm->bits_per_sample = 32;
    }
