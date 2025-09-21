@@ -49,6 +49,8 @@ static void check_capabilities(char* device, int index);
 static bool support_mask(char* device, snd_pcm_format_mask_t* fm, int format);
 static char* clean_description(char* s);
 static bool is_device_active(char* device);
+static int get_hardware_number(char* device);
+static char* get_hardware_selem(int hardware);
 
 void
 hrmp_check_devices(void)
@@ -63,12 +65,24 @@ hrmp_check_devices(void)
 
       if (is_device_active(config->devices[i].device))
       {
+         char* selem = NULL;
+
          if (!config->quiet)
          {
             printf("Device: %s (Active)\n", config->devices[i].name);
          }
          check_capabilities(config->devices[i].device, i);
+         config->devices[i].hardware = get_hardware_number(config->devices[i].name);
+
+         selem = get_hardware_selem(config->devices[i].hardware);
+         if (selem != NULL)
+         {
+            memcpy(config->devices[i].selem, selem, strlen(selem));
+         }
+
          config->devices[i].active = true;
+
+         free(selem);
       }
       else
       {
@@ -509,4 +523,181 @@ error:
    }
 
    return false;
+}
+
+static int
+get_hardware_number(char* device)
+{
+   int result = -1;
+   int err = 0;
+   int card = -1;
+   snd_ctl_t* ctl = NULL;
+   snd_ctl_card_info_t* info = NULL;
+   char ctlname[32];
+   char* name = NULL;
+
+   if ((err = snd_card_next(&card)) < 0)
+   {
+      hrmp_log_error("snd_card_next failed: %s", snd_strerror(err));
+      goto done;
+   }
+
+   if (card < 0)
+   {
+      goto done;
+   }
+
+   while (card >= 0 && result == -1)
+   {
+      snprintf(ctlname, sizeof(ctlname), "hw:%d", card);
+
+      err = snd_ctl_open(&ctl, ctlname, 0);
+      if (err < 0)
+      {
+         hrmp_log_error("snd_ctl_open(%s) failed: %s", ctlname, snd_strerror(err));
+         /* try next card */
+         if ((err = snd_card_next(&card)) < 0)
+         {
+            hrmp_log_error("snd_card_next failed: %s", snd_strerror(err));
+            break;
+         }
+         continue;
+      }
+
+      snd_ctl_card_info_malloc(&info);
+      if (!info)
+      {
+         hrmp_log_error("snd_ctl_card_info_malloc failed");
+         snd_ctl_close(ctl);
+         goto done;
+      }
+
+      err = snd_ctl_card_info(ctl, info);
+      if (err < 0)
+      {
+         hrmp_log_error("snd_ctl_card_info failed for %s: %s", ctlname, snd_strerror(err));
+         snd_ctl_card_info_free(info);
+         snd_ctl_close(ctl);
+         if ((err = snd_card_next(&card)) < 0)
+         {
+            hrmp_log_error("snd_card_next failed: %s", snd_strerror(err));
+            break;
+         }
+         continue;
+      }
+
+      name = (char*)snd_ctl_card_info_get_name(info);
+
+      if (!strcmp(device, name))
+      {
+         result = card;
+      }
+
+      snd_ctl_card_info_free(info);
+      snd_ctl_close(ctl);
+
+      info = NULL;
+      ctl = NULL;
+
+      if ((err = snd_card_next(&card)) < 0)
+      {
+         hrmp_log_error("snd_card_next failed: %s", snd_strerror(err));
+         break;
+      }
+   }
+
+done:
+
+   if (info != NULL)
+   {
+      snd_ctl_card_info_free(info);
+   }
+
+   if (ctl != NULL)
+   {
+      snd_ctl_close(ctl);
+   }
+
+   return result;
+}
+
+static char*
+get_hardware_selem(int hardware)
+{
+   char* result = NULL;
+   snd_mixer_t* mixer = NULL;
+   int err;
+   char card[MISC_LENGTH];
+   snd_mixer_elem_t* elem = NULL;
+   unsigned int count = 0;
+
+   if ((err = snd_mixer_open(&mixer, 0)) < 0)
+   {
+      hrmp_log_error("snd_mixer_open failed: %s", snd_strerror(err));
+      goto error;
+   }
+
+   memset(&card[0], 0, sizeof(card));
+   snprintf(&card[0], sizeof(card), "hw:%d", hardware);
+
+   if ((err = snd_mixer_attach(mixer, card)) < 0)
+   {
+      hrmp_log_error("snd_mixer_attach: %s", snd_strerror(err));
+      goto error;
+   }
+
+   if ((err = snd_mixer_selem_register(mixer, NULL, NULL)) < 0)
+   {
+      hrmp_log_error("snd_mixer_selem_register: %s", snd_strerror(err));
+      goto error;
+   }
+
+   if ((err = snd_mixer_load(mixer)) < 0)
+   {
+      hrmp_log_error("snd_mixer_load: %s", snd_strerror(err));
+      goto error;
+   }
+
+   count = snd_mixer_get_count(mixer);
+   if (count == 1)
+   {
+      snd_mixer_selem_id_t *sid;
+      char *name = NULL;
+
+      elem = snd_mixer_first_elem(mixer);
+
+      snd_mixer_selem_id_alloca(&sid);
+      snd_mixer_selem_get_id(elem, sid);
+      name = (char *)snd_mixer_selem_id_get_name(sid);
+
+      result = strdup(name);
+   } else {
+      elem = snd_mixer_first_elem(mixer);
+      for (; elem && result == NULL; elem = snd_mixer_elem_next(elem))
+      {
+         snd_mixer_selem_id_t *sid;
+         char *name = NULL;
+
+         snd_mixer_selem_id_alloca(&sid);
+         snd_mixer_selem_get_id(elem, sid);
+         name = (char*)snd_mixer_selem_id_get_name(sid);
+
+         if (!strcmp("Master", name)) {
+            result = strdup(name);
+         }
+      }
+   }
+
+   snd_mixer_close(mixer);
+
+   return result;
+
+error:
+
+   if (mixer != NULL)
+   {
+      snd_mixer_close(mixer);
+   }
+
+   return NULL;
 }

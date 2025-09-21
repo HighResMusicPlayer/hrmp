@@ -174,6 +174,8 @@ struct device
    char name[MISC_LENGTH];           /**< The full name of the device */
    char device[MISC_LENGTH];         /**< The device */
    char description[MISC_LENGTH];    /**< The description of the device */
+   int hardware;                     /**< The hardware number of the device */
+   char selem[MISC_LENGTH];          /**< The hardware selem of the device */
    struct capabilities capabilities; /**< The capabilities of the device */
    bool is_paused;                   /**< Is the device paused ? */
    bool active;                      /**< Is the device active ? */
@@ -189,6 +191,10 @@ struct configuration
    char device[MISC_LENGTH];          /**< The name of the default device */
 
    bool quiet;                        /**< The quiet the output */
+
+   int volume;                        /**< The current volume */
+   int prev_volume;                   /**< The previous volume */
+   bool is_muted;                     /**< Is muted */
 
    bool experimental;                 /**< Allow experimental features */
    bool developer;                    /**< Enable developer features */

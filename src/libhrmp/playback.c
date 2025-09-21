@@ -39,6 +39,7 @@
 #include <utils.h>
 
 /* system */
+#include <math.h>
 #include <sndfile.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -50,6 +51,8 @@
 
 static int playback_init(int device, int number, int total, snd_pcm_t* pcm_handle, struct file_metadata* fm, struct playback** playback);
 static int playback_identifier(struct file_metadata* fm, char** identifer);
+
+static int set_volume(int device, int volume);
 
 static void print_progress(struct playback* pb);
 static void print_progress_done(struct playback* pb);
@@ -210,9 +213,10 @@ hrmp_playback(int device, int number, int total, struct file_metadata* fm)
 
 keyboard:
       keyboard_action = hrmp_keyboard_get();
+
       if (keyboard_action == KEYBOARD_Q)
       {
-         printf("\n");
+         print_progress_done(pb);
          hrmp_keyboard_mode(false);
          exit(0);
       }
@@ -276,6 +280,41 @@ keyboard:
          }
 
          print_progress(pb);
+      }
+      else if (keyboard_action == KEYBOARD_COMMA)
+      {
+         int new_volume = config->volume - 5;
+
+         if (!config->is_muted)
+         {
+            set_volume(device, new_volume);
+         }
+      }
+      else if (keyboard_action == KEYBOARD_PERIOD)
+      {
+         int new_volume = config->volume + 5;
+
+         if (!config->is_muted)
+         {
+            set_volume(device, new_volume);
+         }
+      }
+      else if (keyboard_action == KEYBOARD_M)
+      {
+         int new_volume;
+
+         if (config->is_muted)
+         {
+            new_volume = config->prev_volume;
+            config->is_muted = false;
+         }
+         else
+         {
+            new_volume = 0;
+            config->is_muted = true;
+         }
+
+         set_volume(device, new_volume);
       }
       else
       {
@@ -450,6 +489,113 @@ playback_identifier(struct file_metadata* fm, char** identifer)
    *identifer = id;
 
    return 0;
+}
+
+static int
+set_volume(int device, int volume)
+{
+   int err = 0;
+   snd_mixer_t* handle = NULL;
+   snd_mixer_selem_id_t* sid = NULL;
+   snd_mixer_elem_t* elem = NULL;
+   long minv = 0;
+   long maxv = 0;
+   long vol = 0;
+   char address[MISC_LENGTH];
+   struct configuration* config = NULL;
+
+   config = (struct configuration*)shmem;
+
+   config->prev_volume = config->volume;
+
+   if (volume < 0)
+   {
+      volume = 0;
+   }
+   else if (volume > 100)
+   {
+      volume = 100;
+   }
+
+   if ((err = snd_mixer_open(&handle, 0)) < 0)
+   {
+      hrmp_log_error("Error: snd_mixer_open: %s", snd_strerror(err));
+      goto error;
+   }
+
+   memset(&address[0], 0, sizeof(address));
+   snprintf(&address[0], sizeof(address), "hw:%d", config->devices[device].hardware);
+
+   if ((err = snd_mixer_attach(handle, &address[0])) < 0)
+   {
+      hrmp_log_error("Error: snd_mixer_attach(%s): %s", config->devices[device].name, snd_strerror(err));
+      goto error;
+   }
+
+   if ((err = snd_mixer_selem_register(handle, NULL, NULL)) < 0)
+   {
+      hrmp_log_error("Error: snd_mixer_selem_register: %s", snd_strerror(err));
+      goto error;
+   }
+
+   if ((err = snd_mixer_load(handle)) < 0)
+   {
+      hrmp_log_error("Error: snd_mixer_load: %s", snd_strerror(err));
+      goto error;
+   }
+
+   snd_mixer_selem_id_malloc(&sid);
+   if (!sid)
+   {
+      hrmp_log_error("Error: failed to allocate selem id");
+      goto error;
+   }
+
+   snd_mixer_selem_id_set_index(sid, 0);
+   snd_mixer_selem_id_set_name(sid, config->devices[device].selem);
+
+   elem = snd_mixer_find_selem(handle, sid);
+   snd_mixer_selem_id_free(sid);
+
+   if (!elem)
+   {
+      hrmp_log_error("Error: simple element '%s' not found on card '%s'",
+                     config->devices[device].selem, config->devices[device].name);
+      goto error;
+   }
+
+   if (snd_mixer_selem_has_playback_volume(elem) == 0)
+   {
+      hrmp_log_error("Error: element '%s' has no playback volume",
+                     config->devices[device].selem);
+      goto error;
+   }
+
+   snd_mixer_selem_get_playback_volume_range(elem, &minv, &maxv);
+   /* Map percent -> range */
+   vol = minv + (volume * (maxv - minv)) / 100;
+
+   /* Set volume for all channels (left/right) */
+   if ((err = snd_mixer_selem_set_playback_volume_all(elem, vol)) < 0)
+   {
+      hrmp_log_error("Error: set playback volume: %s", snd_strerror(err));
+      goto error;
+   }
+
+   config->volume = volume;
+
+   snd_mixer_close(handle);
+
+   return 0;
+
+error:
+
+   if (handle != NULL)
+   {
+      snd_mixer_close(handle);
+   }
+
+   return 1;
 }
 
 static void

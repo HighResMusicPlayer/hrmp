@@ -100,6 +100,10 @@ hrmp_init_configuration(void* shm)
 
    config = (struct configuration*)shm;
 
+   config->volume = 100;
+   config->prev_volume = 100;
+   config->is_muted = false;
+
    config->log_type = HRMP_LOGGING_TYPE_CONSOLE;
    config->log_level = HRMP_LOGGING_LEVEL_INFO;
    config->log_mode = HRMP_LOGGING_MODE_APPEND;

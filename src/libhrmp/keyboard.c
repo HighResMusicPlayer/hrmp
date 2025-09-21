@@ -74,6 +74,10 @@ hrmp_keyboard_get(void)
 
    if (c >= 0)
    {
+#ifdef DEBUG
+      printf("Keyboard: %d\n", c);
+#endif
+
       switch (c)
       {
          case 10:
@@ -94,8 +98,17 @@ hrmp_keyboard_get(void)
          case 66:
             ret = KEYBOARD_DOWN;
             break;
-         case 'q':
+         case 113:
             ret = KEYBOARD_Q;
+            break;
+         case 109:
+            ret = KEYBOARD_M;
+            break;
+         case 44:
+            ret = KEYBOARD_COMMA;
+            break;
+         case 46:
+            ret = KEYBOARD_PERIOD;
             break;
          default:
             break;
