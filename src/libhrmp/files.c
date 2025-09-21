@@ -62,7 +62,10 @@ hrmp_is_file_supported(char* f)
 
          if (info->format & SF_FORMAT_FLAC)
          {
-            type = TYPE_FLAC;
+            if (info->channels == 2)
+            {
+               type = TYPE_FLAC;
+            }
          }
       }
    }
@@ -77,7 +80,10 @@ hrmp_is_file_supported(char* f)
 
          if (info->format & SF_FORMAT_WAV)
          {
-            type = TYPE_WAV;
+            if (info->channels == 2)
+            {
+               type = TYPE_WAV;
+            }
          }
       }
    }
