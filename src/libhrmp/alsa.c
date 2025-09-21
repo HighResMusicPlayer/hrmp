@@ -101,7 +101,7 @@ hrmp_alsa_init_handle(char* device, int format, int rate, snd_pcm_t** handle, in
    }
 
    snd_pcm_hw_params_get_buffer_size_max(hw_params, &buffer_size);
-   buffer_size = MIN(buffer_size, MAX_BUFFER_SIZE);
+   buffer_size = MIN(buffer_size, (snd_pcm_uframes_t)MAX_BUFFER_SIZE);
    if ((err = snd_pcm_hw_params_set_buffer_size_near(h, hw_params, &buffer_size)) < 0)
    {
       hrmp_log_error("snd_pcm_hw_params_set_buffer_size_near %s/%s", device, snd_strerror(err));

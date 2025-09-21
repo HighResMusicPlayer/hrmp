@@ -256,7 +256,7 @@ main(int argc, char** argv)
       goto error;
    }
 
-   memcpy(&config->configuration_path[0], cp, MIN(strlen(cp), MAX_PATH - 1));
+   memcpy(&config->configuration_path[0], cp, MIN(strlen(cp), (size_t)MAX_PATH - 1));
 
    if (hrmp_start_logging())
    {
