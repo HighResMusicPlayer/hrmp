@@ -6,8 +6,8 @@ License:       BSD
 URL:           https://github.com/HighResMusicPlayer/hrmp
 Source0:       https://github.com/HighResMusicPlayer/hrmp/releases/download/%{version}/hrmp-%{version}.tar.gz
 
-BuildRequires: gcc cmake make python3-docutils alsa-lib alsa-lib-devel
-Requires:      alsa-lib
+BuildRequires: gcc cmake make python3-docutils alsa-lib alsa-lib-devel libsndfile libsndfile-devel
+Requires:      alsa-lib libsndfile
 
 %description
 hrmp is a high resolution music player.
