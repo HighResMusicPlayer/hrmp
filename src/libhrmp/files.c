@@ -32,7 +32,6 @@
 #include <hrmp.h>
 #include <files.h>
 #include <logging.h>
-#include <sndfile-64.h>
 #include <utils.h>
 
 /* system */
