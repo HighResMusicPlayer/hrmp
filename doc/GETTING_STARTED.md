@@ -4,7 +4,7 @@ First of all, make sure that `hrmp` is installed and in your path by
 using `hrmp -?`. You should see
 
 ```
-hrmp 0.4.1
+hrmp 0.4.2
   High resolution music player
 
 Usage:
