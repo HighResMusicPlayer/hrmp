@@ -47,6 +47,7 @@
 #define KEYBOARD_COMMA   8
 #define KEYBOARD_PERIOD  9
 #define KEYBOARD_M      10
+#define KEYBOARD_SLASH  11
 
 /**
  * Get a keyboard command
