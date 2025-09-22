@@ -526,16 +526,32 @@ print_progress_done(struct playback* pb)
    if (!config->quiet)
    {
       char t[MAX_PATH];
+      int total_hour = 0;
       int total_min = 0;
       int total_sec = 0;
 
       memset(&t[0], 0, sizeof(t));
 
       total_min = (int)(pb->fm->duration) / 60;
-      total_sec = pb->fm->duration - (total_min * 60);
 
-      snprintf(&t[0], sizeof(t), "%d:%02d/%d:%02d", total_min, total_sec,
-               total_min, total_sec);
+      if (total_min >= 60)
+      {
+         total_hour = (int)(total_min / 60.0);
+         total_min = total_min - (total_hour * 60);
+      }
+
+      total_sec = pb->fm->duration - ((total_hour * 60 * 60) + (total_min * 60));
+
+      if (total_hour > 0)
+      {
+         snprintf(&t[0], sizeof(t), "%d:%02d:%02d/%d:%02d:%02d",
+                  total_hour, total_min, total_sec,
+                  total_hour, total_min, total_sec);
+      }
+      else
+      {
+         snprintf(&t[0], sizeof(t), "%d:%02d/%d:%02d", total_min, total_sec, total_min, total_sec);
+      }
 
       printf("\r[%d/%d] %s: %s %s (%s) (100%%)\n", pb->file_number, pb->total_number,
              config->devices[pb->device].name, pb->fm->name, pb->identifier,
