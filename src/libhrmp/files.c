@@ -86,6 +86,24 @@ hrmp_is_file_supported(char* f)
          }
       }
    }
+   else if (hrmp_ends_with(f, ".mp3"))
+   {
+      info = (SF_INFO*)malloc(sizeof(SF_INFO));
+      if (info != NULL)
+      {
+         memset(info, 0, sizeof(SF_INFO));
+
+         file = sf_open(f, SFM_READ, info);
+
+         if (info->format & SF_FORMAT_MPEG_LAYER_III)
+         {
+            if (info->channels == 2)
+            {
+               type = TYPE_MP3;
+            }
+         }
+      }
+   }
 
    if (type == TYPE_UNKNOWN)
    {
@@ -106,16 +124,23 @@ hrmp_file_metadata(char* f, struct file_metadata** fm)
 
    *fm = NULL;
 
-   if (type == TYPE_FLAC)
+   if (type == TYPE_WAV)
+   {
+      if (get_metadata(f, SF_FORMAT_WAV, &m))
+      {
+         goto error;
+      }
+   }
+   else if (type == TYPE_FLAC)
    {
       if (get_metadata(f, SF_FORMAT_FLAC, &m))
       {
          goto error;
       }
    }
-   else if (type == TYPE_WAV)
+   else if (type == TYPE_MP3)
    {
-      if (get_metadata(f, SF_FORMAT_WAV, &m))
+      if (get_metadata(f, SF_FORMAT_MPEG_LAYER_III, &m))
       {
          goto error;
       }
@@ -270,6 +295,10 @@ hrmp_print_file_metadata(struct file_metadata* fm)
       {
          printf("  Type: TYPE_FLAC\n");
       }
+      else if (fm->type == TYPE_MP3)
+      {
+         printf("  Type: TYPE_MP3\n");
+      }
       printf("  Bits: %d\n", fm->bits_per_sample);
       printf("  Format: %s\n", get_format_string(fm->format));
       printf("  Channels: %d\n", fm->channels);
@@ -378,6 +407,11 @@ get_metadata(char* filename, unsigned long type, struct file_metadata** file_met
    else if (type == SF_FORMAT_FLAC)
    {
       fm->type = TYPE_FLAC;
+   }
+   else if (type == SF_FORMAT_MPEG_LAYER_III)
+   {
+      fm->type = TYPE_MP3;
+      fm->bits_per_sample = 16;
    }
 
    memcpy(fm->name, filename, strlen(filename));

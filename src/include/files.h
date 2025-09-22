@@ -44,6 +44,7 @@ extern "C" {
 #define TYPE_UNKNOWN 0
 #define TYPE_WAV     1
 #define TYPE_FLAC    2
+#define TYPE_MP3     3
 
 /** @struct file_metadata
  * Defines a file metadata

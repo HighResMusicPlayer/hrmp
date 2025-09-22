@@ -408,20 +408,7 @@ main(int argc, char** argv)
             int type = hrmp_is_file_supported(fn);
             struct file_metadata* fm = NULL;
 
-            if (type == TYPE_FLAC)
-            {
-               hrmp_file_metadata(fn, &fm);
-
-               if (fm != NULL)
-               {
-                  if (hrmp_is_file_metadata_supported(active_device, fm))
-                  {
-                     hrmp_set_proc_title(argc, argv, fn);
-                     hrmp_playback(active_device, num_files + 1, files->size, fm);
-                  }
-               }
-            }
-            else if (type == TYPE_WAV)
+            if (type == TYPE_WAV || type == TYPE_FLAC || type == TYPE_MP3)
             {
                hrmp_file_metadata(fn, &fm);
 

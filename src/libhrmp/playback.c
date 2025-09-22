@@ -381,6 +381,10 @@ playback_identifier(struct file_metadata* fm, char** identifer)
    {
       id = hrmp_append(id, "FLAC/");
    }
+   else if (fm->type == TYPE_MP3)
+   {
+      id = hrmp_append(id, "MP3/");
+   }
 
    switch (fm->sample_rate)
    {
