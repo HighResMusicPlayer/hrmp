@@ -1,74 +1,38 @@
 #
-# Add files for libpgexporter
+# Add files for hrmp
 #
 FILE(GLOB SOURCE_FILES "libhrmp/*.c")
 FILE(GLOB HEADER_FILES "include/*.h")
 
 set(SOURCES ${SOURCE_FILES} ${HEADER_FILES})
 
-#
-# OS
-#
-if (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
+add_compile_options(-DHAVE_LINUX)
+add_compile_options(-D_POSIX_C_SOURCE=200809L)
 
-  add_compile_options(-DHAVE_LINUX)
-  add_compile_options(-D_POSIX_C_SOURCE=200809L)
-
-  check_include_file("execinfo.h" HAVE_EXECINFO_H)
-  if (HAVE_EXECINFO_H)
-    add_compile_options(-DHAVE_EXECINFO_H)
-  endif()
-  #
-  # Include directories
-  #
-  include_directories(
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${LIBASOUND_INCLUDE_DIRS}
-    ${LIBSNDFILE_INCLUDE_DIR}
-  )
-
-  #
-  # Library directories
-  #
-  link_libraries(
-    ${LIBATOMIC_LIBRARY}
-    ${LIBASOUND_LIBRARIES}
-    ${LIBSNDFILE_LIBRARY}
-  )
-
-  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--no-undefined")
-
-else()
-
-  add_compile_options(-D_XOPEN_SOURCE=700)
-  add_compile_options(-D_BSD_SOURCE)
-  add_compile_options(-D_DEFAULT_SOURCE)
-  add_compile_options(-D__BSD_VISIBLE)
-
-  #
-  # Include directories
-  #
-  include_directories(
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${LIBASOUND_INCLUDE_DIRS}
-    ${LIBSNDFILE_INCLUDE_DIR}
-  )
-
-  #
-  # Library directories
-  #
-  link_libraries(
-    ${LIBASOUND_LIBRARIES}
-    ${LIBSNDFILE_LIBRARY}
-  )
-
-  if (${CMAKE_SYSTEM_NAME} STREQUAL "OpenBSD")
-    add_compile_options(-DHAVE_OPENBSD)
-  elseif (${CMAKE_SYSTEM_NAME} STREQUAL "FreeBSD")
-    add_compile_options(-DHAVE_FREEBSD)
-  endif()
-
+check_include_file("execinfo.h" HAVE_EXECINFO_H)
+if (HAVE_EXECINFO_H)
+  add_compile_options(-DHAVE_EXECINFO_H)
 endif()
+
+#
+# Include directories
+#
+include_directories(
+  ${CMAKE_CURRENT_SOURCE_DIR}/include
+  ${LIBASOUND_INCLUDE_DIRS}
+  ${LIBSNDFILE_INCLUDE_DIR}
+)
+
+#
+# Library directories
+#
+link_libraries(
+  ${LIBATOMIC_LIBRARY}
+  ${LIBASOUND_LIBRARIES}
+  ${LIBSNDFILE_LIBRARY}
+)
+
+set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--no-undefined")
 
 #
 # Compile options
@@ -92,12 +56,10 @@ if (CMAKE_BUILD_TYPE MATCHES Debug)
   add_compile_options(-DDEBUG)
 
   if(CMAKE_C_COMPILER_ID STREQUAL "Clang")
-    if (NOT ${CMAKE_SYSTEM_NAME} STREQUAL "OpenBSD")
-      add_compile_options(-fsanitize=address)
+    add_compile_options(-fsanitize=address)
 
-      set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_LINKER_FLAGS_DEBUG} -fsanitize=address")
-      set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS_DEBUG} -fsanitize=address")
-    endif()
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_LINKER_FLAGS_DEBUG} -fsanitize=address")
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS_DEBUG} -fsanitize=address")
   endif()
 
   check_c_compiler_flag(-fno-omit-frame-pointer HAS_NO_OMIT_FRAME_POINTER)
@@ -141,12 +103,11 @@ endif()
 check_c_compiler_flag(-fPIC HAS_PIC)
 if (HAS_PIC)
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIC")
+  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_C_FLAGS} -fPIC")
 endif()
 
-if (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
-  include(CheckPIESupported)
-  check_pie_supported()
-endif()
+include(CheckPIESupported)
+check_pie_supported()
 
 check_c_compiler_flag(-Wl,-z,relro HAS_RELRO)
 if (HAS_RELRO)

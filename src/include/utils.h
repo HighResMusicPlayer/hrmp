@@ -31,6 +31,7 @@
 #ifndef HRMP_UTILS_H
 #define HRMP_UTILS_H
 
+#include <stdint.h>
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -39,7 +40,24 @@ extern "C" {
 #include <deque.h>
 
 #include <stdbool.h>
+#include <stdio.h>
 #include <stdlib.h>
+
+/**
+ * Read an unit64_t in little-engine format
+ * @param f The file
+ * @return The result
+ */
+uint64_t
+hrmp_read_le_u64(FILE *f);
+
+/**
+ * Read an unit32_t in little-engine format
+ * @param f The file
+ * @return The result
+ */
+uint32_t
+hrmp_read_le_u32(FILE *f);
 
 /**
  * Get the home directory of the user

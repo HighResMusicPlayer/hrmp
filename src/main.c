@@ -347,20 +347,12 @@ main(int argc, char** argv)
 
                if (hrmp_exists(argv[i]))
                {
-                  if (hrmp_is_file_supported(argv[i]))
+                  struct file_metadata* fm = NULL;
+
+                  if (hrmp_file_metadata(active_device, argv[i], &fm) == 0)
                   {
-                     struct file_metadata* fm = NULL;
-
-                     if (hrmp_file_metadata(argv[i], &fm) == 0)
-                     {
-                        if (hrmp_is_file_metadata_supported(active_device, fm))
-                        {
-                           hrmp_deque_add(files, NULL, (uintptr_t)argv[i], ValueString);
-                           added = true;
-                        }
-                     }
-
-                     free(fm);
+                     hrmp_deque_add(files, NULL, (uintptr_t)fm, ValueMem);
+                     added = true;
                   }
                }
 
@@ -404,25 +396,10 @@ main(int argc, char** argv)
          num_files = 0;
          while (hrmp_deque_iterator_next(files_iterator))
          {
-            char* fn = (char*)hrmp_value_data(files_iterator->value);
-            int type = hrmp_is_file_supported(fn);
-            struct file_metadata* fm = NULL;
+            struct file_metadata* fm = (struct file_metadata*)hrmp_value_data(files_iterator->value);
 
-            if (type == TYPE_WAV || type == TYPE_FLAC || type == TYPE_MP3)
-            {
-               hrmp_file_metadata(fn, &fm);
-
-               if (fm != NULL)
-               {
-                  if (hrmp_is_file_metadata_supported(active_device, fm))
-                  {
-                     hrmp_set_proc_title(argc, argv, fn);
-                     hrmp_playback(active_device, num_files + 1, files->size, fm);
-                  }
-               }
-            }
-
-            free(fm);
+            hrmp_set_proc_title(argc, argv, fm->name);
+            hrmp_playback(active_device, num_files + 1, files->size, fm);
 
             num_files++;
          }

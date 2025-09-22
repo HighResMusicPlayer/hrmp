@@ -45,6 +45,13 @@ extern "C" {
 #define TYPE_WAV     1
 #define TYPE_FLAC    2
 #define TYPE_MP3     3
+#define TYPE_DSF     4
+
+#define FORMAT_UNKNOWN 0
+#define FORMAT_16      1
+#define FORMAT_24      2
+#define FORMAT_32      3
+#define FORMAT_1       4
 
 /** @struct file_metadata
  * Defines a file metadata
@@ -53,7 +60,7 @@ struct file_metadata
 {
    int type;                     /**< The type of file */
    char name[MAX_PATH];          /**< The name of the file */
-   int format;                   /**< The format */
+   int format;                   /**< The format of the file */
    size_t file_size;             /**< The file size */
    unsigned int sample_rate;     /**< The sample rate */
    unsigned int channels;        /**< The number of channels */
@@ -63,30 +70,14 @@ struct file_metadata
 };
 
 /**
- * Is the file supported
- * @param f The file
- * @return The result type
- */
-int
-hrmp_is_file_supported(char* f);
-
-/**
  * Get the file metadata
+ * @param device The device
  * @param f The file
  * @param fm The file metadata
- * @return The result
+ * @return The result or NULL if not supported
  */
 int
-hrmp_file_metadata(char* f, struct file_metadata** fm);
-
-/**
- * Is the file metadata supported
- * @param device The device
- * @param fm The file metadata
- * @return The result
- */
-bool
-hrmp_is_file_metadata_supported(int device, struct file_metadata* fm);
+hrmp_file_metadata(int device, char* f, struct file_metadata** fm);
 
 /**
  * Print the file metadata

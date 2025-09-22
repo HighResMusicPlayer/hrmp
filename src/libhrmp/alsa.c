@@ -31,6 +31,7 @@
 /* hrmp */
 #include <hrmp.h>
 #include <alsa.h>
+#include <files.h>
 #include <logging.h>
 
 #include <alsa/pcm.h>
@@ -46,24 +47,26 @@ hrmp_alsa_init_handle(char* device, int format, int rate, snd_pcm_t** handle, in
    snd_pcm_uframes_t buffer_size = 0;
    snd_pcm_uframes_t period_size = 0;
    unsigned int r = (unsigned int)rate;
+   int fmt = 0;
 
    *handle = NULL;
 
-   if (format == SND_PCM_FORMAT_S16_LE)
+   if (format == FORMAT_16)
    {
       *container = 16;
+      fmt = SND_PCM_FORMAT_S16_LE;
    }
-   else if (format == SND_PCM_FORMAT_S24_3LE)
+   else if (format == FORMAT_24)
    {
       *container = 24;
+      fmt = SND_PCM_FORMAT_S24_3LE;
    }
    else
    {
-      format = SND_PCM_FORMAT_S32_LE;
+      fmt = SND_PCM_FORMAT_S32_LE;
       *container = 32;
    }
 
-   // TODO: flags - SND_PCM_NONBLOCK ?
    if ((err = snd_pcm_open(&h, device, SND_PCM_STREAM_PLAYBACK, 0)) < 0)
    {
       hrmp_log_error("snd_pcm_open %s/%s", device, snd_strerror(err));
@@ -125,13 +128,13 @@ hrmp_alsa_init_handle(char* device, int format, int rate, snd_pcm_t** handle, in
       goto error;
    }
 
-   if ((err = snd_pcm_hw_params_set_format(h, hw_params, format)) < 0)
+   if ((err = snd_pcm_hw_params_set_format(h, hw_params, fmt)) < 0)
    {
-      if (format == SND_PCM_FORMAT_S24_3LE)
+      if (fmt == SND_PCM_FORMAT_S24_3LE)
       {
-         format = SND_PCM_FORMAT_S32_LE;
+         fmt = SND_PCM_FORMAT_S32_LE;
          *container = 32;
-         if ((err = snd_pcm_hw_params_set_format(h, hw_params, format)) < 0)
+         if ((err = snd_pcm_hw_params_set_format(h, hw_params, fmt)) < 0)
          {
             hrmp_log_error("snd_pcm_hw_params_set_format %s/%s", device, snd_strerror(err));
             goto error;
@@ -168,6 +171,9 @@ error:
       snd_pcm_drain(h);
       snd_pcm_close(h);
    }
+
+   *handle = NULL;
+   *container = 0;
 
    return 1;
 }

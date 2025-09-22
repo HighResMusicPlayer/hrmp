@@ -60,6 +60,37 @@ static bool env_changed = false;
 static int max_process_title_size = 0;
 #endif
 
+uint64_t
+hrmp_read_le_u64(FILE* f)
+{
+   uint8_t b[8];
+   uint64_t v = 0;
+
+   if (fread(b, 1, 8, f) != 8)
+   {
+      return 0;
+   }
+
+   for (int i = 0; i < 8; i++)
+   {
+      v |= ((uint64_t)b[i]) << (8 * i);
+   }
+
+   return v;
+}
+
+uint32_t
+hrmp_read_le_u32(FILE* f)
+{
+   uint8_t b[4];
+   if (fread(b, 1, 4, f) != 4)
+   {
+      return 0;
+   }
+   return (uint32_t)b[0] | ((uint32_t)b[1] << 8) | ((uint32_t)b[2] << 16) |
+          ((uint32_t)b[3] << 24);
+}
+
 char*
 hrmp_get_home_directory(void)
 {
@@ -162,23 +193,17 @@ hrmp_get_files(int device, char* base, bool recursive, struct deque* files)
 
       if (hrmp_is_file(d))
       {
-         if (hrmp_is_file_supported(d))
+         struct file_metadata* fm = NULL;
+
+         if (hrmp_file_metadata(device, d, &fm) == 0)
          {
-            struct file_metadata* fm = NULL;
+            char* v = NULL;
 
-            if (hrmp_file_metadata(d, &fm) == 0)
-            {
-               if (hrmp_is_file_metadata_supported(device, fm))
-               {
-                  char* v = NULL;
-
-                  v = hrmp_append(v, d);
-                  hrmp_deque_add(files, NULL, (uintptr_t)v, ValueString);
-               }
-            }
-
-            free(fm);
+            v = hrmp_append(v, d);
+            hrmp_deque_add(files, NULL, (uintptr_t)v, ValueString);
          }
+
+         free(fm);
       }
       else
       {

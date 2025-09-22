@@ -464,10 +464,19 @@ playback_identifier(struct file_metadata* fm, char** identifer)
       case 768000:
          id = hrmp_append(id, "768kHz");
          break;
+      case 2822400:
+         id = hrmp_append(id, "2.8224MHz");
+         break;
+      case 5644800:
+         id = hrmp_append(id, "5.6448MHz");
+         break;
+      case 11289600:
+         id = hrmp_append(id, "11.2896MHz");
+         break;
       default:
          id = hrmp_append_int(id, (int)fm->sample_rate);
          id = hrmp_append(id, "Hz");
-         hrmp_log_error("Unsupported sample rate: %dkHz/%dbits", fm->sample_rate, fm->bits_per_sample);
+         printf("Unsupported sample rate: %dHz/%dbits\n", fm->sample_rate, fm->bits_per_sample);
          break;
    }
 
@@ -475,6 +484,9 @@ playback_identifier(struct file_metadata* fm, char** identifer)
 
    switch (fm->bits_per_sample)
    {
+      case 1:
+         id = hrmp_append(id, "1bit");
+         break;
       case 16:
          id = hrmp_append(id, "16bits");
          break;
@@ -487,7 +499,7 @@ playback_identifier(struct file_metadata* fm, char** identifer)
       default:
          id = hrmp_append_int(id, (int)fm->bits_per_sample);
          id = hrmp_append(id, "bits");
-         hrmp_log_error("Unsupported bits per sample: %dkHz/%dbits", fm->sample_rate, fm->bits_per_sample);
+         hrmp_log_error("Unsupported bits per sample: %dHz/%dbits", fm->sample_rate, fm->bits_per_sample);
          break;
    }
 
