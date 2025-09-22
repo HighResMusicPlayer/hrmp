@@ -53,12 +53,16 @@ hrmp -R .
 
 ## Keyboard shortcuts
 
-| Key             | Description         |
-| :-------------- | :------------------ |
-| `<SPACEBAR>`    | Pause current file  |
-| `q`             | Quit                |
-| `<ENTER>`       | Quit current file   |
-| `<ARROW_UP>`    | Forward 1 minute    |
-| `<ARROW_DOWN>`  | Rewind 1 minute     |
-| `<ARROW_LEFT>`  | Forward 15 seconds  |
-| `<ARROW_RIGHT>` | Rewind 15 seconds   |
+| Key             | Description          |
+| :-------------- | :------------------- |
+| `<SPACEBAR>`    | Pause current file   |
+| `q`             | Quit                 |
+| `<ENTER>`       | Quit current file    |
+| `<ARROW_UP>`    | Forward 1 minute     |
+| `<ARROW_DOWN>`  | Rewind 1 minute      |
+| `<ARROW_LEFT>`  | Forward 15 seconds   |
+| `<ARROW_RIGHT>` | Rewind 15 seconds    |
+| `,`             | Reduce volume by 5   |
+| `.`             | Increase volume by 5 |
+| `m`             | Mute / unmute        |
+| `/`             | Volume at 100        |

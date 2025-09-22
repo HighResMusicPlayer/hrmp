@@ -316,6 +316,13 @@ keyboard:
 
          set_volume(device, new_volume);
       }
+      else if (keyboard_action == KEYBOARD_SLASH)
+      {
+         int new_volume = 100;
+
+         config->is_muted = false;
+         set_volume(device, new_volume);
+      }
       else
       {
          if (config->devices[device].is_paused)

@@ -110,6 +110,9 @@ hrmp_keyboard_get(void)
          case 46:
             ret = KEYBOARD_PERIOD;
             break;
+         case 47:
+            ret = KEYBOARD_SLASH;
+            break;
          default:
             break;
       }

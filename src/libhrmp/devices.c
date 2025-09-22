@@ -661,28 +661,31 @@ get_hardware_selem(int hardware)
    count = snd_mixer_get_count(mixer);
    if (count == 1)
    {
-      snd_mixer_selem_id_t *sid;
-      char *name = NULL;
+      snd_mixer_selem_id_t* sid;
+      char* name = NULL;
 
       elem = snd_mixer_first_elem(mixer);
 
       snd_mixer_selem_id_alloca(&sid);
       snd_mixer_selem_get_id(elem, sid);
-      name = (char *)snd_mixer_selem_id_get_name(sid);
+      name = (char*)snd_mixer_selem_id_get_name(sid);
 
       result = strdup(name);
-   } else {
+   }
+   else
+   {
       elem = snd_mixer_first_elem(mixer);
       for (; elem && result == NULL; elem = snd_mixer_elem_next(elem))
       {
-         snd_mixer_selem_id_t *sid;
-         char *name = NULL;
+         snd_mixer_selem_id_t* sid;
+         char* name = NULL;
 
          snd_mixer_selem_id_alloca(&sid);
          snd_mixer_selem_get_id(elem, sid);
          name = (char*)snd_mixer_selem_id_get_name(sid);
 
-         if (!strcmp("Master", name)) {
+         if (!strcmp("Master", name))
+         {
             result = strdup(name);
          }
       }
