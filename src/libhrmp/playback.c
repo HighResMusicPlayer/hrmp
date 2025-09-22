@@ -463,26 +463,51 @@ print_progress(struct playback* pb)
    {
       char t[MAX_PATH];
       double current = 0.0;
+      int current_hour = 0;
       int current_min = 0;
       int current_sec = 0;
+      int total_hour = 0;
       int total_min = 0;
       int total_sec = 0;
       int percent = 0;
 
       memset(&t[0], 0, sizeof(t));
 
-      current = (int)((double)(pb->current_samples) / pb->fm->sample_rate);
-
+      current = (int)((double)pb->current_samples / pb->fm->sample_rate);
       current_min = (int)(current) / 60;
-      current_sec = current - (current_min * 60);
 
-      total_min = (int)(pb->fm->duration) / 60;
-      total_sec = pb->fm->duration - (total_min * 60);
+      if (current_min >= 60)
+      {
+         current_hour = (int)(current_min / 60.0);
+         current_min = current_min - (current_hour * 60);
+      }
+
+      current_sec = current - ((current_hour * 60 * 60) + (current_min * 60));
+
+      total_min = (int)pb->fm->duration / 60;
+
+      if (total_min >= 60)
+      {
+         total_hour = (int)(total_min / 60.0);
+         total_min = total_min - (total_hour * 60);
+      }
+
+      total_sec = pb->fm->duration - ((total_hour * 60 * 60) + (total_min * 60));
 
       percent = (int)(current * 100 / pb->fm->duration);
 
-      snprintf(&t[0], sizeof(t), "%d:%02d/%d:%02d", current_min, current_sec,
-               total_min, total_sec);
+      if (total_hour > 0)
+      {
+         snprintf(&t[0], sizeof(t), "%d:%02d:%02d/%d:%02d:%02d",
+                  current_hour, current_min, current_sec,
+                  total_hour, total_min, total_sec);
+      }
+      else
+      {
+         snprintf(&t[0], sizeof(t), "%d:%02d/%d:%02d",
+                  current_min, current_sec,
+                  total_min, total_sec);
+      }
 
       printf("\r[%d/%d] %s: %s %s (%s) (%d%%)", pb->file_number, pb->total_number, config->devices[pb->device].name,
              pb->fm->name, pb->identifier, &t[0], percent);
