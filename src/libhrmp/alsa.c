@@ -34,6 +34,7 @@
 #include <files.h>
 #include <logging.h>
 
+#include <stdio.h>
 #include <alsa/pcm.h>
 
 #define MAX_BUFFER_SIZE 131072
@@ -61,10 +62,16 @@ hrmp_alsa_init_handle(char* device, int format, int rate, snd_pcm_t** handle, in
       *container = 24;
       fmt = SND_PCM_FORMAT_S24_3LE;
    }
-   else
+   else if (format == FORMAT_32)
    {
-      fmt = SND_PCM_FORMAT_S32_LE;
       *container = 32;
+      fmt = SND_PCM_FORMAT_S32_LE;
+   }
+   else if (format == FORMAT_1)
+   {
+      *container = 24;
+      fmt = SND_PCM_FORMAT_S24_3LE;
+      r = (unsigned int)(r / 16); /* DoP */
    }
 
    if ((err = snd_pcm_open(&h, device, SND_PCM_STREAM_PLAYBACK, 0)) < 0)
@@ -97,7 +104,7 @@ hrmp_alsa_init_handle(char* device, int format, int rate, snd_pcm_t** handle, in
       goto error;
    }
 
-   if ((err = snd_pcm_hw_params_set_channels(h, hw_params, 2)) < 0) // TODO
+   if ((err = snd_pcm_hw_params_set_channels(h, hw_params, 2)) < 0)
    {
       hrmp_log_error("snd_pcm_hw_params_set_channels %s/%s", device, snd_strerror(err));
       goto error;
@@ -133,16 +140,16 @@ hrmp_alsa_init_handle(char* device, int format, int rate, snd_pcm_t** handle, in
       if (fmt == SND_PCM_FORMAT_S24_3LE)
       {
          fmt = SND_PCM_FORMAT_S32_LE;
-         *container = 32;
          if ((err = snd_pcm_hw_params_set_format(h, hw_params, fmt)) < 0)
          {
             hrmp_log_error("snd_pcm_hw_params_set_format %s/%s", device, snd_strerror(err));
             goto error;
          }
+         *container = 32;
       }
       else
       {
-         hrmp_log_error("snd_pcm_hw_params_set_format %s/%s", device, snd_strerror(err));
+         hrmp_log_error("snd_pcm_hw_params_set_format %s/%d/%s", device, fmt, snd_strerror(err));
          goto error;
       }
    }

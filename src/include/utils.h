@@ -44,20 +44,36 @@ extern "C" {
 #include <stdlib.h>
 
 /**
- * Read an unit64_t in little-engine format
+ * Read an unit64_t in little-endian format
  * @param f The file
  * @return The result
  */
 uint64_t
-hrmp_read_le_u64(FILE *f);
+hrmp_read_le_u64(FILE* f);
 
 /**
- * Read an unit32_t in little-engine format
+ * Read an unit32_t in little-endian format
  * @param f The file
  * @return The result
  */
 uint32_t
-hrmp_read_le_u32(FILE *f);
+hrmp_read_le_u32(FILE* f);
+
+/**
+ * Read an unit64_t in little-endian format
+ * @param buffer The buffer
+ * @return The result
+ */
+uint64_t
+hrmp_read_le_u64_buffer(uint8_t* buffer);
+
+/**
+ * Read an unit32_t in little-endian format
+ * @param f The file
+ * @return The result
+ */
+uint32_t
+hrmp_read_le_u32_buffer(uint8_t* buffer);
 
 /**
  * Get the home directory of the user
@@ -97,6 +113,16 @@ hrmp_is_directory(char* directory);
  */
 bool
 hrmp_is_file(char* file);
+
+/**
+ * Load file into memory buffer
+ * @param f The file name
+ * @param buffer_size The buffer size
+ * @param buffer The buffer
+ * @return The result
+ */
+int
+hrmp_file_to_buffer(char* filename, size_t* buffer_size, void** buffer);
 
 /**
  * Get the files of a directory

@@ -221,7 +221,11 @@ metadata_supported(int device, struct file_metadata* fm)
       }
       else if (fm->bits_per_sample == 1)
       {
-         if (config->devices[device].capabilities.dsd_u8)
+         if (config->devices[device].capabilities.dsd_u8 &&
+             config->devices[device].capabilities.dsd_u16_le &&
+             config->devices[device].capabilities.dsd_u16_be &&
+             config->devices[device].capabilities.dsd_u32_le &&
+             config->devices[device].capabilities.dsd_u32_be)
          {
             switch (fm->sample_rate)
             {
@@ -270,6 +274,7 @@ hrmp_print_file_metadata(struct file_metadata* fm)
       }
       printf("  Format: %d\n", fm->format);
       printf("  Bits: %d\n", fm->bits_per_sample);
+      printf("  Container: %d\n", fm->container);
       printf("  Channels: %d\n", fm->channels);
       printf("  Size: %zu\n", fm->file_size);
       printf("  Rate: %d\n", fm->sample_rate);
@@ -296,7 +301,7 @@ init_metadata(char* filename, int type, struct file_metadata** file_metadata)
 
    fm->type = type;
    memcpy(fm->name, filename, strlen(filename));
-   fm->format = FORMAT_UNKNOWN;
+   fm->format = type;
    fm->file_size = hrmp_get_file_size(filename);
    fm->sample_rate = 0;
    fm->channels = 0;
@@ -458,7 +463,7 @@ get_metadata_dsf(char* filename, struct file_metadata** file_metadata)
    uint64_t samples = 0;
    uint32_t block_size = 0;
    uint32_t reserved = 0;
-   struct file_metadata *fm = NULL;
+   struct file_metadata* fm = NULL;
 
    *file_metadata = NULL;
 

@@ -52,6 +52,8 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
+#define BUFFER_SIZE 8192
+
 static int string_compare(const void* a, const void* b);
 
 extern char** environ;
@@ -89,6 +91,22 @@ hrmp_read_le_u32(FILE* f)
    }
    return (uint32_t)b[0] | ((uint32_t)b[1] << 8) | ((uint32_t)b[2] << 16) |
           ((uint32_t)b[3] << 24);
+}
+
+uint64_t
+hrmp_read_le_u64_buffer(uint8_t* buffer)
+{
+   return (uint64_t)buffer[0] | ((uint64_t)buffer[1] << 8) | ((uint64_t)buffer[2] << 16) |
+          ((uint64_t)buffer[3] << 24) | ((uint64_t)buffer[4] << 32) |
+          ((uint64_t)buffer[5] << 40) | ((uint64_t)buffer[6] << 48) |
+          ((uint64_t)buffer[7] << 56);
+}
+
+uint32_t
+hrmp_read_le_u32_buffer(uint8_t* buffer)
+{
+   return (uint32_t)buffer[0] | ((uint32_t)buffer[1] << 8) | ((uint32_t)buffer[2] << 16) |
+          ((uint32_t)buffer[3] << 24);
 }
 
 char*
@@ -138,6 +156,82 @@ hrmp_is_file(char* file)
    }
 
    return false;
+}
+
+int
+hrmp_file_to_buffer(char* filename, size_t* buffer_size, void** buffer)
+{
+   FILE* f = NULL;
+   size_t bs = 0;
+   void* b = NULL;
+   char readbuf[BUFFER_SIZE];
+   size_t total = 0;
+
+   *buffer_size = 0;
+   *buffer = NULL;
+
+   if (filename == NULL)
+   {
+      goto error;
+   }
+
+   f = fopen(filename, "rb");
+
+   if (f == NULL)
+   {
+      goto error;
+   }
+
+   fseek(f, 0, SEEK_END);
+   bs = ftell(f);
+   rewind(f);
+
+   b = malloc(bs);
+   if (buffer == NULL)
+   {
+      goto error;
+   }
+
+   memset(b, 0, bs);
+
+   while (1)
+   {
+      size_t n = fread(&readbuf[0], 1, BUFFER_SIZE, f);
+
+      if (n > 0)
+      {
+         memcpy(b + total, &readbuf[0], n);
+         total += n;
+      }
+
+      if (n < BUFFER_SIZE)
+      {
+         if (ferror(f))
+         {
+            goto error;
+         }
+
+         break;
+      }
+   }
+
+   *buffer_size = bs;
+   *buffer = b;
+
+   fclose (f);
+
+   return 0;
+
+error:
+
+   free(b);
+
+   if (f != NULL)
+   {
+      fclose(f);
+   }
+
+   return 1;
 }
 
 bool

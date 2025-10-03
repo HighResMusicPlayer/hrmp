@@ -67,6 +67,7 @@ struct file_metadata
    unsigned int bits_per_sample; /**< The bits per sample */
    unsigned long total_samples;  /**< The total number of samples */
    double duration;              /**< The number of seconds */
+   int container;                /**< The container size */
 };
 
 /**
