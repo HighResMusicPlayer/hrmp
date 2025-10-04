@@ -50,6 +50,9 @@ hrmp_file_metadata(int device, char* f, struct file_metadata** fm)
 {
    int type = TYPE_UNKNOWN;
    struct file_metadata* m = NULL;
+   struct configuration* config = NULL;
+
+   config = (struct configuration*)shmem;
 
    *fm = NULL;
 
@@ -74,6 +77,10 @@ hrmp_file_metadata(int device, char* f, struct file_metadata** fm)
    {
       if (get_metadata(f, type, &m))
       {
+         if (!config->quiet)
+         {
+            printf("Unsupported metadata for %s\n", f);
+         }
          goto error;
       }
    }
@@ -81,16 +88,29 @@ hrmp_file_metadata(int device, char* f, struct file_metadata** fm)
    {
       if (get_metadata_dsf(f, &m))
       {
+         if (!config->quiet)
+         {
+            printf("Unsupported metadata for %s\n", f);
+         }
          goto error;
       }
    }
    else
    {
+      if (!config->quiet)
+      {
+         printf("Unsupported file extension for %s\n", f);
+      }
       goto error;
    }
 
    if (!metadata_supported(device, m))
    {
+      if (!config->quiet)
+      {
+         printf("Unsupported file: %s/ch%d/%dHz/%dbits", f, m->channels,
+                m->sample_rate, m->bits_per_sample);
+      }
       goto error;
    }
 
@@ -183,7 +203,7 @@ metadata_supported(int device, struct file_metadata* fm)
       }
       else if (fm->bits_per_sample == 32)
       {
-         if (config->devices[device].capabilities.s24_le ||
+         if (config->devices[device].capabilities.s24_3le &&
              config->devices[device].capabilities.s32_le)
          {
             if (fm->type == TYPE_FLAC)
