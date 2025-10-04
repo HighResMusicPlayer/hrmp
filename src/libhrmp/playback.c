@@ -57,14 +57,75 @@ static int set_volume(int device, int volume);
 static void print_progress(struct playback* pb);
 static void print_progress_done(struct playback* pb);
 
+static int playback_sndfile(snd_pcm_t* pcm_handle,
+                            struct playback* pb, int device, int number,
+                            int total, struct file_metadata* fm);
+static int playback_dsf(snd_pcm_t* pcm_handle,
+                        struct playback* pb, int device, int number, int total,
+                        struct file_metadata* fm);
+
 int
 hrmp_playback(int device, int number, int total, struct file_metadata* fm)
+{
+   int ret = 1;
+   snd_pcm_t* pcm_handle = NULL;
+   struct playback* pb = NULL;
+   struct configuration* config = NULL;
+
+   config = (struct configuration*)shmem;
+
+   if (hrmp_alsa_init_handle(config->devices[device].device, fm, &pcm_handle))
+   {
+      hrmp_log_error("Could not initialize '%s' for '%s'", config->devices[device].name, fm->name);
+      goto error;
+   }
+
+   config->devices[device].is_paused = false;
+
+   if (playback_init(device, number, total, pcm_handle, fm, &pb))
+   {
+      hrmp_log_error("Could not initialize '%s' for '%s'", config->devices[device].name, fm->name);
+      goto error;
+   }
+
+   if (fm->type == TYPE_WAV || fm->type == TYPE_FLAC || fm->type == TYPE_MP3)
+   {
+      ret = playback_sndfile(pcm_handle, pb, device, number, total, fm);
+   }
+   else if (fm->type == TYPE_DSF)
+   {
+      ret = playback_dsf(pcm_handle, pb, device, number, total, fm);
+   }
+   else
+   {
+      goto error;
+   }
+
+   hrmp_alsa_close_handle(pcm_handle);
+   free(pb);
+
+   return ret;
+
+error:
+
+   if (pcm_handle != NULL)
+   {
+      hrmp_alsa_close_handle(pcm_handle);
+   }
+   free(pb);
+
+   return 1;
+}
+
+static int
+playback_sndfile(snd_pcm_t* pcm_handle,
+                 struct playback* pb, int device, int number,
+                 int total, struct file_metadata* fm)
 {
    int err;
    int keyboard_action;
    SNDFILE* f = NULL;
    SF_INFO* info = NULL;
-   snd_pcm_t* pcm_handle = NULL;
    int bytes_per_sample = 2;
    size_t bytes_per_frame;
    snd_pcm_uframes_t pcm_buffer_size = 0;
@@ -76,25 +137,9 @@ hrmp_playback(int device, int number, int total, struct file_metadata* fm)
    int32_t* input_buffer = NULL;
    size_t output_buffer_size = 0;
    unsigned char* output_buffer = NULL;
-   struct playback* pb = NULL;
    struct configuration* config = NULL;
 
    config = (struct configuration*)shmem;
-
-   if (hrmp_alsa_init_handle(config->devices[device].device, fm, &pcm_handle))
-   {
-      hrmp_log_error("Could not initialize '%s' for '%s'",
-                     config->devices[device].name, fm->name);
-      goto error;
-   }
-
-   config->devices[device].is_paused = false;
-
-   if (playback_init(device, number, total, pcm_handle, fm, &pb))
-   {
-      hrmp_log_error("Could not initialize '%s' for '%s'", config->devices[device].name, fm->name);
-      goto error;
-   }
 
    info = (SF_INFO*)malloc(sizeof(SF_INFO));
    if (info == NULL)
@@ -340,11 +385,7 @@ keyboard:
    free(output_buffer);
    free(info);
 
-   hrmp_alsa_close_handle(pcm_handle);
-
    sf_close(f);
-
-   free(pb);
 
    return 0;
 
@@ -354,17 +395,23 @@ error:
    free(output_buffer);
    free(info);
 
-   hrmp_alsa_close_handle(pcm_handle);
-
    sf_close(f);
-
-   free(pb);
 
    return 1;
 }
 
 static int
-playback_init(int device, int number, int total, snd_pcm_t* pcm_handle, struct file_metadata* fm, struct playback** playback)
+playback_dsf(snd_pcm_t* pcm_handle,
+             struct playback* pb, int device, int number, int total,
+             struct file_metadata* fm)
+{
+   return 1;
+}
+
+static int
+playback_init(int device, int number, int total,
+              snd_pcm_t* pcm_handle, struct file_metadata* fm,
+              struct playback** playback)
 {
    char* desc = NULL;
    struct playback* pb = NULL;
