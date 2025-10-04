@@ -36,6 +36,7 @@ extern "C" {
 #endif
 
 #include <hrmp.h>
+#include <files.h>
 
 #include <stdbool.h>
 #include <stdlib.h>
@@ -45,14 +46,12 @@ extern "C" {
 /**
  * Initialize the ALSA handle
  * @param device The device
- * @param format The file format
- * @param rate The file sample rate
+ * @param fm The file metadata
  * @param handle The resulting handle
- * @param container The resulting container
  * @return 0 upon success, 1 is failure
  */
 int
-hrmp_alsa_init_handle(char* device, int format, int rate, snd_pcm_t** handle, int* container);
+hrmp_alsa_init_handle(char* device, struct file_metadata* fm, snd_pcm_t** handle);
 
 /**
  * Close the ALSA handle

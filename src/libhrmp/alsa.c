@@ -40,39 +40,40 @@
 #define MAX_BUFFER_SIZE 131072
 
 int
-hrmp_alsa_init_handle(char* device, int format, int rate, snd_pcm_t** handle, int* container)
+hrmp_alsa_init_handle(char* device, struct file_metadata* fm, snd_pcm_t** handle)
 {
    int err;
    snd_pcm_t* h = NULL;
    snd_pcm_hw_params_t* hw_params = NULL;
    snd_pcm_uframes_t buffer_size = 0;
    snd_pcm_uframes_t period_size = 0;
-   unsigned int r = (unsigned int)rate;
+   unsigned int r = (unsigned int)fm->pcm_rate;
    int fmt = 0;
 
    *handle = NULL;
 
-   if (format == FORMAT_16)
+   if (fm->format == FORMAT_16)
    {
-      *container = 16;
+      fm->container = 16;
       fmt = SND_PCM_FORMAT_S16_LE;
    }
-   else if (format == FORMAT_24)
+   else if (fm->format == FORMAT_24)
    {
-      *container = 24;
+      fm->container = 24;
       fmt = SND_PCM_FORMAT_S24_3LE;
    }
-   else if (format == FORMAT_32)
+   else if (fm->format == FORMAT_32)
    {
-      *container = 32;
+      fm->container = 32;
       fmt = SND_PCM_FORMAT_S32_LE;
    }
-   else if (format == FORMAT_1)
+   else if (fm->format == FORMAT_1)
    {
-      *container = 24;
-      fmt = SND_PCM_FORMAT_S24_3LE;
-      r = (unsigned int)(r / 16); /* DoP */
+      fm->container = 32;
+      fmt = SND_PCM_FORMAT_S32_LE;
    }
+
+   fm->alsa_snd = fmt;
 
    if ((err = snd_pcm_open(&h, device, SND_PCM_STREAM_PLAYBACK, 0)) < 0)
    {
@@ -145,7 +146,7 @@ hrmp_alsa_init_handle(char* device, int format, int rate, snd_pcm_t** handle, in
             hrmp_log_error("snd_pcm_hw_params_set_format %s/%s", device, snd_strerror(err));
             goto error;
          }
-         *container = 32;
+         fm->container = 32;
       }
       else
       {
@@ -180,7 +181,6 @@ error:
    }
 
    *handle = NULL;
-   *container = 0;
 
    return 1;
 }

@@ -63,10 +63,12 @@ struct file_metadata
    int format;                   /**< The format of the file */
    size_t file_size;             /**< The file size */
    unsigned int sample_rate;     /**< The sample rate */
+   unsigned int pcm_rate;        /**< The PCM rate */
    unsigned int channels;        /**< The number of channels */
    unsigned int bits_per_sample; /**< The bits per sample */
    unsigned long total_samples;  /**< The total number of samples */
    double duration;              /**< The number of seconds */
+   int alsa_snd;                 /**< The ALSA sound identifier */
    int container;                /**< The container size */
 };
 

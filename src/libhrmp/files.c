@@ -272,12 +272,52 @@ hrmp_print_file_metadata(struct file_metadata* fm)
       {
          printf("  Type: TYPE_DSF\n");
       }
-      printf("  Format: %d\n", fm->format);
+      else
+      {
+         printf("  Type: TYPE_UNKNOWN (%d)\n", fm->type);
+      }
+      if (fm->format == FORMAT_1)
+      {
+         printf("  Format: FORMAT_1\n");
+      }
+      else if (fm->format == FORMAT_16)
+      {
+         printf("  Format: FORMAT_16\n");
+      }
+      else if (fm->format == FORMAT_24)
+      {
+         printf("  Format: FORMAT_24\n");
+      }
+      else if (fm->format == FORMAT_32)
+      {
+         printf("  Format: FORMAT_32\n");
+      }
+      else
+      {
+         printf("  Format: FORMAT_UNKNOWN (%d)\n", fm->format);
+      }
       printf("  Bits: %d\n", fm->bits_per_sample);
       printf("  Container: %d\n", fm->container);
       printf("  Channels: %d\n", fm->channels);
       printf("  Size: %zu\n", fm->file_size);
-      printf("  Rate: %d\n", fm->sample_rate);
+      printf("  Rate: %d Hz\n", fm->sample_rate);
+      printf("  PCM: %d Hz\n", fm->pcm_rate);
+      if (fm->alsa_snd == SND_PCM_FORMAT_S16_LE)
+      {
+         printf("  ALSA: SND_PCM_FORMAT_S16_LE\n");
+      }
+      else if (fm->alsa_snd == SND_PCM_FORMAT_S24_3LE)
+      {
+         printf("  ALSA: SND_PCM_FORMAT_S24_3LE\n");
+      }
+      else if (fm->alsa_snd == SND_PCM_FORMAT_S32_LE)
+      {
+         printf("  ALSA: SND_PCM_FORMAT_S32_LE\n");
+      }
+      else
+      {
+         printf("  ALSA: UNKNOWN (%d)\n", fm->alsa_snd);
+      }
       printf("  Samples: %lu\n", fm->total_samples);
       printf("  Duration: %lf\n", fm->duration);
    }
@@ -304,6 +344,7 @@ init_metadata(char* filename, int type, struct file_metadata** file_metadata)
    fm->format = type;
    fm->file_size = hrmp_get_file_size(filename);
    fm->sample_rate = 0;
+   fm->pcm_rate = 0;
    fm->channels = 0;
    fm->bits_per_sample = 0;
    if (type == TYPE_MP3)
@@ -312,6 +353,7 @@ init_metadata(char* filename, int type, struct file_metadata** file_metadata)
    }
    fm->total_samples = 0;
    fm->duration = 0.0;
+   fm->alsa_snd = 0;
 
    *file_metadata = fm;
 
@@ -384,6 +426,7 @@ get_metadata(char* filename, int type, struct file_metadata** file_metadata)
       }
 
       fm->sample_rate = info->samplerate;
+      fm->pcm_rate = info->samplerate;
       fm->channels = info->channels;
 
       if (fm->channels != 2)
@@ -539,6 +582,7 @@ get_metadata_dsf(char* filename, struct file_metadata** file_metadata)
    fm->format = FORMAT_1;
    fm->file_size = hrmp_get_file_size(filename);
    fm->sample_rate = srate;
+   fm->pcm_rate = srate / 16;
    fm->channels = channel_number;
    fm->bits_per_sample = bps;
    fm->total_samples = samples;

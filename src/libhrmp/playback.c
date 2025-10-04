@@ -65,7 +65,6 @@ hrmp_playback(int device, int number, int total, struct file_metadata* fm)
    SNDFILE* f = NULL;
    SF_INFO* info = NULL;
    snd_pcm_t* pcm_handle = NULL;
-   int container = 16;
    int bytes_per_sample = 2;
    size_t bytes_per_frame;
    snd_pcm_uframes_t pcm_buffer_size = 0;
@@ -82,7 +81,7 @@ hrmp_playback(int device, int number, int total, struct file_metadata* fm)
 
    config = (struct configuration*)shmem;
 
-   if (hrmp_alsa_init_handle(config->devices[device].device, fm->format, fm->sample_rate, &pcm_handle, &container))
+   if (hrmp_alsa_init_handle(config->devices[device].device, fm, &pcm_handle))
    {
       hrmp_log_error("Could not initialize '%s' for '%s'",
                      config->devices[device].name, fm->name);
@@ -117,7 +116,7 @@ hrmp_playback(int device, int number, int total, struct file_metadata* fm)
    }
 
    // Playback loop
-   switch (container)
+   switch (fm->container)
    {
       case 16:
          bytes_per_sample = 2;
@@ -163,14 +162,14 @@ hrmp_playback(int device, int number, int total, struct file_metadata* fm)
          {
             int32_t sample = input_buffer[f * info->channels + ch];
             /* libsndfile gives signed int32_t; if file is 24-bit it returns it in low 24 bits. */
-            if (container == 16)
+            if (fm->container == 16)
             {
                /* convert 32-bit to 16-bit by shifting (arith shift) */
                int16_t s16 = (int16_t)(sample >> 16); /* lose lower bits */
                output_buffer[outpos++] = (uint8_t)(s16 & 0xFF);
                output_buffer[outpos++] = (uint8_t)((s16 >> 8) & 0xFF);
             }
-            else if (container == 24)
+            else if (fm->container == 24)
             {
                /* pack lower 3 bytes little-endian */
                output_buffer[outpos++] = (uint8_t)(sample & 0xFF);
