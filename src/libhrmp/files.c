@@ -251,7 +251,6 @@ metadata_supported(int device, struct file_metadata* fm)
             {
                case 2822400:
                case 5644800:
-               case 11289600:
                   return true;
                   break;
                default:
@@ -259,6 +258,7 @@ metadata_supported(int device, struct file_metadata* fm)
                   {
                      switch (fm->sample_rate)
                      {
+                        case 11289600:
                         case 22579200:
                            return true;
                            break;
@@ -351,6 +351,7 @@ hrmp_print_file_metadata(struct file_metadata* fm)
       }
       printf("  Samples: %lu\n", fm->total_samples);
       printf("  Duration: %lf\n", fm->duration);
+      printf("  Block size: %d\n", fm->block_size);
    }
 
    return 0;
@@ -610,6 +611,12 @@ get_metadata_dsf(char* filename, struct file_metadata** file_metadata)
    hrmp_log_debug("Reserved: %d", reserved);
 #endif
 
+   if (srate % 16)
+   {
+      hrmp_log_error("Error: DSD fs not divisible by 16 (fs=%u)\n", srate);
+      goto error;
+   }
+
    fm->format = FORMAT_1;
    fm->file_size = hrmp_get_file_size(filename);
    fm->sample_rate = srate;
@@ -618,6 +625,7 @@ get_metadata_dsf(char* filename, struct file_metadata** file_metadata)
    fm->bits_per_sample = bps;
    fm->total_samples = samples;
    fm->duration = (double)((double)samples / srate);
+   fm->block_size = block_size;
 
    *file_metadata = fm;
 

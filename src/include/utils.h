@@ -115,16 +115,6 @@ bool
 hrmp_is_file(char* file);
 
 /**
- * Load file into memory buffer
- * @param f The file name
- * @param buffer_size The buffer size
- * @param buffer The buffer
- * @return The result
- */
-int
-hrmp_file_to_buffer(char* filename, size_t* buffer_size, void** buffer);
-
-/**
  * Get the files of a directory
  * @param device The device
  * @param base The directory
