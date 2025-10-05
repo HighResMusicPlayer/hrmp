@@ -161,6 +161,12 @@ hrmp_alsa_init_handle(char* device, struct file_metadata* fm, snd_pcm_t** handle
       goto error;
    }
 
+   if ((err = snd_pcm_prepare(h)) < 0)
+   {
+      hrmp_log_error("snd_pcm_prepare %s/%s", device, snd_strerror(err));
+      goto error;
+   }
+
    snd_pcm_hw_params_free(hw_params);
 
    *handle = h;
