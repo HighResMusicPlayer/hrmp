@@ -73,8 +73,6 @@ hrmp_alsa_init_handle(char* device, struct file_metadata* fm, snd_pcm_t** handle
       fmt = SND_PCM_FORMAT_S32_LE;
    }
 
-   fm->alsa_snd = fmt;
-
    if ((err = snd_pcm_open(&h, device, SND_PCM_STREAM_PLAYBACK, 0)) < 0)
    {
       hrmp_log_error("snd_pcm_open %s/%s", device, snd_strerror(err));
@@ -154,6 +152,8 @@ hrmp_alsa_init_handle(char* device, struct file_metadata* fm, snd_pcm_t** handle
          goto error;
       }
    }
+
+   fm->alsa_snd = fmt;
 
    if ((err = snd_pcm_hw_params(h, hw_params)) < 0)
    {
