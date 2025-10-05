@@ -255,6 +255,17 @@ metadata_supported(int device, struct file_metadata* fm)
                   return true;
                   break;
                default:
+                  if (config->experimental)
+                  {
+                     switch (fm->sample_rate)
+                     {
+                        case 22579200:
+                           return true;
+                           break;
+                        default:
+                           break;
+                     }
+                  }
                   break;
             }
          }
