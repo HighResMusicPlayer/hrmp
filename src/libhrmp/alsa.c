@@ -91,6 +91,12 @@ hrmp_alsa_init_handle(char* device, struct file_metadata* fm, snd_pcm_t** handle
       goto error;
    }
 
+   if ((err = snd_pcm_hw_params_set_rate_resample(h, hw_params, 0)) < 0)
+   {
+      hrmp_log_error("snd_pcm_hw_params_any %s/%s", device, snd_strerror(err));
+      goto error;
+   }
+
    if ((err = snd_pcm_hw_params_set_access(h, hw_params, SND_PCM_ACCESS_RW_INTERLEAVED)) < 0)
    {
       hrmp_log_error("snd_pcm_hw_params_set_access %s/%s", device, snd_strerror(err));
