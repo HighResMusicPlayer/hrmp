@@ -75,12 +75,6 @@ hrmp_read_configuration(void* shmem, char* filename, bool emitWarnings);
 int
 hrmp_validate_configuration(void* shmem);
 
-/**
- * Sample configuration
- */
-void
-hrmp_sample_configuration(void);
-
 #ifdef __cplusplus
 }
 #endif

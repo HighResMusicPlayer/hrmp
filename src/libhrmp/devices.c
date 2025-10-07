@@ -67,7 +67,7 @@ hrmp_check_devices(void)
       {
          char* selem = NULL;
 
-         if (!config->quiet)
+         if (config->developer)
          {
             printf("Device: %s (Active)\n", config->devices[i].name);
          }
@@ -86,7 +86,7 @@ hrmp_check_devices(void)
       }
       else
       {
-         if (!config->quiet)
+         if (config->developer)
          {
             printf("Device: %s (Inactive)\n", config->devices[i].name);
          }

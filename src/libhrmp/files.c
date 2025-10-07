@@ -595,7 +595,6 @@ get_metadata_dsf(char* filename, struct file_metadata** file_metadata)
    block_size = hrmp_read_le_u32(f);
    reserved = hrmp_read_le_u32(f);
 
-#ifdef DEBUG
    hrmp_log_debug("Chunk size: %lu", chunk_size);
    hrmp_log_debug("File size: %lu", file_size);
    hrmp_log_debug("Metadata: %lu", metadata_chunk);
@@ -609,7 +608,6 @@ get_metadata_dsf(char* filename, struct file_metadata** file_metadata)
    hrmp_log_debug("Samples: %lu", samples);
    hrmp_log_debug("Block size: %d", block_size);
    hrmp_log_debug("Reserved: %d", reserved);
-#endif
 
    if (srate % 16)
    {

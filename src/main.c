@@ -300,7 +300,7 @@ main(int argc, char** argv)
 
    if (action == ACTION_PLAY)
    {
-      if (!config->quiet)
+      if (config->developer)
       {
          printf("hrmp %s\n", VERSION);
       }
