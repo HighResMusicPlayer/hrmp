@@ -45,8 +45,8 @@ hrmp_alsa_init_handle(char* device, struct file_metadata* fm, snd_pcm_t** handle
    int err;
    snd_pcm_t* h = NULL;
    snd_pcm_hw_params_t* hw_params = NULL;
-   snd_pcm_uframes_t buffer_size = 0;
-   snd_pcm_uframes_t period_size = 0;
+   snd_pcm_uframes_t buffer_size = 32768;
+   snd_pcm_uframes_t period_size = 4096;
    unsigned int r = (unsigned int)fm->pcm_rate;
    int fmt = 0;
 
@@ -115,22 +115,35 @@ hrmp_alsa_init_handle(char* device, struct file_metadata* fm, snd_pcm_t** handle
       goto error;
    }
 
-   snd_pcm_hw_params_get_buffer_size_max(hw_params, &buffer_size);
-   buffer_size = MIN(buffer_size, (snd_pcm_uframes_t)MAX_BUFFER_SIZE);
-   if ((err = snd_pcm_hw_params_set_buffer_size_near(h, hw_params, &buffer_size)) < 0)
+   unsigned int rate = fm->pcm_rate;
+   int direction = 0;
+   if ((err = snd_pcm_hw_params_set_rate_near(h, hw_params, &rate, &direction)) < 0)
    {
-      hrmp_log_error("snd_pcm_hw_params_set_buffer_size_near %s/%s", device, snd_strerror(err));
+      hrmp_log_error("snd_pcm_hw_params_set_rate_near %s/%s", device, snd_strerror(err));
       goto error;
    }
 
-   snd_pcm_hw_params_get_period_size_min(hw_params, &period_size, NULL);
-   if (!period_size)
+   if ((err = snd_pcm_hw_params_set_period_size_near(h, hw_params, &period_size, &direction)) < 0)
    {
-      period_size = buffer_size / 4;
+      snd_pcm_hw_params_get_buffer_size_max(hw_params, &buffer_size);
+      buffer_size = MIN(buffer_size, (snd_pcm_uframes_t)MAX_BUFFER_SIZE);
+
+      snd_pcm_hw_params_get_period_size_min(hw_params, &period_size, NULL);
+      if (!period_size)
+      {
+         period_size = buffer_size / 4;
+      }
+
+      if ((err = snd_pcm_hw_params_set_period_size_near(h, hw_params, &period_size, NULL)) < 0)
+      {
+         hrmp_log_error("snd_pcm_hw_params_set_period_size_near %s/%s", device, snd_strerror(err));
+         goto error;
+      }
    }
-   if ((err = snd_pcm_hw_params_set_period_size_near(h, hw_params, &period_size, NULL)) < 0)
+
+   if ((err = snd_pcm_hw_params_set_buffer_size_near(h, hw_params, &buffer_size)) < 0)
    {
-      hrmp_log_error("snd_pcm_hw_params_set_period_size_near %s/%s", device, snd_strerror(err));
+      hrmp_log_error("snd_pcm_hw_params_set_buffer_size_near %s/%s", device, snd_strerror(err));
       goto error;
    }
 

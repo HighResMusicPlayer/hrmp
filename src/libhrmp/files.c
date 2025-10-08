@@ -108,7 +108,7 @@ hrmp_file_metadata(int device, char* f, struct file_metadata** fm)
    {
       if (!config->quiet)
       {
-         printf("Unsupported file: %s/ch%d/%dHz/%dbits", f, m->channels,
+         printf("Unsupported file: %s/ch%d/%dHz/%dbits\n", f, m->channels,
                 m->sample_rate, m->bits_per_sample);
       }
       goto error;
@@ -119,6 +119,8 @@ hrmp_file_metadata(int device, char* f, struct file_metadata** fm)
    return 0;
 
 error:
+
+   free(m);
 
    return 1;
 }
@@ -251,6 +253,7 @@ metadata_supported(int device, struct file_metadata* fm)
             {
                case 2822400:
                case 5644800:
+               case 11289600:
                   return true;
                   break;
                default:
@@ -258,7 +261,6 @@ metadata_supported(int device, struct file_metadata* fm)
                   {
                      switch (fm->sample_rate)
                      {
-                        case 11289600:
                         case 22579200:
                            return true;
                            break;
@@ -271,8 +273,6 @@ metadata_supported(int device, struct file_metadata* fm)
          }
       }
    }
-
-   printf("%s %d/%dbits (Unsupported)\n", fm->name, fm->sample_rate, fm->bits_per_sample);
 
    return false;
 }
