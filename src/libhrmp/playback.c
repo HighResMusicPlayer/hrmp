@@ -82,7 +82,7 @@ hrmp_playback(int device, int number, int total, struct file_metadata* fm)
 
    config = (struct configuration*)shmem;
 
-   if (hrmp_alsa_init_handle(config->devices[device].device, fm, &pcm_handle))
+   if (hrmp_alsa_init_handle(device, fm, &pcm_handle))
    {
       hrmp_log_error("Could not initialize '%s' for '%s'", config->devices[device].name, fm->name);
       goto error;

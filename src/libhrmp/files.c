@@ -173,7 +173,8 @@ metadata_supported(int device, struct file_metadata* fm)
       }
       else if (fm->bits_per_sample == 24)
       {
-         if (config->devices[device].capabilities.s24_3le)
+         if (config->devices[device].capabilities.s24_3le ||
+             config->devices[device].capabilities.s32_le)
          {
             switch (fm->sample_rate)
             {
@@ -205,7 +206,7 @@ metadata_supported(int device, struct file_metadata* fm)
       }
       else if (fm->bits_per_sample == 32)
       {
-         if (config->devices[device].capabilities.s24_3le &&
+         if (config->devices[device].capabilities.s24_3le ||
              config->devices[device].capabilities.s32_le)
          {
             if (fm->type == TYPE_FLAC)
@@ -243,10 +244,10 @@ metadata_supported(int device, struct file_metadata* fm)
       }
       else if (fm->bits_per_sample == 1)
       {
-         if (config->devices[device].capabilities.dsd_u8 &&
-             config->devices[device].capabilities.dsd_u16_le &&
-             config->devices[device].capabilities.dsd_u16_be &&
-             config->devices[device].capabilities.dsd_u32_le &&
+         if (config->devices[device].capabilities.dsd_u8 ||
+             config->devices[device].capabilities.dsd_u16_le ||
+             config->devices[device].capabilities.dsd_u16_be ||
+             config->devices[device].capabilities.dsd_u32_le ||
              config->devices[device].capabilities.dsd_u32_be)
          {
             switch (fm->sample_rate)
@@ -333,17 +334,70 @@ hrmp_print_file_metadata(struct file_metadata* fm)
       printf("  Size: %zu\n", fm->file_size);
       printf("  Rate: %d Hz\n", fm->sample_rate);
       printf("  PCM: %d Hz\n", fm->pcm_rate);
-      if (fm->alsa_snd == SND_PCM_FORMAT_S16_LE)
+
+      if (fm->alsa_snd == SND_PCM_FORMAT_S16)
+      {
+         printf("  ALSA: SND_PCM_FORMAT_S16\n");
+      }
+      else if (fm->alsa_snd == SND_PCM_FORMAT_S16_LE)
       {
          printf("  ALSA: SND_PCM_FORMAT_S16_LE\n");
+      }
+      else if (fm->alsa_snd == SND_PCM_FORMAT_S16_BE)
+      {
+         printf("  ALSA: SND_PCM_FORMAT_S16_BE\n");
+      }
+      else if (fm->alsa_snd == SND_PCM_FORMAT_S24)
+      {
+         printf("  ALSA: SND_PCM_FORMAT_S24\n");
       }
       else if (fm->alsa_snd == SND_PCM_FORMAT_S24_3LE)
       {
          printf("  ALSA: SND_PCM_FORMAT_S24_3LE\n");
       }
+      else if (fm->alsa_snd == SND_PCM_FORMAT_S24_LE)
+      {
+         printf("  ALSA: SND_PCM_FORMAT_S24_LE\n");
+      }
+      else if (fm->alsa_snd == SND_PCM_FORMAT_S24_3BE)
+      {
+         printf("  ALSA: SND_PCM_FORMAT_S24_3BE\n");
+      }
+      else if (fm->alsa_snd == SND_PCM_FORMAT_S24_BE)
+      {
+         printf("  ALSA: SND_PCM_FORMAT_S24_BE\n");
+      }
+      else if (fm->alsa_snd == SND_PCM_FORMAT_S32)
+      {
+         printf("  ALSA: SND_PCM_FORMAT_S32\n");
+      }
       else if (fm->alsa_snd == SND_PCM_FORMAT_S32_LE)
       {
          printf("  ALSA: SND_PCM_FORMAT_S32_LE\n");
+      }
+      else if (fm->alsa_snd == SND_PCM_FORMAT_S32_BE)
+      {
+         printf("  ALSA: SND_PCM_FORMAT_S32_BE\n");
+      }
+      else if (fm->alsa_snd == SND_PCM_FORMAT_DSD_U8)
+      {
+         printf("  ALSA: SND_PCM_FORMAT_DSD_U8\n");
+      }
+      else if (fm->alsa_snd == SND_PCM_FORMAT_DSD_U16_LE)
+      {
+         printf("  ALSA: SND_PCM_FORMAT_DSD_U16_LE\n");
+      }
+      else if (fm->alsa_snd == SND_PCM_FORMAT_DSD_U32_LE)
+      {
+         printf("  ALSA: SND_PCM_FORMAT_DSD_U32_LE\n");
+      }
+      else if (fm->alsa_snd == SND_PCM_FORMAT_DSD_U16_BE)
+      {
+         printf("  ALSA: SND_PCM_FORMAT_DSD_U16_BE\n");
+      }
+      else if (fm->alsa_snd == SND_PCM_FORMAT_DSD_U32_BE)
+      {
+         printf("  ALSA: SND_PCM_FORMAT_DSD_U32_BE\n");
       }
       else
       {

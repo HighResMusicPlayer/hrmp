@@ -39,8 +39,10 @@
 
 #define MAX_BUFFER_SIZE 131072
 
+static int find_best_format(int device, struct file_metadata* fm, snd_pcm_format_t* format);
+
 int
-hrmp_alsa_init_handle(char* device, struct file_metadata* fm, snd_pcm_t** handle)
+hrmp_alsa_init_handle(int device, struct file_metadata* fm, snd_pcm_t** handle)
 {
    int err;
    snd_pcm_t* h = NULL;
@@ -48,32 +50,20 @@ hrmp_alsa_init_handle(char* device, struct file_metadata* fm, snd_pcm_t** handle
    snd_pcm_uframes_t buffer_size = 32768;
    snd_pcm_uframes_t period_size = 4096;
    unsigned int r = (unsigned int)fm->pcm_rate;
-   int fmt = 0;
+   snd_pcm_format_t fmt;
+   struct configuration* config = NULL;
+
+   config = (struct configuration*)shmem;
 
    *handle = NULL;
 
-   if (fm->format == FORMAT_16)
+   if (find_best_format(device, fm, &fmt))
    {
-      fm->container = 16;
-      fmt = SND_PCM_FORMAT_S16_LE;
-   }
-   else if (fm->format == FORMAT_24)
-   {
-      fm->container = 24;
-      fmt = SND_PCM_FORMAT_S24_3LE;
-   }
-   else if (fm->format == FORMAT_32)
-   {
-      fm->container = 32;
-      fmt = SND_PCM_FORMAT_S32_LE;
-   }
-   else if (fm->format == FORMAT_1)
-   {
-      fm->container = 32;
-      fmt = SND_PCM_FORMAT_S32_LE;
+      hrmp_log_error("find_best_format %s/%d", device, fm->format);
+      goto error;
    }
 
-   if ((err = snd_pcm_open(&h, device, SND_PCM_STREAM_PLAYBACK, 0)) < 0)
+   if ((err = snd_pcm_open(&h, config->devices[device].device, SND_PCM_STREAM_PLAYBACK, 0)) < 0)
    {
       hrmp_log_error("snd_pcm_open %s/%s", device, snd_strerror(err));
       goto error;
@@ -155,21 +145,8 @@ hrmp_alsa_init_handle(char* device, struct file_metadata* fm, snd_pcm_t** handle
 
    if ((err = snd_pcm_hw_params_set_format(h, hw_params, fmt)) < 0)
    {
-      if (fmt == SND_PCM_FORMAT_S24_3LE)
-      {
-         fmt = SND_PCM_FORMAT_S32_LE;
-         if ((err = snd_pcm_hw_params_set_format(h, hw_params, fmt)) < 0)
-         {
-            hrmp_log_error("snd_pcm_hw_params_set_format %s/%s", device, snd_strerror(err));
-            goto error;
-         }
-         fm->container = 32;
-      }
-      else
-      {
-         hrmp_log_error("snd_pcm_hw_params_set_format %s/%d/%s", device, fmt, snd_strerror(err));
-         goto error;
-      }
+      hrmp_log_error("snd_pcm_hw_params_set_format %s/%d/%s", device, fmt, snd_strerror(err));
+      goto error;
    }
 
    fm->alsa_snd = fmt;
@@ -220,4 +197,87 @@ hrmp_alsa_close_handle(snd_pcm_t* handle)
    }
 
    return 0;
+}
+
+static int
+find_best_format(int device, struct file_metadata* fm, snd_pcm_format_t* format)
+{
+   bool found = false;
+   snd_pcm_format_t fmt;
+   struct configuration* config = NULL;
+
+   config = (struct configuration*)shmem;
+
+   *format = SND_PCM_FORMAT_UNKNOWN;
+
+   if (fm == NULL)
+   {
+      goto error;
+   }
+
+   if (fm->format == FORMAT_16)
+   {
+      if (config->devices[device].capabilities.s16_le)
+      {
+         fm->container = 16;
+         fmt = SND_PCM_FORMAT_S16_LE;
+         found = true;
+      }
+   }
+   else if (fm->format == FORMAT_24)
+   {
+      if (config->devices[device].capabilities.s24_3le)
+      {
+         fm->container = 24;
+         fmt = SND_PCM_FORMAT_S24_3LE;
+         found = true;
+      }
+      else if (config->devices[device].capabilities.s32_le)
+      {
+         fm->container = 32;
+         fmt = SND_PCM_FORMAT_S32_LE;
+         found = true;
+      }
+   }
+   else if (fm->format == FORMAT_32)
+   {
+      if (config->devices[device].capabilities.s32_le)
+      {
+         fm->container = 32;
+         fmt = SND_PCM_FORMAT_S32_LE;
+         found = true;
+      }
+   }
+   else if (fm->format == FORMAT_1)
+   {
+      if (config->devices[device].capabilities.dsd_u32_be)
+      {
+         fm->container = 32;
+         fmt = SND_PCM_FORMAT_DSD_U32_BE;
+         found = true;
+      }
+      else if (config->devices[device].capabilities.s32_le)
+      {
+         fm->container = 32;
+         fmt = SND_PCM_FORMAT_S32_LE;
+         found = true;
+      }
+   }
+   else
+   {
+      goto error;
+   }
+
+   if (!found)
+   {
+      goto error;
+   }
+
+   *format = fmt;
+
+   return 0;
+
+error:
+
+   return 1;
 }

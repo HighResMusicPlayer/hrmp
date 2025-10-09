@@ -46,7 +46,7 @@
 #include <alsa/asoundlib.h>
 
 static void check_capabilities(char* device, int index);
-static bool support_mask(char* device, snd_pcm_format_mask_t* fm, int format);
+static bool support_mask(char* device, snd_pcm_format_t format);
 static char* clean_description(char* s);
 static bool is_device_active(char* device);
 static int get_hardware_number(char* device);
@@ -313,121 +313,133 @@ hrmp_sample_configuration(void)
 static void
 check_capabilities(char* device, int index)
 {
-   int err;
-   snd_pcm_t* handle = NULL;
-   snd_pcm_hw_params_t* hw = NULL;
-   snd_pcm_format_mask_t* fm = NULL;
    struct configuration* config = NULL;
 
    config = (struct configuration*)shmem;
 
    memset(&config->devices[index].capabilities, 0, sizeof(struct capabilities));
 
-   if ((err = snd_pcm_open(&handle, device, SND_PCM_STREAM_PLAYBACK, 0)) < 0)
-   {
-      hrmp_log_error("%s: %s", device, snd_strerror(err));
-      goto error;
-   }
-
-   snd_pcm_hw_params_alloca(&hw);
-
-   snd_pcm_hw_params_any(handle, hw);
-   snd_pcm_hw_params_set_access(handle, hw, SND_PCM_ACCESS_RW_INTERLEAVED);
-   snd_pcm_hw_params(handle, hw);
-
-   if (snd_pcm_format_mask_malloc(&fm) != 0)
-   {
-      goto error;
-   }
-
-   snd_pcm_hw_params_get_format_mask(hw, fm);
-
    /* DSD */
    config->devices[index].capabilities.dsd_u8 =
-      support_mask(device, fm, SND_PCM_FORMAT_DSD_U8);
+      support_mask(device, SND_PCM_FORMAT_DSD_U8);
    config->devices[index].capabilities.dsd_u16_le =
-      support_mask(device, fm, SND_PCM_FORMAT_DSD_U16_LE);
+      support_mask(device, SND_PCM_FORMAT_DSD_U16_LE);
    config->devices[index].capabilities.dsd_u16_be =
-      support_mask(device, fm, SND_PCM_FORMAT_DSD_U16_BE);
+      support_mask(device, SND_PCM_FORMAT_DSD_U16_BE);
 
    config->devices[index].capabilities.dsd_u32_le =
-      support_mask(device, fm, SND_PCM_FORMAT_DSD_U32_LE);
+      support_mask(device, SND_PCM_FORMAT_DSD_U32_LE);
    config->devices[index].capabilities.dsd_u32_be =
-      support_mask(device, fm, SND_PCM_FORMAT_DSD_U32_BE);
+      support_mask(device, SND_PCM_FORMAT_DSD_U32_BE);
 
    /* 32-bit */
    config->devices[index].capabilities.s32 =
-      support_mask(device, fm, SND_PCM_FORMAT_S32);
+      support_mask(device, SND_PCM_FORMAT_S32);
    config->devices[index].capabilities.s32_le =
-      support_mask(device, fm, SND_PCM_FORMAT_S32_LE);
+      support_mask(device, SND_PCM_FORMAT_S32_LE);
    config->devices[index].capabilities.s32_be =
-      support_mask(device, fm, SND_PCM_FORMAT_S32_BE);
+      support_mask(device, SND_PCM_FORMAT_S32_BE);
 
    config->devices[index].capabilities.u32 =
-      support_mask(device, fm, SND_PCM_FORMAT_U32);
+      support_mask(device, SND_PCM_FORMAT_U32);
    config->devices[index].capabilities.u32_le =
-      support_mask(device, fm, SND_PCM_FORMAT_U32_LE);
+      support_mask(device, SND_PCM_FORMAT_U32_LE);
    config->devices[index].capabilities.u32_be =
-      support_mask(device, fm, SND_PCM_FORMAT_U32_BE);
+      support_mask(device, SND_PCM_FORMAT_U32_BE);
 
    /* 24-bit */
    config->devices[index].capabilities.s24 =
-      support_mask(device, fm, SND_PCM_FORMAT_S24);
+      support_mask(device, SND_PCM_FORMAT_S24);
    config->devices[index].capabilities.s24_3le =
-      support_mask(device, fm, SND_PCM_FORMAT_S24_3LE);
+      support_mask(device, SND_PCM_FORMAT_S24_3LE);
    config->devices[index].capabilities.s24_le =
-      support_mask(device, fm, SND_PCM_FORMAT_S24_LE);
+      support_mask(device, SND_PCM_FORMAT_S24_LE);
    config->devices[index].capabilities.s24_be =
-      support_mask(device, fm, SND_PCM_FORMAT_S24_BE);
+      support_mask(device, SND_PCM_FORMAT_S24_BE);
 
    config->devices[index].capabilities.u24 =
-      support_mask(device, fm, SND_PCM_FORMAT_U24);
+      support_mask(device, SND_PCM_FORMAT_U24);
    config->devices[index].capabilities.u24_le =
-      support_mask(device, fm, SND_PCM_FORMAT_U24_LE);
+      support_mask(device, SND_PCM_FORMAT_U24_LE);
    config->devices[index].capabilities.u24_be =
-      support_mask(device, fm, SND_PCM_FORMAT_U24_BE);
+      support_mask(device, SND_PCM_FORMAT_U24_BE);
 
    /* 16-bit */
    config->devices[index].capabilities.s16 =
-      support_mask(device, fm, SND_PCM_FORMAT_S16);
+      support_mask(device, SND_PCM_FORMAT_S16);
    config->devices[index].capabilities.s16_le =
-      support_mask(device, fm, SND_PCM_FORMAT_S16_LE);
+      support_mask(device, SND_PCM_FORMAT_S16_LE);
    config->devices[index].capabilities.s16_be =
-      support_mask(device, fm, SND_PCM_FORMAT_S16_BE);
+      support_mask(device, SND_PCM_FORMAT_S16_BE);
 
    config->devices[index].capabilities.u16 =
-      support_mask(device, fm, SND_PCM_FORMAT_U16);
+      support_mask(device, SND_PCM_FORMAT_U16);
    config->devices[index].capabilities.u16_le =
-      support_mask(device, fm, SND_PCM_FORMAT_U16_LE);
+      support_mask(device, SND_PCM_FORMAT_U16_LE);
    config->devices[index].capabilities.u16_be =
-      support_mask(device, fm, SND_PCM_FORMAT_U16_BE);
-
-   snd_pcm_format_mask_free(fm);
-   snd_pcm_close(handle);
-
-   return;
-
-error:
-
-   snd_pcm_format_mask_free(fm);
-   if (handle != NULL)
-   {
-      snd_pcm_close(handle);
-   }
+      support_mask(device, SND_PCM_FORMAT_U16_BE);
 }
 
 static bool
-support_mask(char* device, snd_pcm_format_mask_t* fm, int format)
+support_mask(char* device, snd_pcm_format_t format)
 {
-   int err = 0;
+   int err;
+   snd_pcm_t* h = NULL;
+   snd_pcm_hw_params_t* hw = NULL;
 
-   if ((err = snd_pcm_format_mask_test(fm, format)) < 0)
+   if ((err = snd_pcm_open(&h, device, SND_PCM_STREAM_PLAYBACK, 0)) < 0)
    {
-      hrmp_log_debug("%d: %s/%s", format, device, snd_strerror(err));
-      return false;
+      goto format_no;
    }
 
+   if ((err = snd_pcm_hw_params_malloc(&hw)) < 0)
+   {
+      goto format_no;
+   }
+
+   if ((err = snd_pcm_hw_params_any(h, hw)) < 0)
+   {
+      goto format_no;
+   }
+
+   if ((err = snd_pcm_hw_params_set_rate_resample(h, hw, 0)) < 0)
+   {
+      goto format_no;
+   }
+
+   if ((err = snd_pcm_hw_params_set_access(h, hw, SND_PCM_ACCESS_RW_INTERLEAVED)) < 0)
+   {
+      goto format_no;
+   }
+
+   if ((err = snd_pcm_hw_params_set_format(h, hw, format)) < 0)
+   {
+      goto format_no;
+   }
+
+   if ((err = snd_pcm_hw_params_set_channels(h, hw, 2)) < 0)
+   {
+      goto format_no;
+   }
+
+   snd_pcm_hw_params_free(hw);
+   snd_pcm_close(h);
+
    return true;
+
+format_no:
+
+   if (hw != NULL)
+   {
+      snd_pcm_hw_params_free(hw);
+   }
+
+   if (h != NULL)
+   {
+      snd_pcm_close(h);
+   }
+
+   return false;
 }
 
 static char*
@@ -494,7 +506,6 @@ is_device_active(char* device)
 
    if ((err = snd_pcm_open(&handle, device, SND_PCM_STREAM_PLAYBACK, 0)) < 0)
    {
-      /* hrmp_log_debug("Open error: %s/%s", device, snd_strerror(err)); */
       goto error;
    }
 
