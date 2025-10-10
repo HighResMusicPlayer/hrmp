@@ -71,6 +71,7 @@ struct file_metadata
    int alsa_snd;                 /**< The ALSA sound identifier */
    int container;                /**< The container size */
    unsigned int block_size;      /**< The block size */
+   unsigned long data_size;      /**< The data size */
 };
 
 /**

@@ -62,13 +62,15 @@ static void print_progress_done(struct playback* pb);
 
 static int read_exact(FILE* f, void* buf, size_t n);
 
-static void dop_preroll(snd_pcm_t* pcm, unsigned frames, uint8_t start_marker);
 static uint8_t bitrev8(uint8_t x);
 
 static int playback_sndfile(snd_pcm_t* pcm_handle, struct playback* pb,
                             int number, int total);
 static int playback_dsf(snd_pcm_t* pcm_handle, struct playback* pb,
                         int number, int total);
+
+static int dop_s32le(FILE* f, struct playback* pb);
+static int dsd_u32_be(FILE *f, struct playback *pb);
 
 int
 hrmp_playback(int device, int number, int total, struct file_metadata* fm)
@@ -160,7 +162,7 @@ playback_sndfile(snd_pcm_t* pcm_handle, struct playback* pb, int number, int tot
 
    if (snd_pcm_get_params(pcm_handle, &pcm_buffer_size, &pcm_period_size) < 0)
    {
-      printf("Could not get parameters for '%s'\n", pb->fm->name);
+      hrmp_log_error("Could not get parameters for '%s'", pb->fm->name);
       goto error;
    }
 
@@ -420,67 +422,13 @@ read_exact(FILE* f, void* buf, size_t n)
    return fread(buf, 1, n, f) == n ? 0 : -1;
 }
 
-static void
-dop_preroll(snd_pcm_t* pcm, unsigned frames, uint8_t start_marker)
-{
-   size_t bpf = 8;
-   uint8_t* buf = NULL;
-   uint8_t m = 0;
-
-   if (frames == 0)
-   {
-      goto error;
-   }
-
-   buf = (uint8_t*)malloc(frames * bpf);
-   if (buf == NULL)
-   {
-      goto error;
-   }
-
-   m = start_marker;
-   for (unsigned i = 0; i < frames; ++i)
-   {
-      uint8_t* f = &buf[i * bpf];
-
-      f[0] = 0x00; f[1] = 0x00; f[2] = 0x00; f[3] = m; /* Left channel */
-      f[4] = 0x00; f[5] = 0x00; f[6] = 0x00; f[7] = m; /* Right channel */
-
-      m = (m == DOP_MARKER_8LSB) ? DOP_MARKER_8MSB : DOP_MARKER_8LSB;
-   }
-
-   snd_pcm_sframes_t n = snd_pcm_writei(pcm, buf, frames);
-   if (n < 0)
-   {
-      n = snd_pcm_recover(pcm, (int)n, 1);
-      if (n < 0)
-      {
-         hrmp_log_error("ALSA: writei failed: %s", snd_strerror((int)n));
-         goto error;
-      }
-   }
-
-   free(buf);
-
-   return;
-
-error:
-
-   free(buf);
-}
-
 static int
-playback_dsf(snd_pcm_t* pcm_handle,
-             struct playback* pb, int number, int total)
+playback_dsf(snd_pcm_t* pcm_handle, struct playback* pb, int number, int total)
 {
    FILE* f = NULL;
-   uint8_t dop_marker = DOP_MARKER_8LSB;
-   uint8_t* stereo_block = NULL;
-   uint32_t frames_per_block = 0;
-   size_t bytes_per_frame = 8;
-   uint8_t* pcm_bytes = NULL;
-   size_t data_offset = 0;
-   uint64_t bytes_left = 0;
+   struct configuration* config = NULL;
+
+   config = (struct configuration*)shmem;
 
    f = fopen(pb->fm->name, "rb");
    if (f == NULL)
@@ -488,106 +436,21 @@ playback_dsf(snd_pcm_t* pcm_handle,
       goto error;
    }
 
-   /* DSD */
-   data_offset += 4 + 8 + 8 + 8;
-
-   /* fmt */
-   data_offset += 4 + 8 + 4 + 4 + 4 + 4 + 4 + 4 + 8 + 4 + 4;
-
-   /* data */
-   data_offset += 4;
-
-   if (fseek(f, data_offset, SEEK_SET) != 0)
+   /* Seek to the data segment */
+   if (fseek(f, 92, SEEK_SET) != 0)
    {
+      hrmp_log_error("fseek failed");
       goto error;
    }
 
-   bytes_left = hrmp_read_le_u64(f) - 12;
-
-   stereo_block = (uint8_t*)malloc(2u * pb->fm->block_size);
-   if (stereo_block == NULL)
+   if (config->dop && (pb->fm->alsa_snd == SND_PCM_FORMAT_S32 ||
+                       pb->fm->alsa_snd == SND_PCM_FORMAT_S32_LE))
    {
-      hrmp_log_error("OOM");
-      goto error;
+      dop_s32le(f, pb);
    }
-
-   frames_per_block = pb->fm->block_size / 2u;
-   pcm_bytes = (uint8_t*)malloc(frames_per_block * bytes_per_frame);
-   if (pcm_bytes == NULL)
+   else
    {
-      hrmp_log_error("OOM");
-      goto error;
-   }
-
-   // Pre-roll DoP silence to help DAC lock
-   dop_preroll(pb->pcm_handle, 2048, DOP_MARKER_8LSB);
-
-   while (bytes_left >= (uint64_t)(2u * pb->fm->block_size))
-   {
-      if (read_exact(f, stereo_block, 2u * pb->fm->block_size) < 0)
-      {
-         break;
-      }
-      bytes_left -= (uint64_t)(2u * pb->fm->block_size);
-
-      /* DoP using S32_LE */
-      uint8_t* L = stereo_block;
-      uint8_t* R = stereo_block + pb->fm->block_size;
-
-      for (uint32_t j = 0, i = 0; j < pb->fm->block_size; j += 2, ++i)
-      {
-         uint8_t l0 = L[j + 0], l1 = L[j + 1];
-         uint8_t r0 = R[j + 0], r1 = R[j + 1];
-         uint8_t t = 0;
-         uint8_t* frm = NULL;
-
-         /* Reverse */
-         l0 = bitrev8(l0);
-         l1 = bitrev8(l1);
-         r0 = bitrev8(r0);
-         r1 = bitrev8(r1);
-
-         /* Swap */
-         t = l0;
-         l0 = l1;
-         l1 = t;
-         t = r0;
-         r0 = r1;
-         r1 = t;
-
-         frm = &pcm_bytes[i * 8];
-         frm[0] = 0x00; frm[1] = l0; frm[2] = l1; frm[3] = dop_marker; /* Left channel */
-         frm[4] = 0x00; frm[5] = r0; frm[6] = r1; frm[7] = dop_marker; /* Right channel */
-
-         dop_marker = (dop_marker == DOP_MARKER_8LSB) ? DOP_MARKER_8MSB : DOP_MARKER_8LSB;
-      }
-
-      // Write to ALSA (handle short writes/recover)
-      uint32_t to_write = frames_per_block;
-      uint8_t* p = pcm_bytes;
-      while (to_write)
-      {
-         snd_pcm_sframes_t n = snd_pcm_writei(pb->pcm_handle, p, to_write);
-         if (n < 0)
-         {
-            n = snd_pcm_recover(pb->pcm_handle, (int)n, 1);
-            if (n < 0)
-            {
-               hrmp_log_error("ALSA: writei failed: %s", snd_strerror((int)n));
-               goto error;
-            }
-            continue;
-         }
-         if ((uint32_t)n > to_write)
-         {
-            n = to_write;
-         }
-         p += (size_t)n * bytes_per_frame;
-         to_write -= (uint32_t)n;
-
-         print_progress(pb);
-         pb->current_samples += 2u * pb->fm->block_size;
-      }
+      dsd_u32_be(f, pb);
    }
 
    print_progress_done(pb);
@@ -597,6 +460,8 @@ playback_dsf(snd_pcm_t* pcm_handle,
    return 0;
 
 error:
+
+   print_progress_done(pb);
 
    if (f != NULL)
    {
@@ -721,10 +586,15 @@ playback_identifier(struct file_metadata* fm, char** identifer)
       case 11289600:
          id = hrmp_append(id, "11.2896MHz");
          break;
+      case 22579200:
+         id = hrmp_append(id, "22.5792MHz");
+         break;
+      case 45158400:
+         id = hrmp_append(id, "45.1584MHz");
+         break;
       default:
-         id = hrmp_append_int(id, (int)fm->sample_rate);
-         id = hrmp_append(id, "Hz");
-         printf("Unsupported sample rate: %dHz/%dbits\n", fm->sample_rate, fm->bits_per_sample);
+         printf("Unsupported sample rate: %s/%dHz/%dbits\n", fm->name, fm->sample_rate, fm->bits_per_sample);
+         goto error;
          break;
    }
 
@@ -745,9 +615,8 @@ playback_identifier(struct file_metadata* fm, char** identifer)
          id = hrmp_append(id, "32bits");
          break;
       default:
-         id = hrmp_append_int(id, (int)fm->bits_per_sample);
-         id = hrmp_append(id, "bits");
-         hrmp_log_error("Unsupported bits per sample: %dHz/%dbits", fm->sample_rate, fm->bits_per_sample);
+         hrmp_log_error("Unsupported bits per sample: %s/%dHz/%dbits", fm->name, fm->sample_rate, fm->bits_per_sample);
+         goto error;
          break;
    }
 
@@ -756,6 +625,12 @@ playback_identifier(struct file_metadata* fm, char** identifer)
    *identifer = id;
 
    return 0;
+
+error:
+
+   free(id);
+
+   return 1;
 }
 
 static int
@@ -972,4 +847,259 @@ print_progress_done(struct playback* pb)
 
       fflush(stdout);
    }
+}
+
+static int
+dop_s32le(FILE *f, struct playback *pb)
+{
+   uint32_t N = pb->fm->block_size;
+   uint8_t* blk = NULL;
+   uint32_t frames_per_block = N / 2u;
+   size_t bytes_per_frame = 8;
+   uint8_t* out = NULL;
+
+   blk = (uint8_t*)malloc(2u * N);
+   if (blk == NULL)
+   {
+      hrmp_log_error("OOM");
+      goto error;
+   }
+
+   out = (uint8_t*)malloc(frames_per_block * bytes_per_frame);
+   if (out == NULL)
+   {
+      hrmp_log_error("OOM");
+      goto error;
+   }
+
+   /* Pre-roll to help DAC lock */
+   {
+      unsigned pre = (pb->fm->sample_rate >= 11289600u) ? 4096 : 2048;
+      uint8_t* pr = (uint8_t*)malloc(pre * bytes_per_frame);
+      if (pr != NULL)
+      {
+         uint8_t m = DOP_MARKER_8LSB;
+         for (unsigned i = 0; i < pre; ++i)
+         {
+            pr[i * 8 + 0] = 0x00;
+            pr[i * 8 + 1] = 0x00;
+            pr[i * 8 + 2] = 0x00;
+            pr[i * 8 + 3] = m;
+            pr[i * 8 + 4] = 0x00;
+            pr[i * 8 + 5] = 0x00;
+            pr[i * 8 + 6] = 0x00;
+            pr[i * 8 + 7] = m;
+            m = (m == DOP_MARKER_8LSB) ? DOP_MARKER_8MSB : DOP_MARKER_8LSB;
+         }
+         snd_pcm_writei(pb->pcm_handle, pr, pre);
+         free(pr);
+      }
+      else
+      {
+         hrmp_log_error("DoP: Prefill error");
+         goto error;
+      }
+   }
+
+   uint8_t marker = DOP_MARKER_8LSB;
+   uint64_t left = pb->fm->data_size;
+
+   while (left >= (uint64_t)(2u * N))
+   {
+      if (read_exact(f, blk, 2u * N) < 0)
+      {
+         break;
+      }
+      left -= (uint64_t)(2u * N);
+
+      uint8_t* L = blk;
+      uint8_t* R = blk + N;
+
+      for (uint32_t j = 0, i = 0; j < N; j += 2, ++i)
+      {
+         uint8_t l0 = L[j];
+         uint8_t l1 = L[j + 1];
+         uint8_t r0 = R[j];
+         uint8_t r1 = R[j + 1];
+
+         l0 = bitrev8(l0);
+         l1 = bitrev8(l1);
+         r0 = bitrev8(r0);
+         r1 = bitrev8(r1);
+
+         uint8_t t = l0;
+         l0 = l1;
+         l1 = t;
+         t = r0;
+         r0 = r1;
+         r1 = t;
+
+         uint8_t* frm = &out[i * 8];
+         frm[0] = 0x00;
+         frm[1] = l0;
+         frm[2] = l1;
+         frm[3] = marker;
+         frm[4] = 0x00;
+         frm[5] = r0;
+         frm[6] = r1;
+         frm[7] = marker;
+
+         marker = (marker == DOP_MARKER_8LSB) ? DOP_MARKER_8MSB : DOP_MARKER_8LSB;
+      }
+
+      uint32_t to_write = frames_per_block;
+      uint8_t* p = out;
+
+      while (to_write)
+      {
+         snd_pcm_sframes_t n = snd_pcm_writei(pb->pcm_handle, p, to_write);
+         if (n < 0)
+         {
+            n = snd_pcm_recover(pb->pcm_handle, (int)n, 1);
+            if (n < 0)
+            {
+               hrmp_log_error("ALSA write failed: %s", snd_strerror((int)n));
+               goto error;
+            }
+            continue;
+         }
+
+         if ((uint32_t)n > to_write)
+         {
+            n = to_write;
+         }
+
+         p += (size_t)n * bytes_per_frame;
+         to_write -= (uint32_t)n;
+
+         print_progress(pb);
+         pb->current_samples += n;
+      }
+   }
+
+   print_progress_done(pb);
+
+   free(out);
+   free(blk);
+
+   return 0;
+
+error:
+
+   print_progress_done(pb);
+
+   free(out);
+   free(blk);
+
+   return 1;
+}
+
+static int
+dsd_u32_be(FILE *f, struct playback *pb)
+{
+   uint32_t N = pb->fm->block_size;
+   uint8_t* blk = NULL;
+   uint32_t frames_per_block = N / 4u;
+   size_t bytes_per_frame = 8;
+   uint8_t* out = NULL;
+   uint64_t left = 0;
+
+   blk = (uint8_t*)malloc(2u * N);
+   if (blk == NULL)
+   {
+      hrmp_log_error("OOM");
+      goto error;
+   }
+
+   out = (uint8_t*)malloc((size_t)frames_per_block * bytes_per_frame);
+   if (out == NULL)
+   {
+      hrmp_log_error("OOM");
+      goto error;
+   }
+
+   left = pb->fm->data_size;
+
+   while (left >= (uint64_t)(2u * N))
+   {
+      if (read_exact(f, blk, 2u * N) < 0)
+      {
+         break;
+      }
+      left -= (uint64_t)(2u * N);
+
+      uint8_t* L = blk;
+      uint8_t* R = blk + N;
+
+      size_t w = 0;
+      for (uint32_t i = 0; i < frames_per_block; ++i)
+      {
+         uint8_t* lp = &L[i * 4];
+         uint8_t* rp = &R[i * 4];
+         uint8_t lb0 = bitrev8(lp[0]);
+         uint8_t lb1 = bitrev8(lp[1]);
+         uint8_t lb2 = bitrev8(lp[2]);
+         uint8_t lb3 = bitrev8(lp[3]);
+         uint8_t rb0 = bitrev8(rp[0]);
+         uint8_t rb1 = bitrev8(rp[1]);
+         uint8_t rb2 = bitrev8(rp[2]);
+         uint8_t rb3 = bitrev8(rp[3]);
+
+         out[w + 0] = lb0;
+         out[w + 1] = lb1;
+         out[w + 2] = lb2;
+         out[w + 3] = lb3;
+
+         out[w + 4] = rb0;
+         out[w + 5] = rb1;
+         out[w + 6] = rb2;
+         out[w + 7] = rb3;
+
+         w += 8;
+      }
+
+      uint32_t to_write = frames_per_block;
+      size_t off = 0;
+      while (to_write)
+      {
+         snd_pcm_sframes_t n = snd_pcm_writei(pb->pcm_handle, &out[off], to_write);
+         if (n < 0)
+         {
+            n = snd_pcm_recover(pb->pcm_handle, (int)n, 1);
+            if (n < 0)
+            {
+               hrmp_log_error("ALSA write failed: %s", snd_strerror((int)n));
+               goto error;
+            }
+            continue;
+         }
+
+         if ((uint32_t)n > to_write)
+         {
+            n = to_write;
+         }
+
+         off += (size_t)n * bytes_per_frame;
+         to_write -= (uint32_t)n;
+
+         print_progress(pb);
+         pb->current_samples += n;
+      }
+   }
+
+   print_progress_done(pb);
+
+   free(out);
+   free(blk);
+
+   return 0;
+
+error:
+
+   print_progress_done(pb);
+
+   free(out);
+   free(blk);
+
+   return 1;
 }
