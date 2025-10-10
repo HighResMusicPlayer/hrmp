@@ -79,6 +79,7 @@ usage(void)
    printf("  -R, --recursive            Add files recursive of the directory\n");
    printf("  -I, --sample-configuration Generate a sample configuration\n");
    printf("  -s, --status               Status of the devices\n");
+   printf("      --dop                  Use DSD over PCM\n");
    printf("  -q, --quiet                Quiet the player\n");
    printf("  -V, --version              Display version information\n");
    printf("  -?, --help                 Display help\n");
@@ -101,6 +102,7 @@ main(int argc, char** argv)
    bool q = false;
    bool e = false;
    bool d = false;
+   bool dop = false;
    int files_index = 1;
    int action = ACTION_NOTHING;
    int active_device = -1;
@@ -119,6 +121,7 @@ main(int argc, char** argv)
       {"R", "recursive", false},
       {"I", "sample-configuration", false},
       {"s", "status", false},
+      {"", "dop", false},
       {"q", "quiet", false},
       {"V", "version", false},
       {"", "experimental", false},
@@ -173,6 +176,11 @@ main(int argc, char** argv)
       else if (!strcmp(optname, "s") || !strcmp(optname, "status"))
       {
          action = ACTION_STATUS;
+         files_index += 1;
+      }
+      else if (!strcmp(optname, "dop"))
+      {
+         dop = true;
          files_index += 1;
       }
       else if (!strcmp(optname, "q") || !strcmp(optname, "quiet"))
@@ -273,6 +281,7 @@ main(int argc, char** argv)
    config->quiet = q;
    config->experimental = e;
    config->developer = d;
+   config->dop = dop;
 
    if (action == ACTION_HELP)
    {

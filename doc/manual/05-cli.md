@@ -18,6 +18,7 @@ Options:
   -R, --recursive            Add files recursive of the directory
   -I, --sample-configuration Generate a sample configuration
   -s, --status               Status of the devices
+      --dop                  Use DSD over PCM
   -q, --quiet                Quiet the player
   -V, --version              Display version information
   -?, --help                 Display help

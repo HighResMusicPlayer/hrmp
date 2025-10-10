@@ -199,6 +199,8 @@ struct configuration
    bool experimental;                 /**< Allow experimental features */
    bool developer;                    /**< Enable developer features */
 
+   bool dop;                          /**< DoP mode */
+
    int log_type;                      /**< The logging type */
    int log_level;                     /**< The logging level */
    char log_path[MISC_LENGTH];        /**< The logging path */

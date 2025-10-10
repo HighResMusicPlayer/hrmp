@@ -579,19 +579,11 @@ get_metadata_dsf(char* filename, struct file_metadata** file_metadata)
 {
    FILE* f = NULL;
    char id4[5] = {0};
-   uint64_t chunk_size = 0;
-   uint64_t file_size = 0;
-   uint64_t metadata_chunk = 0;
-   uint64_t format_chunk = 0;
-   uint32_t format_version = 0;
-   uint32_t format_id = 0;
-   uint32_t channel_type = 0;
    uint32_t channel_number = 0;
    uint32_t srate = 0;
    uint32_t bps = 0;
    uint64_t samples = 0;
    uint32_t block_size = 0;
-   uint32_t reserved = 0;
    struct file_metadata* fm = NULL;
 
    *file_metadata = NULL;
@@ -621,9 +613,9 @@ get_metadata_dsf(char* filename, struct file_metadata** file_metadata)
       goto error;
    }
 
-   chunk_size = hrmp_read_le_u64(f);
-   file_size = hrmp_read_le_u64(f);
-   metadata_chunk = hrmp_read_le_u64(f);
+   hrmp_read_le_u64(f); /* chunk_size */
+   hrmp_read_le_u64(f); /* file_size */
+   hrmp_read_le_u64(f); /* metadata_chunk */
 
    memset(&id4[0], 0, sizeof(id4));
    if (fread(id4, 1, 4, f) != 4)
@@ -638,34 +630,20 @@ get_metadata_dsf(char* filename, struct file_metadata** file_metadata)
       goto error;
    }
 
-   format_chunk = hrmp_read_le_u64(f);
-   format_version = hrmp_read_le_u32(f);
-   format_id = hrmp_read_le_u32(f);
-   channel_type = hrmp_read_le_u32(f);
+   hrmp_read_le_u64(f); /* format_chunk */
+   hrmp_read_le_u32(f); /* format_version */
+   hrmp_read_le_u32(f); /* format_id */
+   hrmp_read_le_u32(f); /* channel_type */
    channel_number = hrmp_read_le_u32(f);
    srate = hrmp_read_le_u32(f);
    bps = hrmp_read_le_u32(f);
    samples = hrmp_read_le_u64(f);
    block_size = hrmp_read_le_u32(f);
-   reserved = hrmp_read_le_u32(f);
-
-   hrmp_log_debug("Chunk size: %lu", chunk_size);
-   hrmp_log_debug("File size: %lu", file_size);
-   hrmp_log_debug("Metadata: %lu", metadata_chunk);
-   hrmp_log_debug("Format chunk: %lu", format_chunk);
-   hrmp_log_debug("Format version: %d", format_version);
-   hrmp_log_debug("Format id: %d", format_id);
-   hrmp_log_debug("Channel type: %d", channel_type);
-   hrmp_log_debug("Channel number: %d", channel_number);
-   hrmp_log_debug("Sample rate: %d", srate);
-   hrmp_log_debug("Bits per sample: %d", bps);
-   hrmp_log_debug("Samples: %lu", samples);
-   hrmp_log_debug("Block size: %d", block_size);
-   hrmp_log_debug("Reserved: %d", reserved);
+   hrmp_read_le_u32(f) /* reserved */;
 
    if (srate % 16)
    {
-      hrmp_log_error("Error: DSD fs not divisible by 16 (fs=%u)\n", srate);
+      hrmp_log_error("Error: DSD sample rate is not divisible by 16 (%lu)", srate);
       goto error;
    }
 

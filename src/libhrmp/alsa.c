@@ -250,17 +250,24 @@ find_best_format(int device, struct file_metadata* fm, snd_pcm_format_t* format)
    }
    else if (fm->format == FORMAT_1)
    {
-      if (config->devices[device].capabilities.dsd_u32_be)
+      if (!config->dop)
       {
-         fm->container = 32;
-         fmt = SND_PCM_FORMAT_DSD_U32_BE;
-         found = true;
+         if (config->devices[device].capabilities.dsd_u32_be)
+         {
+            fm->container = 32;
+            fmt = SND_PCM_FORMAT_DSD_U32_BE;
+            found = true;
+         }
       }
-      else if (config->devices[device].capabilities.s32_le)
+
+      if (!found)
       {
-         fm->container = 32;
-         fmt = SND_PCM_FORMAT_S32_LE;
-         found = true;
+         if (config->devices[device].capabilities.s32_le)
+         {
+            fm->container = 32;
+            fmt = SND_PCM_FORMAT_S32_LE;
+            found = true;
+         }
       }
    }
    else
