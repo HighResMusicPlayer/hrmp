@@ -679,6 +679,10 @@ playback_identifier(struct file_metadata* fm, char** identifer)
    {
       id = hrmp_append(id, "MP3/");
    }
+   else if (fm->type == TYPE_DSF)
+   {
+      id = hrmp_append(id, "DSF/");
+   }
 
    switch (fm->sample_rate)
    {
