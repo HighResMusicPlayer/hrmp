@@ -51,6 +51,7 @@ static char* clean_description(char* s);
 static bool is_device_active(char* device);
 static int get_hardware_number(char* device);
 static char* get_hardware_selem(int hardware);
+static bool has_capabilities(struct capabilities c);
 
 void
 hrmp_check_devices(void)
@@ -159,34 +160,70 @@ hrmp_print_devices(void)
       printf("  Device: %s\n", config->devices[i].device);
       printf("  Description: %s\n", config->devices[i].description);
       printf("  Active:    %s\n", config->devices[i].active ? "Yes" : "No");
-      printf("  16bit:\n");
-      printf("    S16:     %s\n", config->devices[i].capabilities.s16 ? "Yes" : "No");
-      printf("    S16_LE:  %s\n", config->devices[i].capabilities.s16_le ? "Yes" : "No");
-      printf("    S16_BE:  %s\n", config->devices[i].capabilities.s16_be ? "Yes" : "No");
-      printf("    U16:     %s\n", config->devices[i].capabilities.u16 ? "Yes" : "No");
-      printf("    U16_LE:  %s\n", config->devices[i].capabilities.u16_le ? "Yes" : "No");
-      printf("    U16_BE:  %s\n", config->devices[i].capabilities.u16_be ? "Yes" : "No");
-      printf("  24bit:\n");
-      printf("    S24:     %s\n", config->devices[i].capabilities.s24 ? "Yes" : "No");
-      printf("    S24_3LE: %s\n", config->devices[i].capabilities.s24_3le ? "Yes" : "No");
-      printf("    S24_LE:  %s\n", config->devices[i].capabilities.s24_le ? "Yes" : "No");
-      printf("    S24_BE:  %s\n", config->devices[i].capabilities.s24_be ? "Yes" : "No");
-      printf("    U24:     %s\n", config->devices[i].capabilities.u24 ? "Yes" : "No");
-      printf("    U24_LE:  %s\n", config->devices[i].capabilities.u24_le ? "Yes" : "No");
-      printf("    U24_BE:  %s\n", config->devices[i].capabilities.u24_be ? "Yes" : "No");
-      printf("  32bit:\n");
-      printf("    S32:     %s\n", config->devices[i].capabilities.s32 ? "Yes" : "No");
-      printf("    S32_LE:  %s\n", config->devices[i].capabilities.s32_le ? "Yes" : "No");
-      printf("    S32_BE:  %s\n", config->devices[i].capabilities.s32_be ? "Yes" : "No");
-      printf("    U32:     %s\n", config->devices[i].capabilities.u32 ? "Yes" : "No");
-      printf("    U32_LE:  %s\n", config->devices[i].capabilities.u32_le ? "Yes" : "No");
-      printf("    U32_BE:  %s\n", config->devices[i].capabilities.u32_be ? "Yes" : "No");
-      printf("  DSD:\n");
-      printf("    U8:      %s\n", config->devices[i].capabilities.dsd_u8 ? "Yes" : "No");
-      printf("    U16_LE:  %s\n", config->devices[i].capabilities.dsd_u16_le ? "Yes" : "No");
-      printf("    U16_BE:  %s\n", config->devices[i].capabilities.dsd_u16_be ? "Yes" : "No");
-      printf("    U32_LE:  %s\n", config->devices[i].capabilities.dsd_u32_le ? "Yes" : "No");
-      printf("    U32_BE:  %s\n", config->devices[i].capabilities.dsd_u32_be ? "Yes" : "No");
+
+      if (config->devices[i].active ||
+          has_capabilities(config->devices[i].capabilities))
+      {
+         printf("  16bit:\n");
+         printf("    S16:     %s\n", config->devices[i].capabilities.s16 ? "Yes" : "No");
+         printf("    S16_LE:  %s\n", config->devices[i].capabilities.s16_le ? "Yes" : "No");
+         printf("    S16_BE:  %s\n", config->devices[i].capabilities.s16_be ? "Yes" : "No");
+         printf("    U16:     %s\n", config->devices[i].capabilities.u16 ? "Yes" : "No");
+         printf("    U16_LE:  %s\n", config->devices[i].capabilities.u16_le ? "Yes" : "No");
+         printf("    U16_BE:  %s\n", config->devices[i].capabilities.u16_be ? "Yes" : "No");
+         printf("  24bit:\n");
+         printf("    S24:     %s\n", config->devices[i].capabilities.s24 ? "Yes" : "No");
+         printf("    S24_3LE: %s\n", config->devices[i].capabilities.s24_3le ? "Yes" : "No");
+         printf("    S24_LE:  %s\n", config->devices[i].capabilities.s24_le ? "Yes" : "No");
+         printf("    S24_BE:  %s\n", config->devices[i].capabilities.s24_be ? "Yes" : "No");
+         printf("    U24:     %s\n", config->devices[i].capabilities.u24 ? "Yes" : "No");
+         printf("    U24_LE:  %s\n", config->devices[i].capabilities.u24_le ? "Yes" : "No");
+         printf("    U24_BE:  %s\n", config->devices[i].capabilities.u24_be ? "Yes" : "No");
+         printf("  32bit:\n");
+         printf("    S32:     %s\n", config->devices[i].capabilities.s32 ? "Yes" : "No");
+         printf("    S32_LE:  %s\n", config->devices[i].capabilities.s32_le ? "Yes" : "No");
+         printf("    S32_BE:  %s\n", config->devices[i].capabilities.s32_be ? "Yes" : "No");
+         printf("    U32:     %s\n", config->devices[i].capabilities.u32 ? "Yes" : "No");
+         printf("    U32_LE:  %s\n", config->devices[i].capabilities.u32_le ? "Yes" : "No");
+         printf("    U32_BE:  %s\n", config->devices[i].capabilities.u32_be ? "Yes" : "No");
+         printf("  DSD:\n");
+         printf("    U8:      %s\n", config->devices[i].capabilities.dsd_u8 ? "Yes" : "No");
+         printf("    U16_LE:  %s\n", config->devices[i].capabilities.dsd_u16_le ? "Yes" : "No");
+         printf("    U16_BE:  %s\n", config->devices[i].capabilities.dsd_u16_be ? "Yes" : "No");
+         printf("    U32_LE:  %s\n", config->devices[i].capabilities.dsd_u32_le ? "Yes" : "No");
+         printf("    U32_BE:  %s\n", config->devices[i].capabilities.dsd_u32_be ? "Yes" : "No");
+      }
+      else
+      {
+         printf("  16bit:\n");
+         printf("    S16:     Unknown\n");
+         printf("    S16_LE:  Unknown\n");
+         printf("    S16_BE:  Unknown\n");
+         printf("    U16:     Unknown\n");
+         printf("    U16_LE:  Unknown\n");
+         printf("    U16_BE:  Unknown\n");
+         printf("  24bit:\n");
+         printf("    S24:     Unknown\n");
+         printf("    S24_3LE: Unknown\n");
+         printf("    S24_LE:  Unknown\n");
+         printf("    S24_BE:  Unknown\n");
+         printf("    U24:     Unknown\n");
+         printf("    U24_LE:  Unknown\n");
+         printf("    U24_BE:  Unknown\n");
+         printf("  32bit:\n");
+         printf("    S32:     Unknown\n");
+         printf("    S32_LE:  Unknown\n");
+         printf("    S32_BE:  Unknown\n");
+         printf("    U32:     Unknown\n");
+         printf("    U32_LE:  Unknown\n");
+         printf("    U32_BE:  Unknown\n");
+         printf("  DSD:\n");
+         printf("    U8:      Unknown\n");
+         printf("    U16_LE:  Unknown\n");
+         printf("    U16_BE:  Unknown\n");
+         printf("    U32_LE:  Unknown\n");
+         printf("    U32_BE:  Unknown\n");
+      }
 
       if (i < config->number_of_devices - 1)
       {
@@ -714,4 +751,19 @@ error:
    }
 
    return NULL;
+}
+
+static bool
+has_capabilities(struct capabilities c)
+{
+   if (c.s16 || c.s16_le || c.s16_be || c.u16 || c.u16_le || c.u16_be ||
+       c.s24 || c.s24_3le || c.s24_le || c.s24_be || c.u24 || c.u24_le ||
+       c.u24_be || c.s32 || c.s32_le || c.s32_be || c.u32 || c.u32_le ||
+       c.u32_be || c.dsd_u8 || c.dsd_u16_le || c.dsd_u16_be || c.dsd_u32_le ||
+       c.dsd_u32_be)
+   {
+      return true;
+   }
+
+   return false;
 }
