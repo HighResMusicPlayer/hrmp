@@ -66,11 +66,9 @@ static void dop_preroll(snd_pcm_t* pcm, unsigned frames, uint8_t start_marker);
 static uint8_t bitrev8(uint8_t x);
 
 static int playback_sndfile(snd_pcm_t* pcm_handle, struct playback* pb,
-                            int device, int number, int total,
-                            struct file_metadata* fm);
+                            int number, int total);
 static int playback_dsf(snd_pcm_t* pcm_handle, struct playback* pb,
-                        int device, int number, int total,
-                        struct file_metadata* fm);
+                        int number, int total);
 
 int
 hrmp_playback(int device, int number, int total, struct file_metadata* fm)
@@ -98,11 +96,11 @@ hrmp_playback(int device, int number, int total, struct file_metadata* fm)
 
    if (fm->type == TYPE_WAV || fm->type == TYPE_FLAC || fm->type == TYPE_MP3)
    {
-      ret = playback_sndfile(pcm_handle, pb, device, number, total, fm);
+      ret = playback_sndfile(pcm_handle, pb, number, total);
    }
    else if (fm->type == TYPE_DSF)
    {
-      ret = playback_dsf(pcm_handle, pb, device, number, total, fm);
+      ret = playback_dsf(pcm_handle, pb, number, total);
    }
    else
    {
@@ -126,9 +124,7 @@ error:
 }
 
 static int
-playback_sndfile(snd_pcm_t* pcm_handle,
-                 struct playback* pb, int device, int number,
-                 int total, struct file_metadata* fm)
+playback_sndfile(snd_pcm_t* pcm_handle, struct playback* pb, int number, int total)
 {
    int err;
    int keyboard_action;
@@ -156,7 +152,7 @@ playback_sndfile(snd_pcm_t* pcm_handle,
    }
    memset(info, 0, sizeof(SF_INFO));
 
-   f = sf_open(fm->name, SFM_READ, info);
+   f = sf_open(pb->fm->name, SFM_READ, info);
    if (f == NULL)
    {
       goto error;
@@ -164,12 +160,12 @@ playback_sndfile(snd_pcm_t* pcm_handle,
 
    if (snd_pcm_get_params(pcm_handle, &pcm_buffer_size, &pcm_period_size) < 0)
    {
-      printf("Could not get parameters for '%s'\n", fm->name);
+      printf("Could not get parameters for '%s'\n", pb->fm->name);
       goto error;
    }
 
    // Playback loop
-   switch (fm->container)
+   switch (pb->fm->container)
    {
       case 16:
          bytes_per_sample = 2;
@@ -215,14 +211,14 @@ playback_sndfile(snd_pcm_t* pcm_handle,
          {
             int32_t sample = input_buffer[f * info->channels + ch];
             /* libsndfile gives signed int32_t; if file is 24-bit it returns it in low 24 bits. */
-            if (fm->container == 16)
+            if (pb->fm->container == 16)
             {
                /* convert 32-bit to 16-bit by shifting (arith shift) */
                int16_t s16 = (int16_t)(sample >> 16); /* lose lower bits */
                output_buffer[outpos++] = (uint8_t)(s16 & 0xFF);
                output_buffer[outpos++] = (uint8_t)((s16 >> 8) & 0xFF);
             }
-            else if (fm->container == 24)
+            else if (pb->fm->container == 24)
             {
                /* pack lower 3 bytes little-endian */
                output_buffer[outpos++] = (uint8_t)(sample & 0xFF);
@@ -278,13 +274,13 @@ keyboard:
       }
       else if (keyboard_action == KEYBOARD_SPACE)
       {
-         if (config->devices[device].is_paused)
+         if (config->devices[pb->device].is_paused)
          {
-            config->devices[device].is_paused = false;
+            config->devices[pb->device].is_paused = false;
          }
          else
          {
-            config->devices[device].is_paused = true;
+            config->devices[pb->device].is_paused = true;
             SLEEP_AND_GOTO(10000L, keyboard);
          }
       }
@@ -293,7 +289,7 @@ keyboard:
                keyboard_action == KEYBOARD_LEFT ||
                keyboard_action == KEYBOARD_RIGHT)
       {
-         size_t delta = (size_t)(fm->total_samples / fm->duration);
+         size_t delta = (size_t)(pb->fm->total_samples / pb->fm->duration);
          size_t new_position = (size_t)pb->current_samples;
 
          if (keyboard_action == KEYBOARD_UP)
@@ -339,7 +335,7 @@ keyboard:
 
          if (!config->is_muted)
          {
-            set_volume(device, new_volume);
+            set_volume(pb->device, new_volume);
          }
       }
       else if (keyboard_action == KEYBOARD_PERIOD)
@@ -348,7 +344,7 @@ keyboard:
 
          if (!config->is_muted)
          {
-            set_volume(device, new_volume);
+            set_volume(pb->device, new_volume);
          }
       }
       else if (keyboard_action == KEYBOARD_M)
@@ -366,18 +362,18 @@ keyboard:
             config->is_muted = true;
          }
 
-         set_volume(device, new_volume);
+         set_volume(pb->device, new_volume);
       }
       else if (keyboard_action == KEYBOARD_SLASH)
       {
          int new_volume = 100;
 
          config->is_muted = false;
-         set_volume(device, new_volume);
+         set_volume(pb->device, new_volume);
       }
       else
       {
-         if (config->devices[device].is_paused)
+         if (config->devices[pb->device].is_paused)
          {
             SLEEP_AND_GOTO(10000L, keyboard);
          }
@@ -475,8 +471,7 @@ error:
 
 static int
 playback_dsf(snd_pcm_t* pcm_handle,
-             struct playback* pb, int device, int number, int total,
-             struct file_metadata* fm)
+             struct playback* pb, int number, int total)
 {
    FILE* f = NULL;
    uint8_t dop_marker = DOP_MARKER_8LSB;
@@ -487,7 +482,7 @@ playback_dsf(snd_pcm_t* pcm_handle,
    size_t data_offset = 0;
    uint64_t bytes_left = 0;
 
-   f = fopen(fm->name, "rb");
+   f = fopen(pb->fm->name, "rb");
    if (f == NULL)
    {
       goto error;
@@ -509,14 +504,14 @@ playback_dsf(snd_pcm_t* pcm_handle,
 
    bytes_left = hrmp_read_le_u64(f) - 12;
 
-   stereo_block = (uint8_t*)malloc(2u * fm->block_size);
+   stereo_block = (uint8_t*)malloc(2u * pb->fm->block_size);
    if (stereo_block == NULL)
    {
       hrmp_log_error("OOM");
       goto error;
    }
 
-   frames_per_block = fm->block_size / 2u;
+   frames_per_block = pb->fm->block_size / 2u;
    pcm_bytes = (uint8_t*)malloc(frames_per_block * bytes_per_frame);
    if (pcm_bytes == NULL)
    {
@@ -527,18 +522,19 @@ playback_dsf(snd_pcm_t* pcm_handle,
    // Pre-roll DoP silence to help DAC lock
    dop_preroll(pb->pcm_handle, 2048, DOP_MARKER_8LSB);
 
-   while (bytes_left >= (uint64_t)(2u * fm->block_size))
+   while (bytes_left >= (uint64_t)(2u * pb->fm->block_size))
    {
-      if (read_exact(f, stereo_block, 2u * fm->block_size) < 0)
+      if (read_exact(f, stereo_block, 2u * pb->fm->block_size) < 0)
       {
          break;
       }
-      bytes_left -= (uint64_t)(2u * fm->block_size);
+      bytes_left -= (uint64_t)(2u * pb->fm->block_size);
 
+      /* DoP using S32_LE */
       uint8_t* L = stereo_block;
-      uint8_t* R = stereo_block + fm->block_size;
+      uint8_t* R = stereo_block + pb->fm->block_size;
 
-      for (uint32_t j = 0, i = 0; j < fm->block_size; j += 2, ++i)
+      for (uint32_t j = 0, i = 0; j < pb->fm->block_size; j += 2, ++i)
       {
          uint8_t l0 = L[j + 0], l1 = L[j + 1];
          uint8_t r0 = R[j + 0], r1 = R[j + 1];
@@ -590,7 +586,7 @@ playback_dsf(snd_pcm_t* pcm_handle,
          to_write -= (uint32_t)n;
 
          print_progress(pb);
-         pb->current_samples += 2u * fm->block_size;
+         pb->current_samples += 2u * pb->fm->block_size;
       }
    }
 
