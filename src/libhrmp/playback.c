@@ -973,7 +973,7 @@ dop_s32le(FILE *f, struct playback *pb)
          to_write -= (uint32_t)n;
 
          print_progress(pb);
-         pb->current_samples += n;
+         pb->current_samples += pb->fm->block_size * 8;
       }
    }
 
@@ -1083,7 +1083,7 @@ dsd_u32_be(FILE *f, struct playback *pb)
          to_write -= (uint32_t)n;
 
          print_progress(pb);
-         pb->current_samples += n;
+         pb->current_samples += pb->fm->block_size * 8;
       }
    }
 
