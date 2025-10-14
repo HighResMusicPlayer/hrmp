@@ -70,7 +70,9 @@ static int playback_dsf(snd_pcm_t* pcm_handle, struct playback* pb,
                         int number, int total);
 
 static int dop_s32le(FILE* f, struct playback* pb);
-static int dsd_u32_be(FILE *f, struct playback *pb);
+static int dsd_u32_be(FILE* f, struct playback* pb);
+
+static int do_keyboard(FILE* f, SNDFILE* sndf, struct playback* pb);
 
 int
 hrmp_playback(int device, int number, int total, struct file_metadata* fm)
@@ -84,7 +86,8 @@ hrmp_playback(int device, int number, int total, struct file_metadata* fm)
 
    if (hrmp_alsa_init_handle(device, fm, &pcm_handle))
    {
-      hrmp_log_error("Could not initialize '%s' for '%s'", config->devices[device].name, fm->name);
+      hrmp_log_error("Could not initialize '%s' for '%s'",
+                     config->devices[device].name, fm->name);
       goto error;
    }
 
@@ -92,7 +95,8 @@ hrmp_playback(int device, int number, int total, struct file_metadata* fm)
 
    if (playback_init(device, number, total, pcm_handle, fm, &pb))
    {
-      hrmp_log_error("Could not initialize '%s' for '%s'", config->devices[device].name, fm->name);
+      hrmp_log_error("Could not initialize '%s' for '%s'",
+                     config->devices[device].name, fm->name);
       goto error;
    }
 
@@ -129,7 +133,6 @@ static int
 playback_sndfile(snd_pcm_t* pcm_handle, struct playback* pb, int number, int total)
 {
    int err;
-   int keyboard_action;
    SNDFILE* f = NULL;
    SF_INFO* info = NULL;
    int bytes_per_sample = 2;
@@ -143,9 +146,6 @@ playback_sndfile(snd_pcm_t* pcm_handle, struct playback* pb, int number, int tot
    int32_t* input_buffer = NULL;
    size_t output_buffer_size = 0;
    unsigned char* output_buffer = NULL;
-   struct configuration* config = NULL;
-
-   config = (struct configuration*)shmem;
 
    info = (SF_INFO*)malloc(sizeof(SF_INFO));
    if (info == NULL)
@@ -261,124 +261,9 @@ playback_sndfile(snd_pcm_t* pcm_handle, struct playback* pb, int number, int tot
       print_progress(pb);
       pb->current_samples += pcm_period_size;
 
-keyboard:
-      keyboard_action = hrmp_keyboard_get();
-
-      if (keyboard_action == KEYBOARD_Q)
-      {
-         print_progress_done(pb);
-         hrmp_keyboard_mode(false);
-         exit(0);
-      }
-      else if (keyboard_action == KEYBOARD_ENTER)
+      if (do_keyboard(NULL, f, pb))
       {
          break;
-      }
-      else if (keyboard_action == KEYBOARD_SPACE)
-      {
-         if (config->devices[pb->device].is_paused)
-         {
-            config->devices[pb->device].is_paused = false;
-         }
-         else
-         {
-            config->devices[pb->device].is_paused = true;
-            SLEEP_AND_GOTO(10000L, keyboard);
-         }
-      }
-      else if (keyboard_action == KEYBOARD_UP ||
-               keyboard_action == KEYBOARD_DOWN ||
-               keyboard_action == KEYBOARD_LEFT ||
-               keyboard_action == KEYBOARD_RIGHT)
-      {
-         size_t delta = (size_t)(pb->fm->total_samples / pb->fm->duration);
-         size_t new_position = (size_t)pb->current_samples;
-
-         if (keyboard_action == KEYBOARD_UP)
-         {
-            delta = 60 * delta;
-         }
-         else if (keyboard_action == KEYBOARD_DOWN)
-         {
-            delta = -60 * delta;
-         }
-         else if (keyboard_action == KEYBOARD_LEFT)
-         {
-            delta = -15 * delta;
-         }
-         else if (keyboard_action == KEYBOARD_RIGHT)
-         {
-            delta = 15 * delta;
-         }
-
-         new_position += delta;
-
-         if (new_position >= pb->fm->total_samples)
-         {
-            sf_seek(f, 0, SEEK_END);
-            pb->current_samples = pb->fm->total_samples;
-         }
-         else if (new_position <= 0)
-         {
-            sf_seek(f, 0, SEEK_SET);
-            pb->current_samples = 0;
-         }
-         else
-         {
-            sf_seek(f, delta, SEEK_CUR);
-            pb->current_samples += delta;
-         }
-
-         print_progress(pb);
-      }
-      else if (keyboard_action == KEYBOARD_COMMA)
-      {
-         int new_volume = config->volume - 5;
-
-         if (!config->is_muted)
-         {
-            set_volume(pb->device, new_volume);
-         }
-      }
-      else if (keyboard_action == KEYBOARD_PERIOD)
-      {
-         int new_volume = config->volume + 5;
-
-         if (!config->is_muted)
-         {
-            set_volume(pb->device, new_volume);
-         }
-      }
-      else if (keyboard_action == KEYBOARD_M)
-      {
-         int new_volume;
-
-         if (config->is_muted)
-         {
-            new_volume = config->prev_volume;
-            config->is_muted = false;
-         }
-         else
-         {
-            new_volume = 0;
-            config->is_muted = true;
-         }
-
-         set_volume(pb->device, new_volume);
-      }
-      else if (keyboard_action == KEYBOARD_SLASH)
-      {
-         int new_volume = 100;
-
-         config->is_muted = false;
-         set_volume(pb->device, new_volume);
-      }
-      else
-      {
-         if (config->devices[pb->device].is_paused)
-         {
-            SLEEP_AND_GOTO(10000L, keyboard);
-         }
       }
 
       memset(input_buffer, 0, input_buffer_size);
@@ -453,15 +338,11 @@ playback_dsf(snd_pcm_t* pcm_handle, struct playback* pb, int number, int total)
       dsd_u32_be(f, pb);
    }
 
-   print_progress_done(pb);
-
    fclose(f);
 
    return 0;
 
 error:
-
-   print_progress_done(pb);
 
    if (f != NULL)
    {
@@ -850,7 +731,7 @@ print_progress_done(struct playback* pb)
 }
 
 static int
-dop_s32le(FILE *f, struct playback *pb)
+dop_s32le(FILE* f, struct playback* pb)
 {
    uint32_t N = pb->fm->block_size;
    uint8_t* blk = NULL;
@@ -974,6 +855,11 @@ dop_s32le(FILE *f, struct playback *pb)
 
          print_progress(pb);
          pb->current_samples += pb->fm->block_size * 8;
+
+         if (do_keyboard(f, NULL, pb))
+         {
+            break;
+         }
       }
    }
 
@@ -995,7 +881,7 @@ error:
 }
 
 static int
-dsd_u32_be(FILE *f, struct playback *pb)
+dsd_u32_be(FILE* f, struct playback* pb)
 {
    uint32_t N = pb->fm->block_size;
    uint8_t* blk = NULL;
@@ -1084,6 +970,11 @@ dsd_u32_be(FILE *f, struct playback *pb)
 
          print_progress(pb);
          pb->current_samples += pb->fm->block_size * 8;
+
+         if (do_keyboard(f, NULL, pb))
+         {
+            break;
+         }
       }
    }
 
@@ -1100,6 +991,162 @@ error:
 
    free(out);
    free(blk);
+
+   return 1;
+}
+
+static int
+do_keyboard(FILE* f, SNDFILE* sndf, struct playback* pb)
+{
+   int keyboard_action;
+   struct configuration* config = NULL;
+
+   config = (struct configuration*)shmem;
+
+keyboard:
+   keyboard_action = hrmp_keyboard_get();
+
+   if (keyboard_action == KEYBOARD_Q)
+   {
+      print_progress_done(pb);
+      hrmp_keyboard_mode(false);
+      exit(0);
+   }
+   else if (keyboard_action == KEYBOARD_ENTER)
+   {
+      goto skip;
+   }
+   else if (keyboard_action == KEYBOARD_SPACE)
+   {
+      if (config->devices[pb->device].is_paused)
+      {
+         config->devices[pb->device].is_paused = false;
+      }
+      else
+      {
+         config->devices[pb->device].is_paused = true;
+         SLEEP_AND_GOTO(10000L, keyboard);
+      }
+   }
+   else if (keyboard_action == KEYBOARD_UP ||
+            keyboard_action == KEYBOARD_DOWN ||
+            keyboard_action == KEYBOARD_LEFT ||
+            keyboard_action == KEYBOARD_RIGHT)
+   {
+      size_t delta = (size_t)(pb->fm->total_samples / pb->fm->duration);
+      size_t new_position = (size_t)pb->current_samples;
+
+      if (keyboard_action == KEYBOARD_UP)
+      {
+         delta = 60 * delta;
+      }
+      else if (keyboard_action == KEYBOARD_DOWN)
+      {
+         delta = -60 * delta;
+      }
+      else if (keyboard_action == KEYBOARD_LEFT)
+      {
+         delta = -15 * delta;
+      }
+      else if (keyboard_action == KEYBOARD_RIGHT)
+      {
+         delta = 15 * delta;
+      }
+
+      new_position += delta;
+
+      if (new_position >= pb->fm->total_samples)
+      {
+         if (f != NULL)
+         {
+            fseek(f, 0, SEEK_END);
+         }
+         else
+         {
+            sf_seek(sndf, 0, SEEK_END);
+         }
+         pb->current_samples = pb->fm->total_samples;
+      }
+      else if (new_position <= 0)
+      {
+         if (f != NULL)
+         {
+            fseek(f, 0, SEEK_SET);
+         }
+         else
+         {
+            sf_seek(sndf, 0, SEEK_SET);
+         }
+         pb->current_samples = 0;
+      }
+      else
+      {
+         if (f != NULL)
+         {
+            fseek(f, delta, SEEK_CUR);
+         }
+         else
+         {
+            sf_seek(sndf, delta, SEEK_CUR);
+         }
+         pb->current_samples += delta;
+      }
+
+      print_progress(pb);
+   }
+   else if (keyboard_action == KEYBOARD_COMMA)
+   {
+      int new_volume = config->volume - 5;
+
+      if (!config->is_muted)
+      {
+         set_volume(pb->device, new_volume);
+      }
+   }
+   else if (keyboard_action == KEYBOARD_PERIOD)
+   {
+      int new_volume = config->volume + 5;
+
+      if (!config->is_muted)
+      {
+         set_volume(pb->device, new_volume);
+      }
+   }
+   else if (keyboard_action == KEYBOARD_M)
+   {
+      int new_volume;
+
+      if (config->is_muted)
+      {
+         new_volume = config->prev_volume;
+         config->is_muted = false;
+      }
+      else
+      {
+         new_volume = 0;
+         config->is_muted = true;
+      }
+
+      set_volume(pb->device, new_volume);
+   }
+   else if (keyboard_action == KEYBOARD_SLASH)
+   {
+      int new_volume = 100;
+
+      config->is_muted = false;
+      set_volume(pb->device, new_volume);
+   }
+   else
+   {
+      if (config->devices[pb->device].is_paused)
+      {
+         SLEEP_AND_GOTO(10000L, keyboard);
+      }
+   }
+
+   return 0;
+
+skip:
 
    return 1;
 }
