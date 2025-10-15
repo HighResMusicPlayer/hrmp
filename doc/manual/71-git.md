@@ -1,7 +1,7 @@
 
 ## C programming
 
-[**hrmp**](https://github.com/hrmp/hrmp) is developed using the [C programming language](https://en.wikipedia.org/wiki/C_(programming_language)) so it is a good
+[**hrmp**](https://github.com/HighResMusicPlayer/hrmp) is developed using the [C programming language](https://en.wikipedia.org/wiki/C_(programming_language)) so it is a good
 idea to have some knowledge about the language before you begin to make changes.
 
 There are books like,

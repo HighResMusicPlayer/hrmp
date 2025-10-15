@@ -4,7 +4,7 @@
 
 ### Fork hrmp into your GitHub account
 
-1. Go to [hrmp](https://github.com/hrmp/hrmp)
+1. Go to [hrmp](https://github.com/HighResMusicPlayer/hrmp)
 2. Create a fork by cliking at fork button on the right top corner
 3. A forked repository will be created in your account.
 
