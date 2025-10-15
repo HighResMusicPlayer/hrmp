@@ -858,10 +858,12 @@ dop_s32le(FILE* f, struct playback* pb)
 
          if (do_keyboard(f, NULL, pb))
          {
-            break;
+            goto done;
          }
       }
    }
+
+done:
 
    print_progress_done(pb);
 
@@ -973,10 +975,12 @@ dsd_u32_be(FILE* f, struct playback* pb)
 
          if (do_keyboard(f, NULL, pb))
          {
-            break;
+            goto done;
          }
       }
    }
+
+done:
 
    print_progress_done(pb);
 
