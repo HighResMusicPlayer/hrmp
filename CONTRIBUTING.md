@@ -5,7 +5,7 @@
 All contributions are more than welcome ! This includes bug reports, bug fixes, enhancements, features, questions, ideas,
 and documentation.
 
-This document will hopefully help you contribute to pgexporter.
+This document will hopefully help you contribute to hrmp.
 
 * [Legal](#legal)
 * [Reporting an issue](#reporting-an-issue)
@@ -20,14 +20,14 @@ This document will hopefully help you contribute to pgexporter.
 
 ## Legal
 
-All contributions to pgexporter are licensed under the [The 3-Clause BSD License](https://opensource.org/licenses/BSD-3-Clause).
+All contributions to hrmp are licensed under the [The 3-Clause BSD License](https://opensource.org/licenses/BSD-3-Clause).
 
 ## Reporting an issue
 
 This project uses GitHub issues to manage the issues. Open an issue directly in GitHub.
 
 If you believe you found a bug, and it's likely possible, please indicate a way to reproduce it, what you are seeing and what you would expect to see.
-Don't forget to indicate your pgexporter version.
+Don't forget to indicate your hrmp version.
 
 ## Setup your build environment
 

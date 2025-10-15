@@ -15,7 +15,7 @@ If(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
   message(FATAL_ERROR "In-source builds are not permitted. Make a separate folder for building:\nmkdir build; cd build; cmake ..\nBefore that, remove the files already created:\nrm -rf CMakeCache.txt CMakeFiles")
 endif(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
 
-project(pgexporter VERSION ${VERSION_STRING} LANGUAGES  C)
+project(hrmp VERSION ${VERSION_STRING} LANGUAGES  C)
 
 set(CPACK_PACKAGE_VERSION_MAJOR ${VERSION_MAJOR})
 set(CPACK_PACKAGE_VERSION_MINOR ${VERSION_MINOR})
