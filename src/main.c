@@ -298,9 +298,7 @@ main(int argc, char** argv)
    else if (action == ACTION_STATUS)
    {
       hrmp_check_devices();
-#ifdef DEBUG
       hrmp_print_devices();
-#endif
    }
    else
    {
