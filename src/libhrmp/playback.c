@@ -400,6 +400,9 @@ static int
 playback_identifier(struct file_metadata* fm, char** identifer)
 {
    char* id = NULL;
+   struct configuration* config = NULL;
+
+   config = (struct configuration*)shmem;
 
    *identifer = NULL;
 
@@ -459,19 +462,54 @@ playback_identifier(struct file_metadata* fm, char** identifer)
          id = hrmp_append(id, "768kHz");
          break;
       case 2822400:
-         id = hrmp_append(id, "2.8224MHz");
+         if (config->dop)
+         {
+            id = hrmp_append(id, "176.4kHz");
+         }
+         else
+         {
+            id = hrmp_append(id, "2.8224MHz");
+         }
          break;
       case 5644800:
-         id = hrmp_append(id, "5.6448MHz");
+         if (config->dop)
+         {
+            id = hrmp_append(id, "352.8kHz");
+         }
+         else
+         {
+            id = hrmp_append(id, "5.6448MHz");
+         }
          break;
       case 11289600:
-         id = hrmp_append(id, "11.2896MHz");
+         if (config->dop)
+         {
+            id = hrmp_append(id, "705.6kHz");
+         }
+         else
+         {
+            id = hrmp_append(id, "11.2896MHz");
+         }
          break;
       case 22579200:
-         id = hrmp_append(id, "22.5792MHz");
+         if (config->dop)
+         {
+            id = hrmp_append(id, "1.4112MHz");
+         }
+         else
+         {
+            id = hrmp_append(id, "22.5792MHz");
+         }
          break;
       case 45158400:
-         id = hrmp_append(id, "45.1584MHz");
+         if (config->dop)
+         {
+            id = hrmp_append(id, "2.8224MHz");
+         }
+         else
+         {
+            id = hrmp_append(id, "45.1584MHz");
+         }
          break;
       default:
          printf("Unsupported sample rate: %s/%dHz/%dbits\n", fm->name, fm->sample_rate, fm->bits_per_sample);
