@@ -19,23 +19,42 @@ Steps to reproduce the behavior.
 
 What is the version of hrmp ?
 
+Please, use `hrmp -V`
+
 **ALSA**
 
 What is the version of ALSA ?
 
-**FLAC**
+Please, use `rpm -qa | grep alsa | sort` or similar
 
-What is the version of FLAC ?
+**libsndfile**
+
+What is the version of libsndfile ?
+
+Please, use `rpm -qa | grep libsndfile | sort` or similar
 
 **OS**
 
 Which Operating System (OS) is used ?
 
+Please, use
+
+```
+cat /etc/system-release
+cat /proc/version
+```
+
+**Devices**
+
+Can you provide information about the devices ?
+
+Please, use `hrmp -s`
+
 **Configuration**
 
 Can you provide the configuration of hrmp ?
 
-* hrmp.conf
+Please, use `cat ~/.hrmp/hrmp.conf`
 
 **Debug logs**
 
