@@ -55,12 +55,12 @@ jobs:
           fi
           cmake -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DDOCS=FALSE ..
           make -j$(nproc)
-        working-directory: /home/runner/work/HighResMusicPlayer/hrmp
+        working-directory: /home/runner/work/hrmp/hrmp
 
       - name: Upload Build and Run Logs as Artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: logs-${{ matrix.compiler }}-${{ matrix.build_type }}
-          path: /home/runner/work/HighResMusicPlayer/hrmp/build/log
+          path: /home/runner/work/hrmp/hrmp/build/log
           retention-days: 60
