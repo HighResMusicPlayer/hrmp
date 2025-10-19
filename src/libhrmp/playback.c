@@ -1075,64 +1075,86 @@ keyboard:
             keyboard_action == KEYBOARD_LEFT ||
             keyboard_action == KEYBOARD_RIGHT)
    {
-      size_t delta = (size_t)(pb->fm->total_samples / pb->fm->duration);
-      size_t new_position = (size_t)pb->current_samples;
+      int64_t seconds = 0;
+      int64_t delta_samples = 0;
+      int64_t new_pos_samples = 0;
 
       if (keyboard_action == KEYBOARD_UP)
       {
-         delta = 60 * delta;
+         seconds = 60;
       }
       else if (keyboard_action == KEYBOARD_DOWN)
       {
-         delta = -60 * delta;
+         seconds = -60;
       }
       else if (keyboard_action == KEYBOARD_LEFT)
       {
-         delta = -15 * delta;
+         seconds = -15;
       }
       else if (keyboard_action == KEYBOARD_RIGHT)
       {
-         delta = 15 * delta;
+         seconds = 15;
       }
 
-      new_position += delta;
-
-      if (new_position >= pb->fm->total_samples)
+      if (pb->fm->format == TYPE_DSF)
       {
-         if (f != NULL)
-         {
-            fseek(f, 0, SEEK_END);
-         }
-         else
-         {
-            sf_seek(sndf, 0, SEEK_END);
-         }
-         pb->current_samples = pb->fm->total_samples;
-      }
-      else if (new_position <= 0)
-      {
-         if (f != NULL)
-         {
-            fseek(f, 0, SEEK_SET);
-         }
-         else
-         {
-            sf_seek(sndf, 0, SEEK_SET);
-         }
-         pb->current_samples = 0;
+         delta_samples = seconds * (int64_t)pb->fm->sample_rate;
       }
       else
       {
-         if (f != NULL)
+         delta_samples = seconds * (pb->fm->total_samples / pb->fm->duration);
+      }
+
+      new_pos_samples = (int64_t)pb->current_samples + delta_samples;
+
+      if (pb->fm->format == TYPE_DSF)
+      {
+         if (new_pos_samples >= (int64_t)pb->fm->total_samples)
          {
-            fseek(f, delta, SEEK_CUR);
+            fseek(f, 0L, SEEK_END);
+            pb->current_samples = pb->fm->total_samples;
+         }
+         else if (new_pos_samples <= 0)
+         {
+            fseek(f, 92L, SEEK_SET);
+            pb->current_samples = 0;
          }
          else
          {
-            sf_seek(sndf, delta, SEEK_CUR);
+            uint64_t pair_bytes = 2u * (uint64_t)pb->fm->block_size;
+            uint64_t target_bytes = (uint64_t)(new_pos_samples / 8) * 2u;
+            uint64_t aligned_bytes = pair_bytes ? (target_bytes / pair_bytes) * pair_bytes : target_bytes;
+
+            if (aligned_bytes > pb->fm->data_size)
+            {
+               aligned_bytes = (pb->fm->data_size / pair_bytes) * pair_bytes;
+            }
+
+            fseek(f, 92L + (long)aligned_bytes, SEEK_SET);
+
+            pb->current_samples = (size_t)((aligned_bytes / 2u) * 8u);
          }
-         pb->current_samples += delta;
       }
+      else
+      {
+         if (new_pos_samples >= (int64_t)pb->fm->total_samples)
+         {
+            sf_seek(sndf, 0, SEEK_END);
+            pb->current_samples = pb->fm->total_samples;
+         }
+         else if (new_pos_samples <= 0)
+         {
+            sf_seek(sndf, 0, SEEK_SET);
+            pb->current_samples = 0;
+         }
+         else
+         {
+            sf_seek(sndf, new_pos_samples, SEEK_CUR);
+            pb->current_samples = new_pos_samples;
+         }
+      }
+
+      hrmp_alsa_reset_handle(pb->pcm_handle);
 
       print_progress(pb);
    }

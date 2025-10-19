@@ -188,6 +188,33 @@ error:
 }
 
 int
+hrmp_alsa_reset_handle(snd_pcm_t* handle)
+{
+   int err;
+
+   if (handle != NULL)
+   {
+      if ((err = snd_pcm_drop(handle)) < 0)
+      {
+         hrmp_log_error("snd_pcm_open %s", snd_strerror(err));
+         goto error;
+      }
+
+      if ((err = snd_pcm_prepare(handle)) < 0)
+      {
+         hrmp_log_error("snd_pcm_prepare %s", snd_strerror(err));
+         goto error;
+      }
+   }
+
+   return 0;
+
+error:
+
+   return 1;
+}
+
+int
 hrmp_alsa_close_handle(snd_pcm_t* handle)
 {
    if (handle != NULL)
