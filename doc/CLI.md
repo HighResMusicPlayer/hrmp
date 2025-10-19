@@ -3,7 +3,7 @@
 **hrmp** is a high resolution music player.
 
 ```
-hrmp 0.5.1
+hrmp 0.5.2
   High resolution music player
 
 Usage:
