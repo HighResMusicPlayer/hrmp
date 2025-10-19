@@ -54,6 +54,14 @@ int
 hrmp_alsa_init_handle(int device, struct file_metadata* fm, snd_pcm_t** handle);
 
 /**
+ * Reset the ALSA handle
+ * @param handle The handle
+ * @return 0 upon success, 1 is failure
+ */
+int
+hrmp_alsa_reset_handle(snd_pcm_t* handle);
+
+/**
  * Close the ALSA handle
  * @param handle The resulting handle
  * @return 0 upon success, 1 is failure
