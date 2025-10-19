@@ -93,6 +93,45 @@ hrmp_read_le_u32(FILE* f)
 }
 
 uint64_t
+hrmp_read_be_u64(FILE* f)
+{
+   uint8_t b[8];
+   if (fread(b, 1, 8, f) != 8)
+   {
+      return 0;
+   }
+   return ((uint64_t)b[0] << 56) | ((uint64_t)b[1] << 48) |
+          ((uint64_t)b[2] << 40) | ((uint64_t)b[3] << 32) |
+          ((uint64_t)b[4] << 24) | ((uint64_t)b[5] << 16) |
+          ((uint64_t)b[6] << 8) | (uint64_t)b[7];
+}
+
+uint32_t
+hrmp_read_be_u32(FILE* f)
+{
+   uint8_t b[4];
+   if (fread(b, 1, 4, f) != 4)
+   {
+      return 0;
+   }
+   return ((uint32_t)b[0] << 24) | ((uint32_t)b[1] << 16) |
+          ((uint32_t)b[2] << 8) | (uint32_t)b[3];
+}
+
+uint16_t
+hrmp_read_be_u16(FILE* f)
+{
+   uint8_t b[2];
+
+   if (fread(b, 1, 2, f) != 2)
+   {
+      return 0;
+   }
+
+   return ((uint16_t)b[0] << 8) | (uint16_t)b[1];
+}
+
+uint64_t
 hrmp_read_le_u64_buffer(uint8_t* buffer)
 {
    return (uint64_t)buffer[0] | ((uint64_t)buffer[1] << 8) | ((uint64_t)buffer[2] << 16) |

@@ -68,6 +68,8 @@ static int playback_sndfile(snd_pcm_t* pcm_handle, struct playback* pb,
                             int number, int total);
 static int playback_dsf(snd_pcm_t* pcm_handle, struct playback* pb,
                         int number, int total);
+static int playback_dff(snd_pcm_t* pcm_handle, struct playback* pb,
+                        int number, int total);
 
 static int dop_s32le(FILE* f, struct playback* pb);
 static int dsd_u32_be(FILE* f, struct playback* pb);
@@ -107,6 +109,10 @@ hrmp_playback(int device, int number, int total, struct file_metadata* fm)
    else if (fm->type == TYPE_DSF)
    {
       ret = playback_dsf(pcm_handle, pb, number, total);
+   }
+   else if (fm->type == TYPE_DFF)
+   {
+      ret = playback_dff(pcm_handle, pb, number, total);
    }
    else
    {
@@ -337,6 +343,80 @@ playback_dsf(snd_pcm_t* pcm_handle, struct playback* pb, int number, int total)
    {
       dsd_u32_be(f, pb);
    }
+
+   fclose(f);
+
+   return 0;
+
+error:
+
+   if (f != NULL)
+   {
+      fclose(f);
+   }
+
+   return 1;
+}
+
+static int
+playback_dff(snd_pcm_t* pcm_handle, struct playback* pb, int number, int total)
+{
+   FILE* f = NULL;
+   char id4[5] = {0};
+   struct configuration* config = NULL;
+
+   config = (struct configuration*)shmem;
+
+   f = fopen(pb->fm->name, "rb");
+   if (f == NULL)
+   {
+      goto error;
+   }
+
+   if (fread(id4, 1, 4, f) != 4 || strncmp(id4, "FRM8", 4) != 0)
+   {
+      hrmp_log_error("Not a DFF file for playback");
+      goto error;
+   }
+
+   hrmp_read_be_u64(f);
+
+   if (fread(id4, 1, 4, f) != 4 || strncmp(id4, "DSD ", 4) != 0)
+   {
+      hrmp_log_error("Invalid DFF form type");
+      goto error;
+   }
+
+   while (fread(id4, 1, 4, f) == 4)
+   {
+      uint64_t chunk_size = hrmp_read_be_u64(f);
+      if (strncmp(id4, "DSD ", 4) == 0)
+      {
+         if (config->dop && (pb->fm->alsa_snd == SND_PCM_FORMAT_S32 ||
+                             pb->fm->alsa_snd == SND_PCM_FORMAT_S32_LE))
+         {
+            dop_s32le(f, pb);
+         }
+         else
+         {
+            dsd_u32_be(f, pb);
+         }
+
+         goto done;
+      }
+      else if (strncmp(id4, "DST ", 4) == 0)
+      {
+         hrmp_log_error("DST-compressed DFF is not supported (CMPR='DST ')");
+         goto error;
+      }
+
+      if (fseek(f, (long)chunk_size, SEEK_CUR) != 0)
+      {
+         break;
+      }
+   }
+
+done:
 
    fclose(f);
 
@@ -1107,7 +1187,7 @@ keyboard:
 
       new_pos_samples = (int64_t)pb->current_samples + delta_samples;
 
-      if (pb->fm->format == TYPE_DSF)
+      if (pb->fm->format == TYPE_DSF || pb->fm->format == TYPE_DFF)
       {
          if (new_pos_samples >= (int64_t)pb->fm->total_samples)
          {

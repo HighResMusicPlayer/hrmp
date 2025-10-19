@@ -60,6 +60,30 @@ uint32_t
 hrmp_read_le_u32(FILE* f);
 
 /**
+ * Read an uint64_t in big-endian format
+ * @param f The file
+ * @return The result
+ */
+uint64_t
+hrmp_read_be_u64(FILE* f);
+
+/**
+ * Read an uint32_t in big-endian format
+ * @param f The file
+ * @return The result
+ */
+uint32_t
+hrmp_read_be_u32(FILE* f);
+
+/**
+ * Read an uint16_t in big-endian format
+ * @param f The file
+ * @return The result
+ */
+uint16_t
+hrmp_read_be_u16(FILE* f);
+
+/**
  * Read an unit64_t in little-endian format
  * @param buffer The buffer
  * @return The result

@@ -39,11 +39,13 @@
 #include <sndfile.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <string.h>
 #include <alsa/asoundlib.h>
 
 static int init_metadata(char* filename, int type, struct file_metadata** file_metadata);
 static int get_metadata(char* filename, int type, struct file_metadata** file_metadata);
 static int get_metadata_dsf(int device, char* filename, struct file_metadata** file_metadata);
+static int get_metadata_dff(int device, char* filename, struct file_metadata** file_metadata);
 static bool metadata_supported(int device, struct file_metadata* fm);
 
 int
@@ -73,6 +75,10 @@ hrmp_file_metadata(int device, char* f, struct file_metadata** fm)
    {
       type = TYPE_DSF;
    }
+   else if (hrmp_ends_with(f, ".dff"))
+   {
+      type = TYPE_DFF;
+   }
 
    if (type == TYPE_WAV || type == TYPE_FLAC || type == TYPE_MP3)
    {
@@ -88,6 +94,17 @@ hrmp_file_metadata(int device, char* f, struct file_metadata** fm)
    else if (type == TYPE_DSF)
    {
       if (get_metadata_dsf(device, f, &m))
+      {
+         if (!config->quiet)
+         {
+            printf("Unsupported metadata for %s\n", f);
+         }
+         goto error;
+      }
+   }
+   else if (type == TYPE_DFF)
+   {
+      if (get_metadata_dff(device, f, &m))
       {
          if (!config->quiet)
          {
@@ -314,6 +331,10 @@ hrmp_print_file_metadata(struct file_metadata* fm)
       else if (fm->type == TYPE_DSF)
       {
          printf("  Type: TYPE_DSF\n");
+      }
+      else if (fm->type == TYPE_DFF)
+      {
+         printf("  Type: TYPE_DFF\n");
       }
       else
       {
@@ -700,5 +721,246 @@ error:
 
    free(fm);
 
+   return 1;
+}
+
+static int
+get_metadata_dff(int device, char* filename, struct file_metadata** file_metadata)
+{
+   FILE* f = NULL;
+   char id4[5] = {0};
+   uint32_t channel_number = 0;
+   uint32_t srate = 0;
+   uint64_t data_size = 0;
+   uint64_t prop_chunk_end = 0;
+   bool saw_prop = false;
+   bool saw_dsd_data = false;
+   bool uncompressed_dsd = false;
+   char cmpr_fourcc[5] = {0};
+   struct file_metadata* fm = NULL;
+   struct configuration* config = NULL;
+
+   config = (struct configuration*)shmem;
+
+   *file_metadata = NULL;
+
+   if (init_metadata(filename, TYPE_DFF, &fm))
+   {
+      goto error;
+   }
+
+   f = fopen(filename, "rb");
+   if (f == NULL)
+   {
+      hrmp_log_error("fopen input: %s", filename);
+      goto error;
+   }
+
+   /* 'FRM8' chunk */
+   if (fread(id4, 1, 4, f) != 4)
+   {
+      hrmp_log_error("Failed to read file id\n");
+      goto error;
+   }
+   if (strncmp(id4, "FRM8", 4) != 0)
+   {
+      hrmp_log_error("Not a DFF file (missing 'FRM8'). Read: '%.4s'\n", id4);
+      goto error;
+   }
+
+   /* 64-bit BE size of the FORM; skip */
+   hrmp_read_be_u64(f);
+
+   /* Form type must be 'DSD ' */
+   if (fread(id4, 1, 4, f) != 4)
+   {
+      hrmp_log_error("Failed to read form type\n");
+      goto error;
+   }
+
+   if (strncmp(id4, "DSD ", 4) != 0)
+   {
+      hrmp_log_error("Not a DSD form type in DFF. Read: '%.4s'\n", id4);
+      goto error;
+   }
+
+   /* Iterate chunks to find PROP/SND info and DSD data */
+   while (fread(id4, 1, 4, f) == 4)
+   {
+      uint64_t chunk_size = hrmp_read_be_u64(f);
+      long chunk_data_start = ftell(f);
+
+      if (strncmp(id4, "PROP", 4) == 0)
+      {
+         char snd[4] = {0};
+         if (fread(snd, 1, 4, f) != 4)
+         {
+            hrmp_log_error("Failed to read PROP type\n");
+            goto error;
+         }
+         if (strncmp(snd, "SND ", 4) != 0)
+         {
+            hrmp_log_error("Unsupported PROP type '%.4s'\n", snd);
+            goto error;
+         }
+
+         prop_chunk_end = (uint64_t)chunk_data_start + chunk_size;
+         saw_prop = true;
+
+         /* Parse sub-chunks inside PROP */
+         while ((uint64_t)ftell(f) + 12 <= prop_chunk_end)
+         {
+            char pid[5] = {0};
+            uint64_t psize = 0;
+            if (fread(pid, 1, 4, f) != 4)
+            {
+               break;
+            }
+            psize = hrmp_read_be_u64(f);
+
+            if (strncmp(pid, "FS  ", 4) == 0 && psize == 4)
+            {
+               srate = hrmp_read_be_u32(f);
+            }
+            else if (strncmp(pid, "CHNL", 4) == 0 && psize >= 2)
+            {
+               uint16_t chn = hrmp_read_be_u16(f);
+               uint64_t expected_min = 2ULL + 4ULL * (uint64_t)chn;
+               if (psize < expected_min)
+               {
+                  hrmp_log_error("Invalid CHNL size (psize=%" PRIu64 ", expected_min=%" PRIu64 ", ch=%u)",
+                                 psize, expected_min, (unsigned)chn);
+                  goto error;
+               }
+
+               channel_number = (uint32_t)chn;
+
+               if (fseek(f, (long)(psize - 2ULL), SEEK_CUR) != 0)
+               {
+                  hrmp_log_error("fseek failed (CHNL skip)\n");
+                  goto error;
+               }
+            }
+            else if (strncmp(pid, "CMPR", 4) == 0 && psize >= 4)
+            {
+               char ctype[5] = {0};
+               if (fread(ctype, 1, 4, f) != 4)
+               {
+                  hrmp_log_error("Failed to read CMPR type\n");
+                  goto error;
+               }
+               uncompressed_dsd = (strncmp(ctype, "DSD ", 4) == 0);
+               memcpy(cmpr_fourcc, ctype, 4);
+               cmpr_fourcc[4] = '\0';
+
+               /* skip the rest of CMPR (name string), if any */
+               if (psize > 4)
+               {
+                  if (fseek(f, (long)(psize - 4), SEEK_CUR) != 0)
+                  {
+                     hrmp_log_error("fseek failed (CMPR)\n");
+                     goto error;
+                  }
+               }
+            }
+            else
+            {
+               /* skip unknown PROP subchunk */
+               if (fseek(f, (long)psize, SEEK_CUR) != 0)
+               {
+                  hrmp_log_error("fseek failed (PROP sub)\n");
+                  goto error;
+               }
+            }
+         }
+
+         /* Seek to end of PROP if not already */
+         if (fseek(f, (long)prop_chunk_end, SEEK_SET) != 0)
+         {
+            hrmp_log_error("fseek failed (end PROP)\n");
+            goto error;
+         }
+      }
+      else if (strncmp(id4, "DSD ", 4) == 0)
+      {
+         /* Data chunk: current position is at data start */
+         data_size = chunk_size;
+         saw_dsd_data = true;
+         break;
+      }
+      else
+      {
+         /* Skip other chunks */
+         if (fseek(f, (long)chunk_size, SEEK_CUR) != 0)
+         {
+            hrmp_log_error("fseek failed (skip chunk '%.4s')\n", id4);
+            goto error;
+         }
+      }
+   }
+
+   if (!saw_prop || !saw_dsd_data || !uncompressed_dsd || srate == 0 || channel_number == 0)
+   {
+      if (!uncompressed_dsd && cmpr_fourcc[0] != '\0')
+      {
+         hrmp_log_error("Unsupported DFF compression '%.4s' (only 'DSD ' uncompressed is supported)",
+                        cmpr_fourcc);
+      }
+      else
+      {
+         hrmp_log_error("Incomplete or unsupported DFF (PROP/DSD/CMPR/FS/CHNL)\n");
+      }
+      goto error;
+   }
+
+   if (srate % 16)
+   {
+      hrmp_log_error("Error: DSD sample rate is not divisible by 16 (%u)", srate);
+      goto error;
+   }
+
+   fm->format = FORMAT_1;
+   fm->file_size = hrmp_get_file_size(filename);
+   fm->sample_rate = srate;
+   fm->channels = (int)channel_number;
+   fm->bits_per_sample = 1;
+
+   /* Compute total samples per channel: bytes -> bits, then divide by channels */
+   if (channel_number > 0)
+   {
+      uint64_t total_bits = data_size * 8ULL;
+      fm->total_samples = (uint64_t)(total_bits / channel_number);
+      if (fm->sample_rate > 0)
+      {
+         fm->duration = (double)((double)fm->total_samples / fm->sample_rate);
+      }
+      else
+      {
+         fm->duration = 0.0;
+      }
+   }
+
+   /* DoP output uses 32-bit PCM at sample_rate/16 if device supports it */
+   if (config->dop && (config->devices[device].capabilities.s32 ||
+                       config->devices[device].capabilities.s32_le))
+   {
+      fm->pcm_rate = srate / 16;
+   }
+   else
+   {
+      fm->pcm_rate = 0;
+   }
+
+   *file_metadata = fm;
+
+   fclose(f);
+   return 0;
+
+error:
+   if (f != NULL)
+   {
+      fclose(f);
+   }
+   free(fm);
    return 1;
 }
