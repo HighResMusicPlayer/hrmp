@@ -34,6 +34,7 @@
 #include <files.h>
 #include <logging.h>
 
+#include <stdbool.h>
 #include <stdio.h>
 #include <alsa/pcm.h>
 
@@ -218,7 +219,34 @@ hrmp_alsa_close_handle(snd_pcm_t* handle)
 {
    if (handle != NULL)
    {
-      snd_pcm_drain(handle);
+      snd_pcm_hw_params_t* hw = NULL;
+      snd_pcm_format_t fmt = SND_PCM_FORMAT_UNKNOWN;
+      bool use_drop = false;
+      struct configuration* config = (struct configuration*)shmem;
+
+      if (snd_pcm_hw_params_malloc(&hw) == 0)
+      {
+         if (snd_pcm_hw_params_current(handle, hw) == 0)
+         {
+            snd_pcm_hw_params_get_format(hw, &fmt);
+         }
+         snd_pcm_hw_params_free(hw);
+      }
+
+      if (fmt == SND_PCM_FORMAT_DSD_U32_BE || fmt == SND_PCM_FORMAT_DSD_U32_LE || config->dop)
+      {
+         use_drop = true;
+      }
+
+      if (use_drop)
+      {
+         snd_pcm_drop(handle);
+      }
+      else
+      {
+         snd_pcm_drain(handle);
+      }
+
       snd_pcm_close(handle);
    }
 

@@ -52,6 +52,9 @@
 #define DOP_MARKER_8MSB 0xFA
 #define DOP_MARKER_8LSB 0x05
 
+#define HRMP_DSD_FADEOUT_MS  20u
+#define HRMP_DSD_POSTROLL_MS 60u
+
 static int playback_init(int device, int number, int total, snd_pcm_t* pcm_handle, struct file_metadata* fm, struct playback** playback);
 static int playback_identifier(struct file_metadata* fm, char** identifer);
 
@@ -69,14 +72,124 @@ static int playback_sndfile(snd_pcm_t* pcm_handle, struct playback* pb,
 static int playback_dsf(snd_pcm_t* pcm_handle, struct playback* pb,
                         int number, int total);
 
-static void write_dsd_silence(struct playback* pb, unsigned frames, uint8_t* marker);
-
 static void writei_all(snd_pcm_t* h, void* buf, snd_pcm_uframes_t frames, size_t bytes_per_frame);
+static unsigned frames_from_ms(struct playback* pb, unsigned ms);
+
+static void write_dsd_center_pad(struct playback* pb, unsigned frames, uint8_t* marker);
+static void write_dsd_fadeout(struct playback* pb, unsigned ms, uint8_t* marker);
 
 static int dop_s32le(FILE* f, struct playback* pb);
 static int dsd_u32_be(FILE* f, struct playback* pb);
 
 static int do_keyboard(FILE* f, SNDFILE* sndf, struct playback* pb);
+
+static void
+writei_all(snd_pcm_t* h, void* buf, snd_pcm_uframes_t frames, size_t bytes_per_frame)
+{
+   uint8_t* p = (uint8_t*)buf;
+   snd_pcm_sframes_t remaining = frames;
+
+   while (remaining > 0)
+   {
+      snd_pcm_sframes_t w = snd_pcm_writei(h, p, remaining);
+      if (w == -EPIPE)
+      {
+         snd_pcm_prepare(h);
+         continue;
+      }
+      else if (w < 0)
+      {
+         break;
+      }
+      p += (size_t)w * bytes_per_frame;
+      remaining -= w;
+   }
+}
+
+static unsigned
+frames_from_ms(struct playback* pb, unsigned ms)
+{
+   struct configuration* config = (struct configuration*)shmem;
+   unsigned rate = config->dop ? pb->fm->pcm_rate : pb->fm->sample_rate;
+
+   if (rate == 0)
+   {
+      return 0;
+   }
+
+   return (unsigned)((uint64_t)rate * (uint64_t)ms / 1000u);
+}
+
+static void
+write_dsd_center_pad(struct playback* pb, unsigned frames, uint8_t* marker)
+{
+   struct configuration* config = (struct configuration*)shmem;
+   size_t bytes_per_frame = 8;
+   size_t sz = (size_t)frames * bytes_per_frame;
+
+   if (!frames)
+   {
+      return;
+   }
+
+   uint8_t* pr = (uint8_t*)malloc(sz);
+   if (pr == NULL)
+   {
+      hrmp_log_error("Center pad OOM (%zu bytes)", sz);
+      return;
+   }
+
+   if (config->dop)
+   {
+      uint8_t m = (marker != NULL) ? *marker : DOP_MARKER_8LSB;
+      for (unsigned i = 0; i < frames; ++i)
+      {
+         uint8_t a = (i & 1) ? 0x55 : 0xAA;
+         uint8_t b = (uint8_t) ~a;
+         pr[i * 8 + 0] = 0x00;
+         pr[i * 8 + 1] = a;
+         pr[i * 8 + 2] = b;
+         pr[i * 8 + 3] = m;
+         pr[i * 8 + 4] = 0x00;
+         pr[i * 8 + 5] = a;
+         pr[i * 8 + 6] = b;
+         pr[i * 8 + 7] = m;
+         m = (m == DOP_MARKER_8LSB) ? DOP_MARKER_8MSB : DOP_MARKER_8LSB;
+      }
+      writei_all(pb->pcm_handle, pr, frames, bytes_per_frame);
+      if (marker != NULL)
+      {
+         *marker = m;
+      }
+   }
+   else
+   {
+      for (unsigned i = 0; i < frames; ++i)
+      {
+         uint8_t a = (i & 1) ? 0x55 : 0xAA;
+         uint8_t b = (uint8_t) ~a;
+         pr[i * 8 + 0] = a;
+         pr[i * 8 + 1] = b;
+         pr[i * 8 + 2] = a;
+         pr[i * 8 + 3] = b;
+         pr[i * 8 + 4] = a;
+         pr[i * 8 + 5] = b;
+         pr[i * 8 + 6] = a;
+         pr[i * 8 + 7] = b;
+      }
+      writei_all(pb->pcm_handle, pr, frames, bytes_per_frame);
+   }
+
+   free(pr);
+}
+
+static void
+write_dsd_fadeout(struct playback* pb, unsigned ms, uint8_t* marker)
+{
+   unsigned frames = frames_from_ms(pb, ms);
+
+   write_dsd_center_pad(pb, frames, marker);
+}
 
 int
 hrmp_playback(int device, int number, int total, struct file_metadata* fm)
@@ -762,73 +875,6 @@ print_progress_done(struct playback* pb)
    }
 }
 
-static void
-writei_all(snd_pcm_t* h, void* buf, snd_pcm_uframes_t frames, size_t bytes_per_frame)
-{
-   uint8_t* p = (uint8_t*)buf;
-   snd_pcm_sframes_t remaining = frames;
-
-   while (remaining > 0)
-   {
-      snd_pcm_sframes_t w = snd_pcm_writei(h, p, remaining);
-      if (w == -EPIPE)
-      {
-         snd_pcm_prepare(h);
-         continue;
-      }
-      else if (w < 0)
-      {
-         break;
-      }
-      p += (size_t)w * bytes_per_frame;
-      remaining -= w;
-   }
-}
-
-static void
-write_dsd_silence(struct playback* pb, unsigned frames, uint8_t* marker)
-{
-   struct configuration* config = (struct configuration*)shmem;
-   const size_t bytes_per_frame = 8;
-   const size_t sz = (size_t)frames * bytes_per_frame;
-
-   uint8_t* pr = (uint8_t*)malloc(sz);
-   if (pr == NULL)
-   {
-      hrmp_log_error("DSD: silence OOM");
-      return;
-   }
-
-   if (config->dop)
-   {
-      uint8_t m = (marker != NULL) ? *marker : DOP_MARKER_8LSB;
-      for (unsigned i = 0; i < frames; ++i)
-      {
-         pr[i * 8 + 0] = 0x00;
-         pr[i * 8 + 1] = 0x00;
-         pr[i * 8 + 2] = 0x00;
-         pr[i * 8 + 3] = m;
-         pr[i * 8 + 4] = 0x00;
-         pr[i * 8 + 5] = 0x00;
-         pr[i * 8 + 6] = 0x00;
-         pr[i * 8 + 7] = m;
-         m = (m == DOP_MARKER_8LSB) ? DOP_MARKER_8MSB : DOP_MARKER_8LSB;
-      }
-      writei_all(pb->pcm_handle, pr, frames, bytes_per_frame);
-      if (marker != NULL)
-      {
-         *marker = m;
-      }
-   }
-   else
-   {
-      memset(pr, 0x00, sz);
-      writei_all(pb->pcm_handle, pr, frames, bytes_per_frame);
-   }
-
-   free(pr);
-}
-
 static int
 dop_s32le(FILE* f, struct playback* pb)
 {
@@ -837,8 +883,6 @@ dop_s32le(FILE* f, struct playback* pb)
    uint32_t frames_per_block = N / 2u;
    size_t bytes_per_frame = 8;
    uint8_t* out = NULL;
-   snd_pcm_uframes_t buffer_size = 0;
-   snd_pcm_uframes_t period_size = 0;
 
    blk = (uint8_t*)malloc(2u * N);
    if (blk == NULL)
@@ -854,13 +898,33 @@ dop_s32le(FILE* f, struct playback* pb)
       goto error;
    }
 
-   /* Unified pre-roll to help DAC lock (DoP/native via helper) */
-   uint8_t marker = DOP_MARKER_8LSB;
+   unsigned pre = (pb->fm->sample_rate >= 11289600u) ? 4096 : 2048;
+   uint8_t* pr = (uint8_t*)malloc(pre * bytes_per_frame);
+   if (pr != NULL)
    {
-      unsigned pre = (pb->fm->sample_rate >= 11289600u) ? 4096u : 2048u;
-      write_dsd_silence(pb, pre, &marker);
+      uint8_t m = DOP_MARKER_8LSB;
+      for (unsigned i = 0; i < pre; ++i)
+      {
+         pr[i * 8 + 0] = 0x00;
+         pr[i * 8 + 1] = 0x00;
+         pr[i * 8 + 2] = 0x00;
+         pr[i * 8 + 3] = m;
+         pr[i * 8 + 4] = 0x00;
+         pr[i * 8 + 5] = 0x00;
+         pr[i * 8 + 6] = 0x00;
+         pr[i * 8 + 7] = m;
+         m = (m == DOP_MARKER_8LSB) ? DOP_MARKER_8MSB : DOP_MARKER_8LSB;
+      }
+      snd_pcm_writei(pb->pcm_handle, pr, pre);
+      free(pr);
+   }
+   else
+   {
+      hrmp_log_error("DoP: Prefill error");
+      goto error;
    }
 
+   uint8_t marker = DOP_MARKER_8LSB;
    uint64_t left = pb->fm->data_size;
 
    while (left >= (uint64_t)(2u * N))
@@ -942,13 +1006,16 @@ dop_s32le(FILE* f, struct playback* pb)
    }
 
 done:
+   write_dsd_fadeout(pb, HRMP_DSD_FADEOUT_MS, &marker);
+
+   snd_pcm_uframes_t buffer_size = 0, period_size = 0;
    if (snd_pcm_get_params(pb->pcm_handle, &buffer_size, &period_size) == 0 && period_size > 0)
    {
-      write_dsd_silence(pb, (unsigned)period_size, &marker);
+      write_dsd_center_pad(pb, (unsigned)period_size, &marker);
    }
 
-   unsigned post = (pb->fm->sample_rate >= 11289600u) ? 4096u : 2048u;
-   write_dsd_silence(pb, post, &marker);
+   unsigned post_frames = frames_from_ms(pb, HRMP_DSD_POSTROLL_MS);
+   write_dsd_center_pad(pb, post_frames, &marker);
 
    print_progress_done(pb);
 
@@ -976,6 +1043,7 @@ dsd_u32_be(FILE* f, struct playback* pb)
    size_t bytes_per_frame = 8;
    uint8_t* out = NULL;
    uint64_t left = 0;
+   uint8_t m_ignored = DOP_MARKER_8LSB;
    snd_pcm_uframes_t buffer_size = 0;
    snd_pcm_uframes_t period_size = 0;
 
@@ -991,13 +1059,6 @@ dsd_u32_be(FILE* f, struct playback* pb)
    {
       hrmp_log_error("OOM");
       goto error;
-   }
-
-   /* Unified pre-roll for native DSD/DoP (marker ignored if not DoP) */
-   uint8_t silence_marker = DOP_MARKER_8LSB;
-   {
-      unsigned pre = (pb->fm->sample_rate >= 11289600u) ? 4096u : 2048u;
-      write_dsd_silence(pb, pre, &silence_marker);
    }
 
    left = pb->fm->data_size;
@@ -1075,13 +1136,16 @@ dsd_u32_be(FILE* f, struct playback* pb)
    }
 
 done:
+
+   write_dsd_fadeout(pb, HRMP_DSD_FADEOUT_MS, &m_ignored);
+
    if (snd_pcm_get_params(pb->pcm_handle, &buffer_size, &period_size) == 0 && period_size > 0)
    {
-      write_dsd_silence(pb, (unsigned)period_size, &silence_marker);
+      write_dsd_center_pad(pb, (unsigned)period_size, &m_ignored);
    }
 
-   unsigned post = (pb->fm->sample_rate >= 11289600u) ? 4096u : 2048u;
-   write_dsd_silence(pb, post, &silence_marker);
+   unsigned post_frames = frames_from_ms(pb, HRMP_DSD_POSTROLL_MS);
+   write_dsd_center_pad(pb, post_frames, &m_ignored);
 
    print_progress_done(pb);
 
