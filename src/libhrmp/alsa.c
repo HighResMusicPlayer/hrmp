@@ -157,9 +157,8 @@ hrmp_alsa_init_handle(int device, struct file_metadata* fm, snd_pcm_t** handle)
       goto error;
    }
 
-   if ((err = snd_pcm_prepare(h)) < 0)
+   if (hrmp_alsa_reset_handle(h))
    {
-      hrmp_log_error("snd_pcm_prepare %s/%s", device, snd_strerror(err));
       goto error;
    }
 

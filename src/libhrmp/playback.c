@@ -69,6 +69,10 @@ static int playback_sndfile(snd_pcm_t* pcm_handle, struct playback* pb,
 static int playback_dsf(snd_pcm_t* pcm_handle, struct playback* pb,
                         int number, int total);
 
+static void write_dsd_silence(struct playback* pb, unsigned frames, uint8_t* marker);
+
+static void writei_all(snd_pcm_t* h, void* buf, snd_pcm_uframes_t frames, size_t bytes_per_frame);
+
 static int dop_s32le(FILE* f, struct playback* pb);
 static int dsd_u32_be(FILE* f, struct playback* pb);
 
@@ -184,7 +188,6 @@ playback_sndfile(snd_pcm_t* pcm_handle, struct playback* pb, int number, int tot
    }
    bytes_per_frame = (size_t)(bytes_per_sample * info->channels);
 
-   /* We'll read libsndfile data into a 32-bit int buffer (interleaved) */
    input_buffer_size = sizeof(int32_t) * pcm_period_size * info->channels;
    input_buffer = (int32_t*)malloc(input_buffer_size);
    if (input_buffer == NULL)
@@ -202,34 +205,28 @@ playback_sndfile(snd_pcm_t* pcm_handle, struct playback* pb, int number, int tot
    memset(input_buffer, 0, input_buffer_size);
    memset(output_buffer, 0, output_buffer_size);
 
-   /* Playback loop */
    while ((frames_read = sf_readf_int(f, input_buffer, pcm_period_size)) > 0)
    {
-      /* Pack samples into output_buffer according to chosen_format */
       size_t outpos = 0;
       for (sf_count_t f = 0; f < frames_read; ++f)
       {
          for (int ch = 0; ch < info->channels; ++ch)
          {
             int32_t sample = input_buffer[f * info->channels + ch];
-            /* libsndfile gives signed int32_t; if file is 24-bit it returns it in low 24 bits. */
             if (pb->fm->container == 16)
             {
-               /* convert 32-bit to 16-bit by shifting (arith shift) */
-               int16_t s16 = (int16_t)(sample >> 16); /* lose lower bits */
+               int16_t s16 = (int16_t)(sample >> 16);
                output_buffer[outpos++] = (uint8_t)(s16 & 0xFF);
                output_buffer[outpos++] = (uint8_t)((s16 >> 8) & 0xFF);
             }
             else if (pb->fm->container == 24)
             {
-               /* pack lower 3 bytes little-endian */
                output_buffer[outpos++] = (uint8_t)(sample & 0xFF);
                output_buffer[outpos++] = (uint8_t)((sample >> 8) & 0xFF);
                output_buffer[outpos++] = (uint8_t)((sample >> 16) & 0xFF);
             }
             else
             {
-               /* 4 bytes little-endian */
                output_buffer[outpos++] = (uint8_t)(sample & 0xFF);
                output_buffer[outpos++] = (uint8_t)((sample >> 8) & 0xFF);
                output_buffer[outpos++] = (uint8_t)((sample >> 16) & 0xFF);
@@ -238,20 +235,17 @@ playback_sndfile(snd_pcm_t* pcm_handle, struct playback* pb, int number, int tot
          }
       }
 
-      /* writei expects frames, not bytes; compute frames to write */
       frames_to_write = frames_read;
       w = snd_pcm_writei(pcm_handle, output_buffer, frames_to_write);
 
       if (w == -EPIPE)
       {
-         /* underrun */
          snd_pcm_prepare(pcm_handle);
          w = snd_pcm_writei(pcm_handle, output_buffer, frames_to_write);
       }
 
       if (w < 0)
       {
-         /* attempt recovery and continue */
          if ((err = snd_pcm_recover(pcm_handle, (int)w, 0)) < 0)
          {
             break;
@@ -768,6 +762,73 @@ print_progress_done(struct playback* pb)
    }
 }
 
+static void
+writei_all(snd_pcm_t* h, void* buf, snd_pcm_uframes_t frames, size_t bytes_per_frame)
+{
+   uint8_t* p = (uint8_t*)buf;
+   snd_pcm_sframes_t remaining = frames;
+
+   while (remaining > 0)
+   {
+      snd_pcm_sframes_t w = snd_pcm_writei(h, p, remaining);
+      if (w == -EPIPE)
+      {
+         snd_pcm_prepare(h);
+         continue;
+      }
+      else if (w < 0)
+      {
+         break;
+      }
+      p += (size_t)w * bytes_per_frame;
+      remaining -= w;
+   }
+}
+
+static void
+write_dsd_silence(struct playback* pb, unsigned frames, uint8_t* marker)
+{
+   struct configuration* config = (struct configuration*)shmem;
+   const size_t bytes_per_frame = 8;
+   const size_t sz = (size_t)frames * bytes_per_frame;
+
+   uint8_t* pr = (uint8_t*)malloc(sz);
+   if (pr == NULL)
+   {
+      hrmp_log_error("DSD: silence OOM");
+      return;
+   }
+
+   if (config->dop)
+   {
+      uint8_t m = (marker != NULL) ? *marker : DOP_MARKER_8LSB;
+      for (unsigned i = 0; i < frames; ++i)
+      {
+         pr[i * 8 + 0] = 0x00;
+         pr[i * 8 + 1] = 0x00;
+         pr[i * 8 + 2] = 0x00;
+         pr[i * 8 + 3] = m;
+         pr[i * 8 + 4] = 0x00;
+         pr[i * 8 + 5] = 0x00;
+         pr[i * 8 + 6] = 0x00;
+         pr[i * 8 + 7] = m;
+         m = (m == DOP_MARKER_8LSB) ? DOP_MARKER_8MSB : DOP_MARKER_8LSB;
+      }
+      writei_all(pb->pcm_handle, pr, frames, bytes_per_frame);
+      if (marker != NULL)
+      {
+         *marker = m;
+      }
+   }
+   else
+   {
+      memset(pr, 0x00, sz);
+      writei_all(pb->pcm_handle, pr, frames, bytes_per_frame);
+   }
+
+   free(pr);
+}
+
 static int
 dop_s32le(FILE* f, struct playback* pb)
 {
@@ -776,6 +837,8 @@ dop_s32le(FILE* f, struct playback* pb)
    uint32_t frames_per_block = N / 2u;
    size_t bytes_per_frame = 8;
    uint8_t* out = NULL;
+   snd_pcm_uframes_t buffer_size = 0;
+   snd_pcm_uframes_t period_size = 0;
 
    blk = (uint8_t*)malloc(2u * N);
    if (blk == NULL)
@@ -791,36 +854,13 @@ dop_s32le(FILE* f, struct playback* pb)
       goto error;
    }
 
-   /* Pre-roll to help DAC lock */
+   /* Unified pre-roll to help DAC lock (DoP/native via helper) */
+   uint8_t marker = DOP_MARKER_8LSB;
    {
-      unsigned pre = (pb->fm->sample_rate >= 11289600u) ? 4096 : 2048;
-      uint8_t* pr = (uint8_t*)malloc(pre * bytes_per_frame);
-      if (pr != NULL)
-      {
-         uint8_t m = DOP_MARKER_8LSB;
-         for (unsigned i = 0; i < pre; ++i)
-         {
-            pr[i * 8 + 0] = 0x00;
-            pr[i * 8 + 1] = 0x00;
-            pr[i * 8 + 2] = 0x00;
-            pr[i * 8 + 3] = m;
-            pr[i * 8 + 4] = 0x00;
-            pr[i * 8 + 5] = 0x00;
-            pr[i * 8 + 6] = 0x00;
-            pr[i * 8 + 7] = m;
-            m = (m == DOP_MARKER_8LSB) ? DOP_MARKER_8MSB : DOP_MARKER_8LSB;
-         }
-         snd_pcm_writei(pb->pcm_handle, pr, pre);
-         free(pr);
-      }
-      else
-      {
-         hrmp_log_error("DoP: Prefill error");
-         goto error;
-      }
+      unsigned pre = (pb->fm->sample_rate >= 11289600u) ? 4096u : 2048u;
+      write_dsd_silence(pb, pre, &marker);
    }
 
-   uint8_t marker = DOP_MARKER_8LSB;
    uint64_t left = pb->fm->data_size;
 
    while (left >= (uint64_t)(2u * N))
@@ -902,6 +942,13 @@ dop_s32le(FILE* f, struct playback* pb)
    }
 
 done:
+   if (snd_pcm_get_params(pb->pcm_handle, &buffer_size, &period_size) == 0 && period_size > 0)
+   {
+      write_dsd_silence(pb, (unsigned)period_size, &marker);
+   }
+
+   unsigned post = (pb->fm->sample_rate >= 11289600u) ? 4096u : 2048u;
+   write_dsd_silence(pb, post, &marker);
 
    print_progress_done(pb);
 
@@ -929,6 +976,8 @@ dsd_u32_be(FILE* f, struct playback* pb)
    size_t bytes_per_frame = 8;
    uint8_t* out = NULL;
    uint64_t left = 0;
+   snd_pcm_uframes_t buffer_size = 0;
+   snd_pcm_uframes_t period_size = 0;
 
    blk = (uint8_t*)malloc(2u * N);
    if (blk == NULL)
@@ -942,6 +991,13 @@ dsd_u32_be(FILE* f, struct playback* pb)
    {
       hrmp_log_error("OOM");
       goto error;
+   }
+
+   /* Unified pre-roll for native DSD/DoP (marker ignored if not DoP) */
+   uint8_t silence_marker = DOP_MARKER_8LSB;
+   {
+      unsigned pre = (pb->fm->sample_rate >= 11289600u) ? 4096u : 2048u;
+      write_dsd_silence(pb, pre, &silence_marker);
    }
 
    left = pb->fm->data_size;
@@ -1019,6 +1075,13 @@ dsd_u32_be(FILE* f, struct playback* pb)
    }
 
 done:
+   if (snd_pcm_get_params(pb->pcm_handle, &buffer_size, &period_size) == 0 && period_size > 0)
+   {
+      write_dsd_silence(pb, (unsigned)period_size, &silence_marker);
+   }
+
+   unsigned post = (pb->fm->sample_rate >= 11289600u) ? 4096u : 2048u;
+   write_dsd_silence(pb, post, &silence_marker);
 
    print_progress_done(pb);
 
