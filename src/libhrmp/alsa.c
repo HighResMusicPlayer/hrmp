@@ -60,49 +60,49 @@ hrmp_alsa_init_handle(int device, struct file_metadata* fm, snd_pcm_t** handle)
 
    if (find_best_format(device, fm, &fmt))
    {
-      hrmp_log_error("find_best_format %s/%d", device, fm->format);
+      hrmp_log_error("find_best_format %s/%d", config->devices[device].name, fm->format);
       goto error;
    }
 
    if ((err = snd_pcm_open(&h, config->devices[device].device, SND_PCM_STREAM_PLAYBACK, 0)) < 0)
    {
-      hrmp_log_error("snd_pcm_open %s/%s", device, snd_strerror(err));
+      hrmp_log_error("snd_pcm_open %s/%s", config->devices[device].name, snd_strerror(err));
       goto error;
    }
 
    if ((err = snd_pcm_hw_params_malloc(&hw_params)) < 0)
    {
-      hrmp_log_error("snd_pcm_hw_params_malloc %s/%s", device, snd_strerror(err));
+      hrmp_log_error("snd_pcm_hw_params_malloc %s/%s", config->devices[device].name, snd_strerror(err));
       goto error;
    }
 
    if ((err = snd_pcm_hw_params_any(h, hw_params)) < 0)
    {
-      hrmp_log_error("snd_pcm_hw_params_any %s/%s", device, snd_strerror(err));
+      hrmp_log_error("snd_pcm_hw_params_any %s/%s", config->devices[device].name, snd_strerror(err));
       goto error;
    }
 
    if ((err = snd_pcm_hw_params_set_rate_resample(h, hw_params, 0)) < 0)
    {
-      hrmp_log_error("snd_pcm_hw_params_any %s/%s", device, snd_strerror(err));
+      hrmp_log_error("snd_pcm_hw_params_set_rate_resample %s/%s", config->devices[device].name, snd_strerror(err));
       goto error;
    }
 
    if ((err = snd_pcm_hw_params_set_access(h, hw_params, SND_PCM_ACCESS_RW_INTERLEAVED)) < 0)
    {
-      hrmp_log_error("snd_pcm_hw_params_set_access %s/%s", device, snd_strerror(err));
+      hrmp_log_error("snd_pcm_hw_params_set_access %s/%s", config->devices[device].name, snd_strerror(err));
       goto error;
    }
 
    if ((err = snd_pcm_hw_params_set_rate_near(h, hw_params, &r, 0)) < 0)
    {
-      hrmp_log_error("snd_pcm_hw_params_set_rate_near %s/%s", device, snd_strerror(err));
+      hrmp_log_error("snd_pcm_hw_params_set_rate_near %s/%s", config->devices[device].name, snd_strerror(err));
       goto error;
    }
 
    if ((err = snd_pcm_hw_params_set_channels(h, hw_params, 2)) < 0)
    {
-      hrmp_log_error("snd_pcm_hw_params_set_channels %s/%s", device, snd_strerror(err));
+      hrmp_log_error("snd_pcm_hw_params_set_channels %s/%s", config->devices[device].name, snd_strerror(err));
       goto error;
    }
 
@@ -110,7 +110,7 @@ hrmp_alsa_init_handle(int device, struct file_metadata* fm, snd_pcm_t** handle)
    int direction = 0;
    if ((err = snd_pcm_hw_params_set_rate_near(h, hw_params, &rate, &direction)) < 0)
    {
-      hrmp_log_error("snd_pcm_hw_params_set_rate_near %s/%s", device, snd_strerror(err));
+      hrmp_log_error("snd_pcm_hw_params_set_rate_near %s/%s", config->devices[device].name, snd_strerror(err));
       goto error;
    }
 
@@ -127,26 +127,30 @@ hrmp_alsa_init_handle(int device, struct file_metadata* fm, snd_pcm_t** handle)
 
       if ((err = snd_pcm_hw_params_set_period_size_near(h, hw_params, &period_size, NULL)) < 0)
       {
-         hrmp_log_error("snd_pcm_hw_params_set_period_size_near %s/%s", device, snd_strerror(err));
+         hrmp_log_error("snd_pcm_hw_params_set_period_size_near %s/%s",
+                        config->devices[device].name, snd_strerror(err));
          goto error;
       }
    }
 
    if ((err = snd_pcm_hw_params_set_buffer_size_near(h, hw_params, &buffer_size)) < 0)
    {
-      hrmp_log_error("snd_pcm_hw_params_set_buffer_size_near %s/%s", device, snd_strerror(err));
+      hrmp_log_error("snd_pcm_hw_params_set_buffer_size_near %s/%s",
+                     config->devices[device].name, snd_strerror(err));
       goto error;
    }
 
    if ((err = snd_pcm_hw_params_set_rate_resample(h, hw_params, 0)) < 0)
    {
-      hrmp_log_error("snd_pcm_hw_params_set_rate_resample %s/%s", device, snd_strerror(err));
+      hrmp_log_error("snd_pcm_hw_params_set_rate_resample %s/%s",
+                     config->devices[device].name, snd_strerror(err));
       goto error;
    }
 
    if ((err = snd_pcm_hw_params_set_format(h, hw_params, fmt)) < 0)
    {
-      hrmp_log_error("snd_pcm_hw_params_set_format %s/%d/%s", device, fmt, snd_strerror(err));
+      hrmp_log_error("snd_pcm_hw_params_set_format %s/%d/%s",
+                     config->devices[device].name, fmt, snd_strerror(err));
       goto error;
    }
 
@@ -196,7 +200,7 @@ hrmp_alsa_reset_handle(snd_pcm_t* handle)
    {
       if ((err = snd_pcm_drop(handle)) < 0)
       {
-         hrmp_log_error("snd_pcm_open %s", snd_strerror(err));
+         hrmp_log_error("snd_pcm_drop %s", snd_strerror(err));
          goto error;
       }
 
