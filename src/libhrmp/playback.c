@@ -1172,6 +1172,11 @@ do_keyboard(FILE* f, SNDFILE* sndf, struct playback* pb)
 
    config = (struct configuration*)shmem;
 
+   if (f == NULL && sndf == NULL)
+   {
+      goto skip;
+   }
+
 keyboard:
    keyboard_action = hrmp_keyboard_get();
 
@@ -1223,7 +1228,7 @@ keyboard:
          seconds = 15;
       }
 
-      if (pb->fm->format == TYPE_DSF)
+      if (pb->fm->type == TYPE_DSF)
       {
          delta_samples = seconds * (int64_t)pb->fm->sample_rate;
       }
@@ -1234,7 +1239,7 @@ keyboard:
 
       new_pos_samples = (int64_t)pb->current_samples + delta_samples;
 
-      if (pb->fm->format == TYPE_DSF)
+      if (pb->fm->type == TYPE_DSF)
       {
          if (new_pos_samples >= (int64_t)pb->fm->total_samples)
          {
