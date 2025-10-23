@@ -3,7 +3,7 @@
 **hrmp** is a high resolution music player.
 
 ```
-hrmp 0.5.3
+hrmp 0.5.4
   High resolution music player
 
 Usage:
@@ -18,7 +18,8 @@ Options:
   -s, --status               Status of the devices
       --dop                  Use DSD over PCM
   -q, --quiet                Quiet the player
-  -V, --version              Display version information
+
+-V, --version              Display version information
   -?, --help                 Display help
 
 hrmp: https://hrmp.github.io/
