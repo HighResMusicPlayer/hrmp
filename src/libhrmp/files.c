@@ -439,6 +439,35 @@ hrmp_print_file_metadata(struct file_metadata* fm)
       printf("  Duration: %lf\n", fm->duration);
       printf("  Block size: %d\n", fm->block_size);
       printf("  Data size: %lu\n", fm->data_size);
+
+      if (strlen(fm->title) > 0)
+      {
+         printf("  Title: %s\n", fm->title);
+      }
+      if (strlen(fm->artist) > 0)
+      {
+         printf("  Artist: %s\n", fm->artist);
+      }
+      if (strlen(fm->album) > 0)
+      {
+         printf("  Album: %s\n", fm->album);
+      }
+      if (strlen(fm->genre) > 0)
+      {
+         printf("  Genre: %s\n", fm->genre);
+      }
+      if (strlen(fm->date) > 0)
+      {
+         printf("  Date: %s\n", fm->date);
+      }
+      if (fm->track > 0)
+      {
+         printf("  Track: %d\n", fm->track);
+      }
+      if (fm->disc > 0)
+      {
+         printf("  Disc: %d\n", fm->disc);
+      }
    }
 
    return 0;
@@ -488,6 +517,7 @@ error:
 static int
 get_metadata(char* filename, int type, struct file_metadata** file_metadata)
 {
+   const char* s;
    SNDFILE* f = NULL;
    SF_INFO* info = NULL;
    struct file_metadata* fm = NULL;
@@ -579,8 +609,33 @@ get_metadata(char* filename, int type, struct file_metadata** file_metadata)
       {
          fm->duration = 0.0;
       }
-   }
 
+      s = sf_get_string(f, SF_STR_TITLE);
+      if (s != NULL && strlen(s) > 0)
+      {
+         memcpy(fm->title, s, strlen(s));
+      }
+      s = sf_get_string(f, SF_STR_ARTIST);
+      if (s != NULL && strlen(s) > 0)
+      {
+         memcpy(fm->artist, s, strlen(s));
+      }
+      s = sf_get_string(f, SF_STR_ALBUM);
+      if (s != NULL && strlen(s) > 0)
+      {
+         memcpy(fm->album, s, strlen(s));
+      }
+      s = sf_get_string(f, SF_STR_GENRE);
+      if (s != NULL && strlen(s) > 0)
+      {
+         memcpy(fm->genre, s, strlen(s));
+      }
+      s = sf_get_string(f, SF_STR_DATE);
+      if (s != NULL && strlen(s) > 0)
+      {
+         memcpy(fm->date, s, strlen(s));
+      }
+   }
    fm->file_size = hrmp_get_file_size(filename);
 
    *file_metadata = fm;
@@ -940,7 +995,6 @@ get_metadata_dff(int device, char* filename, struct file_metadata** file_metadat
       }
    }
 
-   /* DoP output uses 32-bit PCM at sample_rate/16 if device supports it */
    if (config->dop && (config->devices[device].capabilities.s32 ||
                        config->devices[device].capabilities.s32_le))
    {

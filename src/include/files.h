@@ -73,6 +73,15 @@ struct file_metadata
    int container;                /**< The container size */
    unsigned int block_size;      /**< The block size */
    unsigned long data_size;      /**< The data size */
+
+   char title[MISC_LENGTH];       /**< Title */
+   char artist[MISC_LENGTH];      /**< Artist */
+   char album[MISC_LENGTH];       /**< Album */
+   char genre[MISC_LENGTH];       /**< Genre */
+   char date[MISC_LENGTH];        /**< Date */
+
+   int track;                     /**< Track number (0 if unknown) */
+   int disc;                      /**< Disc number (0 if unknown) */
 };
 
 /**
