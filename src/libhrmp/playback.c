@@ -35,6 +35,7 @@
 #include <files.h>
 #include <keyboard.h>
 #include <logging.h>
+#include <metadata.h>
 #include <playback.h>
 #include <utils.h>
 
@@ -218,6 +219,14 @@ hrmp_playback(int device, int number, int total, struct file_metadata* fm)
                      config->devices[device].name, fm->name);
       goto error;
    }
+
+#ifdef DEBUG
+   struct metadata* meta = NULL;
+
+   hrmp_metadata_create(fm, &meta);
+   hrmp_metadata_print(meta);
+   hrmp_metadata_destroy(meta);
+#endif
 
    if (fm->type == TYPE_WAV || fm->type == TYPE_FLAC || fm->type == TYPE_MP3)
    {

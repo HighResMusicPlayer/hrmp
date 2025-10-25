@@ -100,6 +100,14 @@ uint32_t
 hrmp_read_le_u32_buffer(uint8_t* buffer);
 
 /**
+ * Copy a string
+ * @param s The string
+ * @return The result
+ */
+char*
+hrmp_copy_string(char* s);
+
+/**
  * Get the home directory of the user
  * @return The result
  */

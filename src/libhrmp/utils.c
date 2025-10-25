@@ -148,6 +148,25 @@ hrmp_read_le_u32_buffer(uint8_t* buffer)
 }
 
 char*
+hrmp_copy_string(char* s)
+{
+   char* ret = NULL;
+
+   if (s != NULL)
+   {
+      ret = (char*)malloc(strlen(s) + 1);
+
+      if (ret != NULL)
+      {
+         memset(ret, 0, strlen(s) + 1);
+         memcpy(ret, s, strlen(s));
+      }
+   }
+
+   return ret;
+}
+
+char*
 hrmp_get_home_directory(void)
 {
    struct passwd* pw = getpwuid(getuid());
