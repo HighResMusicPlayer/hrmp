@@ -597,7 +597,7 @@ get_hardware_number(char* device)
 
    while (card >= 0 && result == -1)
    {
-      snprintf(ctlname, sizeof(ctlname), "hw:%d", card);
+      hrmp_snprintf(ctlname, sizeof(ctlname), "hw:%d", card);
 
       err = snd_ctl_open(&ctl, ctlname, 0);
       if (err < 0)
@@ -686,7 +686,7 @@ get_hardware_selem(int hardware)
    }
 
    memset(&card[0], 0, sizeof(card));
-   snprintf(&card[0], sizeof(card), "hw:%d", hardware);
+   hrmp_snprintf(&card[0], sizeof(card), "hw:%d", hardware);
 
    if ((err = snd_mixer_attach(mixer, card)) < 0)
    {

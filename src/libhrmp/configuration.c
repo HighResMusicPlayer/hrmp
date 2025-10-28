@@ -1232,17 +1232,17 @@ to_update_process_title(char* where, int value)
    switch (value)
    {
       case UPDATE_PROCESS_TITLE_VERBOSE:
-         snprintf(where, MISC_LENGTH, "%s", "verbose");
+         hrmp_snprintf(where, MISC_LENGTH, "%s", "verbose");
          break;
       case UPDATE_PROCESS_TITLE_MINIMAL:
-         snprintf(where, MISC_LENGTH, "%s", "minimal");
+         hrmp_snprintf(where, MISC_LENGTH, "%s", "minimal");
 
          break;
       case UPDATE_PROCESS_TITLE_STRICT:
-         snprintf(where, MISC_LENGTH, "%s", "strict");
+         hrmp_snprintf(where, MISC_LENGTH, "%s", "strict");
          break;
       case UPDATE_PROCESS_TITLE_NEVER:
-         snprintf(where, MISC_LENGTH, "%s", "never");
+         hrmp_snprintf(where, MISC_LENGTH, "%s", "never");
          break;
    }
    return 0;
@@ -1268,22 +1268,22 @@ to_log_level(char* where, int value)
    {
 
       case HRMP_LOGGING_LEVEL_DEBUG2:
-         snprintf(where, MISC_LENGTH, "%s", "debug2");
+         hrmp_snprintf(where, MISC_LENGTH, "%s", "debug2");
          break;
       case HRMP_LOGGING_LEVEL_DEBUG1:
-         snprintf(where, MISC_LENGTH, "%s", "debug");
+         hrmp_snprintf(where, MISC_LENGTH, "%s", "debug");
          break;
       case HRMP_LOGGING_LEVEL_INFO:
-         snprintf(where, MISC_LENGTH, "%s", "info");
+         hrmp_snprintf(where, MISC_LENGTH, "%s", "info");
          break;
       case HRMP_LOGGING_LEVEL_WARN:
-         snprintf(where, MISC_LENGTH, "%s", "warn");
+         hrmp_snprintf(where, MISC_LENGTH, "%s", "warn");
          break;
       case HRMP_LOGGING_LEVEL_ERROR:
-         snprintf(where, MISC_LENGTH, "%s", "error");
+         hrmp_snprintf(where, MISC_LENGTH, "%s", "error");
          break;
       case HRMP_LOGGING_LEVEL_FATAL:
-         snprintf(where, MISC_LENGTH, "%s", "fatal");
+         hrmp_snprintf(where, MISC_LENGTH, "%s", "fatal");
          break;
 
    }
@@ -1311,10 +1311,10 @@ to_log_mode(char* where, int value)
    {
 
       case HRMP_LOGGING_MODE_CREATE:
-         snprintf(where, MISC_LENGTH, "%s", "create");
+         hrmp_snprintf(where, MISC_LENGTH, "%s", "create");
          break;
       case HRMP_LOGGING_MODE_APPEND:
-         snprintf(where, MISC_LENGTH, "%s", "append");
+         hrmp_snprintf(where, MISC_LENGTH, "%s", "append");
          break;
    }
 
@@ -1340,13 +1340,13 @@ to_log_type(char* where, int value)
    switch (value)
    {
       case HRMP_LOGGING_TYPE_CONSOLE:
-         snprintf(where, MISC_LENGTH, "%s", "console");
+         hrmp_snprintf(where, MISC_LENGTH, "%s", "console");
          break;
       case HRMP_LOGGING_TYPE_FILE:
-         snprintf(where, MISC_LENGTH, "%s", "file");
+         hrmp_snprintf(where, MISC_LENGTH, "%s", "file");
          break;
       case HRMP_LOGGING_TYPE_SYSLOG:
-         snprintf(where, MISC_LENGTH, "%s", "syslog");
+         hrmp_snprintf(where, MISC_LENGTH, "%s", "syslog");
          break;
 
    }

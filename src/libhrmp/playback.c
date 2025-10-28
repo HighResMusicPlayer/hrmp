@@ -772,7 +772,7 @@ set_volume(int device, int volume)
    }
 
    memset(&address[0], 0, sizeof(address));
-   snprintf(&address[0], sizeof(address), "hw:%d", config->devices[device].hardware);
+   hrmp_snprintf(&address[0], sizeof(address), "hw:%d", config->devices[device].hardware);
 
    if ((err = snd_mixer_attach(handle, &address[0])) < 0)
    {
@@ -892,15 +892,15 @@ print_progress(struct playback* pb)
 
       if (total_hour > 0)
       {
-         snprintf(&t[0], sizeof(t), "%d:%02d:%02d/%d:%02d:%02d",
-                  current_hour, current_min, current_sec,
-                  total_hour, total_min, total_sec);
+         hrmp_snprintf(&t[0], sizeof(t), "%d:%02d:%02d/%d:%02d:%02d",
+                       current_hour, current_min, current_sec,
+                       total_hour, total_min, total_sec);
       }
       else
       {
-         snprintf(&t[0], sizeof(t), "%d:%02d/%d:%02d",
-                  current_min, current_sec,
-                  total_min, total_sec);
+         hrmp_snprintf(&t[0], sizeof(t), "%d:%02d/%d:%02d",
+                       current_min, current_sec,
+                       total_min, total_sec);
       }
 
       printf("\r[%d/%d] %s: %s %s (%s) (%d%%)", pb->file_number, pb->total_number, config->devices[pb->device].name,
@@ -938,13 +938,13 @@ print_progress_done(struct playback* pb)
 
       if (total_hour > 0)
       {
-         snprintf(&t[0], sizeof(t), "%d:%02d:%02d/%d:%02d:%02d",
-                  total_hour, total_min, total_sec,
-                  total_hour, total_min, total_sec);
+         hrmp_snprintf(&t[0], sizeof(t), "%d:%02d:%02d/%d:%02d:%02d",
+                       total_hour, total_min, total_sec,
+                       total_hour, total_min, total_sec);
       }
       else
       {
-         snprintf(&t[0], sizeof(t), "%d:%02d/%d:%02d", total_min, total_sec, total_min, total_sec);
+         hrmp_snprintf(&t[0], sizeof(t), "%d:%02d/%d:%02d", total_min, total_sec, total_min, total_sec);
       }
 
       printf("\r[%d/%d] %s: %s %s (%s) (100%%)\n", pb->file_number, pb->total_number,

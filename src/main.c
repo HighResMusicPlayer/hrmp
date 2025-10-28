@@ -243,21 +243,21 @@ main(int argc, char** argv)
       // the configuration has some problem, build up a descriptive message
       if (ret == HRMP_CONFIGURATION_STATUS_FILE_NOT_FOUND)
       {
-         snprintf(message, MISC_LENGTH, "Configuration file not found");
+         hrmp_snprintf(message, MISC_LENGTH, "Configuration file not found");
       }
       else if (ret == HRMP_CONFIGURATION_STATUS_FILE_TOO_BIG)
       {
-         snprintf(message, MISC_LENGTH, "Too many sections");
+         hrmp_snprintf(message, MISC_LENGTH, "Too many sections");
       }
       else if (ret == HRMP_CONFIGURATION_STATUS_KO)
       {
-         snprintf(message, MISC_LENGTH, "Invalid configuration file");
+         hrmp_snprintf(message, MISC_LENGTH, "Invalid configuration file");
       }
       else if (ret > 0)
       {
-         snprintf(message, MISC_LENGTH, "%d problematic or duplicated section%c",
-                  ret,
-                  ret > 1 ? 's' : ' ');
+         hrmp_snprintf(message, MISC_LENGTH, "%d problematic or duplicated section%c",
+                       ret,
+                       ret > 1 ? 's' : ' ');
       }
 
       errx(1, "%s (file <%s>)", message, cp);

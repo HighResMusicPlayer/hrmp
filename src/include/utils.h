@@ -39,6 +39,7 @@ extern "C" {
 #include <hrmp.h>
 #include <deque.h>
 
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -98,6 +99,26 @@ hrmp_read_le_u64_buffer(uint8_t* buffer);
  */
 uint32_t
 hrmp_read_le_u32_buffer(uint8_t* buffer);
+
+/**
+ * snprintf-like formatter that builds the result using hrmp_append helpers.
+ * The output is clamped to the smaller of (HRMP_SNPRINTF_MAX_LENGTH) and (n-1).
+ * Returns the number of characters that would have been written (excluding the
+ * NUL byte), similar to snprintf. If buf is not NULL and n > 0, the output is
+ * NUL-terminated.
+ *
+ * Supported format specifiers: %% %s %c %d %i %u %ld %lu %lld %llu %zu %zd %x
+ * %X %p %f %g
+ *
+ * @param buf The destination buffer (may be NULL if n == 0)
+ * @param n The size of the destination buffer
+ * @param fmt The format string
+ * @param ... The format arguments
+ * @return Number of characters that would have been written (excluding the NUL
+ * byte)
+ */
+int
+hrmp_snprintf(char* buf, size_t n, const char* fmt, ...);
 
 /**
  * Copy a string
