@@ -37,6 +37,7 @@
 #include <logging.h>
 #include <playback.h>
 #include <utils.h>
+#include <mkv.h> /* MKV PCM/Opus/AAC demuxer */
 
 /* system */
 #include <math.h>
@@ -47,6 +48,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>   /* for ULONG_MAX */
 #include <alsa/asoundlib.h>
 
 #define DOP_MARKER_8MSB 0xFA
@@ -73,6 +75,8 @@ static int playback_dsf(snd_pcm_t* pcm_handle, struct playback* pb,
                         int number, int total);
 static int playback_dff(snd_pcm_t* pcm_handle, struct playback* pb,
                         int number, int total);
+static int playback_mkv(snd_pcm_t* pcm_handle, struct playback* pb,
+                        int number, int total); /* MKV path with PTS-based time */
 
 static void writei_all(snd_pcm_t* h, void* buf, snd_pcm_uframes_t frames, size_t bytes_per_frame);
 static unsigned frames_from_ms(struct playback* pb, unsigned ms);
@@ -231,6 +235,10 @@ hrmp_playback(int device, int number, int total, struct file_metadata* fm)
    {
       ret = playback_dff(pcm_handle, pb, number, total);
    }
+   else if (fm->type == TYPE_MKV)
+   {
+      ret = playback_mkv(pcm_handle, pb, number, total);
+   }
    else
    {
       goto error;
@@ -289,7 +297,6 @@ playback_sndfile(snd_pcm_t* pcm_handle, struct playback* pb, int number, int tot
       goto error;
    }
 
-   // Playback loop
    switch (pb->fm->container)
    {
       case 16:
@@ -327,11 +334,11 @@ playback_sndfile(snd_pcm_t* pcm_handle, struct playback* pb, int number, int tot
    while ((frames_read = sf_readf_int(f, input_buffer, pcm_period_size)) > 0)
    {
       size_t outpos = 0;
-      for (sf_count_t f = 0; f < frames_read; ++f)
+      for (sf_count_t fi = 0; fi < frames_read; ++fi)
       {
          for (int ch = 0; ch < info->channels; ++ch)
          {
-            int32_t sample = input_buffer[f * info->channels + ch];
+            int32_t sample = input_buffer[fi * info->channels + ch];
             if (pb->fm->container == 16)
             {
                int16_t s16 = (int16_t)(sample >> 16);
@@ -372,7 +379,7 @@ playback_sndfile(snd_pcm_t* pcm_handle, struct playback* pb, int number, int tot
       }
 
       print_progress(pb);
-      pb->current_samples += pcm_period_size;
+      pb->current_samples += (unsigned long)frames_read;
 
       if (do_keyboard(NULL, f, pb))
       {
@@ -395,11 +402,22 @@ playback_sndfile(snd_pcm_t* pcm_handle, struct playback* pb, int number, int tot
 
 error:
 
-   free(input_buffer);
-   free(output_buffer);
-   free(info);
-
-   sf_close(f);
+   if (input_buffer)
+   {
+      free(input_buffer);
+   }
+   if (output_buffer)
+   {
+      free(output_buffer);
+   }
+   if (info)
+   {
+      free(info);
+   }
+   if (f)
+   {
+      sf_close(f);
+   }
 
    return 1;
 }
@@ -540,6 +558,106 @@ error:
 }
 
 static int
+playback_mkv(snd_pcm_t* pcm_handle, struct playback* pb, int number, int total)
+{
+   MkvDemuxer* demux = NULL;
+   MkvAudioInfo ai;
+
+   if (hrmp_mkv_open_path(pb->fm->name, &demux) < 0 || !demux)
+   {
+      hrmp_log_error("MKV: open failed: %s", pb->fm->name);
+      return 1;
+   }
+   if (hrmp_mkv_get_audio_info(demux, &ai) < 0)
+   {
+      hrmp_log_error("MKV: audio info failed");
+      goto error;
+   }
+
+   unsigned channels = pb->fm->channels ? pb->fm->channels : (unsigned)ai.channels;
+   unsigned bits = pb->fm->bits_per_sample ? pb->fm->bits_per_sample : (unsigned)ai.bit_depth;
+   unsigned bps8 = bits / 8u;
+   size_t bytes_per_frame = (size_t)channels * (size_t)bps8;
+   unsigned sr = pb->fm->sample_rate ? pb->fm->sample_rate : (unsigned)(ai.sample_rate + 0.5);
+
+   if (channels == 0 || bps8 == 0 || bytes_per_frame == 0 || sr == 0)
+   {
+      hrmp_log_error("MKV: invalid PCM geometry ch=%u bits=%u sr=%u", channels, bits, sr);
+      goto error;
+   }
+
+   int64_t last_pts_ns = -1;
+
+   for (;;)
+   {
+      MkvPacket pkt = {0};
+      int got = hrmp_mkv_read_packet(demux, &pkt);
+      if (got < 0)
+      {
+         hrmp_log_error("MKV: read error");
+         goto error;
+      }
+      if (got == 0)
+      {
+         break;
+      }
+
+      size_t frames = bytes_per_frame ? (pkt.size / bytes_per_frame) : 0;
+      if (frames > 0)
+      {
+         writei_all(pcm_handle, pkt.data, (snd_pcm_uframes_t)frames, bytes_per_frame);
+
+         /* Update time: if PTS present, use it; fallback to frame count. */
+         if (pkt.pts_ns >= 0)
+         {
+            last_pts_ns = pkt.pts_ns;
+            uint64_t ns = (uint64_t)last_pts_ns;
+            uint64_t samples64 = (sr > 0) ? (ns * (uint64_t)sr) / 1000000000ULL : 0ULL;
+            pb->current_samples = (unsigned long)(samples64 > (uint64_t)ULONG_MAX ? (uint64_t)ULONG_MAX : samples64);
+         }
+         else
+         {
+            pb->current_samples += (unsigned long)frames;
+         }
+
+         print_progress(pb);
+      }
+
+      hrmp_mkv_free_packet(&pkt);
+   }
+
+   if (last_pts_ns < 0 && pb->fm->total_samples > 0)
+   {
+      if (pb->current_samples > pb->fm->total_samples)
+      {
+         pb->current_samples = pb->fm->total_samples;
+      }
+   }
+
+   print_progress_done(pb);
+   hrmp_mkv_close(demux);
+   return 0;
+
+error:
+
+   hrmp_mkv_close(demux);
+   return 1;
+}
+
+static void
+fmt2(int v, char out[3])
+{
+   if (v < 0)
+   {
+      v = 0;
+   }
+   v = v % 100;
+   out[0] = (char)('0' + (v / 10));
+   out[1] = (char)('0' + (v % 10));
+   out[2] = '\0';
+}
+
+static int
 playback_init(int device, int number, int total,
               snd_pcm_t* pcm_handle, struct file_metadata* fm,
               struct playback** playback)
@@ -558,7 +676,10 @@ playback_init(int device, int number, int total,
 
    memset(pb, 0, sizeof(struct playback));
 
-   playback_identifier(fm, &desc);
+   if (playback_identifier(fm, &desc))
+   {
+      goto error;
+   }
 
    pb->device = device;
    pb->file_size = hrmp_get_file_size(fm->name);
@@ -577,8 +698,14 @@ playback_init(int device, int number, int total,
 
 error:
 
-   free(desc);
-   free(pb);
+   if (desc)
+   {
+      free(desc);
+   }
+   if (pb)
+   {
+      free(pb);
+   }
 
    return 1;
 }
@@ -614,6 +741,10 @@ playback_identifier(struct file_metadata* fm, char** identifer)
    else if (fm->type == TYPE_DSF)
    {
       id = hrmp_append(id, "DSF/");
+   }
+   else if (fm->type == TYPE_MKV)
+   {
+      id = hrmp_append(id, "MKV/");
    }
 
    switch (fm->sample_rate)
@@ -701,7 +832,6 @@ playback_identifier(struct file_metadata* fm, char** identifer)
       default:
          printf("Unsupported sample rate: %s/%dHz/%dbits\n", fm->name, fm->sample_rate, fm->bits_per_sample);
          goto error;
-         break;
    }
 
    id = hrmp_append(id, "/");
@@ -723,7 +853,6 @@ playback_identifier(struct file_metadata* fm, char** identifer)
       default:
          hrmp_log_error("Unsupported bits per sample: %s/%dHz/%dbits", fm->name, fm->sample_rate, fm->bits_per_sample);
          goto error;
-         break;
    }
 
    id = hrmp_append_char(id, ']');
@@ -734,7 +863,10 @@ playback_identifier(struct file_metadata* fm, char** identifer)
 
 error:
 
-   free(id);
+   if (id)
+   {
+      free(id);
+   }
 
    return 1;
 }
@@ -856,6 +988,7 @@ print_progress(struct playback* pb)
    if (!config->quiet)
    {
       char t[MAX_PATH];
+      char cur_m2[3], cur_s2[3], tot_m2[3], tot_s2[3];
       double current = 0.0;
       int current_hour = 0;
       int current_min = 0;
@@ -867,44 +1000,83 @@ print_progress(struct playback* pb)
 
       memset(&t[0], 0, sizeof(t));
 
-      current = (int)((double)pb->current_samples / pb->fm->sample_rate);
-      current_min = (int)(current) / 60;
-
-      if (current_min >= 60)
+      /* Current time from samples and sample_rate */
+      if (pb->fm->sample_rate > 0)
       {
-         current_hour = (int)(current_min / 60.0);
-         current_min = current_min - (current_hour * 60);
-      }
-
-      current_sec = current - ((current_hour * 60 * 60) + (current_min * 60));
-
-      total_min = (int)pb->fm->duration / 60;
-
-      if (total_min >= 60)
-      {
-         total_hour = (int)(total_min / 60.0);
-         total_min = total_min - (total_hour * 60);
-      }
-
-      total_sec = pb->fm->duration - ((total_hour * 60 * 60) + (total_min * 60));
-
-      percent = (int)(current * 100 / pb->fm->duration);
-
-      if (total_hour > 0)
-      {
-         hrmp_snprintf(&t[0], sizeof(t), "%d:%02d:%02d/%d:%02d:%02d",
-                       current_hour, current_min, current_sec,
-                       total_hour, total_min, total_sec);
+         current = (double)pb->current_samples / (double)pb->fm->sample_rate;
       }
       else
       {
-         hrmp_snprintf(&t[0], sizeof(t), "%d:%02d/%d:%02d",
-                       current_min, current_sec,
-                       total_min, total_sec);
+         current = 0.0;
       }
 
-      printf("\r[%d/%d] %s: %s %s (%s) (%d%%)", pb->file_number, pb->total_number, config->devices[pb->device].name,
-             pb->fm->name, pb->identifier, &t[0], percent);
+      int icur = (int)current;
+      current_min = icur / 60;
+      current_sec = icur - (current_min * 60);
+      if (current_min >= 60)
+      {
+         current_hour = current_min / 60;
+         current_min = current_min - (current_hour * 60);
+      }
+
+      /* Total time from fm->duration */
+      double totald = pb->fm->duration;
+      int itot = (int)totald;
+      total_min = itot / 60;
+      total_sec = itot - (total_min * 60);
+      if (total_min >= 60)
+      {
+         total_hour = total_min / 60;
+         total_min = total_min - (total_hour * 60);
+      }
+
+      /* Percent */
+      if (pb->fm->duration > 0.0)
+      {
+         percent = (int)((current * 100.0) / pb->fm->duration);
+      }
+      else
+      {
+         percent = 0;
+      }
+      if (percent < 0)
+      {
+         percent = 0;
+      }
+      if (percent > 100)
+      {
+         percent = 100;
+      }
+
+      /* Manual zero-padding to avoid %02d formatting issues */
+      fmt2(current_min, cur_m2);
+      fmt2(current_sec, cur_s2);
+      fmt2(total_min, tot_m2);
+      fmt2(total_sec, tot_s2);
+
+      if (total_hour > 0)
+      {
+         /* H:MM:SS/H:MM:SS */
+         hrmp_snprintf(&t[0], sizeof(t), "%d:%s:%s/%d:%s:%s",
+                       current_hour, cur_m2, cur_s2,
+                       total_hour, tot_m2, tot_s2);
+      }
+      else
+      {
+         /* M:SS/M:SS */
+         hrmp_snprintf(&t[0], sizeof(t), "%d:%s/%d:%s",
+                       current_min, cur_s2,
+                       total_min, tot_s2);
+      }
+
+      printf("\r[%d/%d] %s: %s %s (%s) (%d%%)",
+             pb->file_number,
+             pb->total_number,
+             config->devices[pb->device].name,
+             pb->fm->name,
+             pb->identifier,
+             &t[0],
+             percent);
 
       fflush(stdout);
    }
@@ -920,35 +1092,44 @@ print_progress_done(struct playback* pb)
    if (!config->quiet)
    {
       char t[MAX_PATH];
+      char tot_m2[3], tot_s2[3];
       int total_hour = 0;
       int total_min = 0;
       int total_sec = 0;
 
       memset(&t[0], 0, sizeof(t));
 
-      total_min = (int)(pb->fm->duration) / 60;
-
+      double totald = pb->fm->duration;
+      int itot = (int)totald;
+      total_min = itot / 60;
+      total_sec = itot - (total_min * 60);
       if (total_min >= 60)
       {
-         total_hour = (int)(total_min / 60.0);
+         total_hour = total_min / 60;
          total_min = total_min - (total_hour * 60);
       }
 
-      total_sec = pb->fm->duration - ((total_hour * 60 * 60) + (total_min * 60));
+      fmt2(total_min, tot_m2);
+      fmt2(total_sec, tot_s2);
 
       if (total_hour > 0)
       {
-         hrmp_snprintf(&t[0], sizeof(t), "%d:%02d:%02d/%d:%02d:%02d",
-                       total_hour, total_min, total_sec,
-                       total_hour, total_min, total_sec);
+         hrmp_snprintf(&t[0], sizeof(t), "%d:%s:%s/%d:%s:%s",
+                       total_hour, tot_m2, tot_s2,
+                       total_hour, tot_m2, tot_s2);
       }
       else
       {
-         hrmp_snprintf(&t[0], sizeof(t), "%d:%02d/%d:%02d", total_min, total_sec, total_min, total_sec);
+         hrmp_snprintf(&t[0], sizeof(t), "%d:%s/%d:%s",
+                       total_min, tot_s2, total_min, tot_s2);
       }
 
-      printf("\r[%d/%d] %s: %s %s (%s) (100%%)\n", pb->file_number, pb->total_number,
-             config->devices[pb->device].name, pb->fm->name, pb->identifier,
+      printf("\r[%d/%d] %s: %s %s (%s) (100%%)\n",
+             pb->file_number,
+             pb->total_number,
+             config->devices[pb->device].name,
+             pb->fm->name,
+             pb->identifier,
              &t[0]);
 
       fflush(stdout);
@@ -1094,8 +1275,10 @@ done:
       write_dsd_center_pad(pb, (unsigned)period_size, &marker);
    }
 
-   unsigned post_frames = frames_from_ms(pb, HRMP_DSD_POSTROLL_MS);
-   write_dsd_center_pad(pb, post_frames, &marker);
+   {
+      unsigned post_frames = frames_from_ms(pb, HRMP_DSD_POSTROLL_MS);
+      write_dsd_center_pad(pb, post_frames, &marker);
+   }
 
    print_progress_done(pb);
 
@@ -1108,8 +1291,14 @@ error:
 
    print_progress_done(pb);
 
-   free(out);
-   free(blk);
+   if (out)
+   {
+      free(out);
+   }
+   if (blk)
+   {
+      free(blk);
+   }
 
    return 1;
 }
@@ -1224,8 +1413,10 @@ done:
       write_dsd_center_pad(pb, (unsigned)period_size, &m_ignored);
    }
 
-   unsigned post_frames = frames_from_ms(pb, HRMP_DSD_POSTROLL_MS);
-   write_dsd_center_pad(pb, post_frames, &m_ignored);
+   {
+      unsigned post_frames = frames_from_ms(pb, HRMP_DSD_POSTROLL_MS);
+      write_dsd_center_pad(pb, post_frames, &m_ignored);
+   }
 
    print_progress_done(pb);
 
@@ -1238,8 +1429,14 @@ error:
 
    print_progress_done(pb);
 
-   free(out);
-   free(blk);
+   if (out)
+   {
+      free(out);
+   }
+   if (blk)
+   {
+      free(blk);
+   }
 
    return 1;
 }
@@ -1314,7 +1511,7 @@ keyboard:
       }
       else
       {
-         delta_samples = seconds * (pb->fm->total_samples / pb->fm->duration);
+         delta_samples = (int64_t)((double)seconds * (pb->fm->total_samples / pb->fm->duration));
       }
 
       new_pos_samples = (int64_t)pb->current_samples + delta_samples;
@@ -1344,7 +1541,7 @@ keyboard:
 
             fseek(f, 92L + (long)aligned_bytes, SEEK_SET);
 
-            pb->current_samples = (size_t)((aligned_bytes / 2u) * 8u);
+            pb->current_samples = (unsigned long)((aligned_bytes / 2u) * 8u);
          }
       }
       else
@@ -1361,8 +1558,8 @@ keyboard:
          }
          else
          {
-            sf_seek(sndf, new_pos_samples, SEEK_CUR);
-            pb->current_samples = new_pos_samples;
+            sf_seek(sndf, (sf_count_t)new_pos_samples, SEEK_CUR);
+            pb->current_samples = (unsigned long)new_pos_samples;
          }
       }
 

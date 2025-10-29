@@ -33,6 +33,7 @@
 #include <devices.h>
 #include <files.h>
 #include <logging.h>
+#include <mkv.h>
 #include <utils.h>
 
 /* system */
@@ -46,6 +47,7 @@ static int init_metadata(char* filename, int type, struct file_metadata** file_m
 static int get_metadata(char* filename, int type, struct file_metadata** file_metadata);
 static int get_metadata_dsf(int device, char* filename, struct file_metadata** file_metadata);
 static int get_metadata_dff(int device, char* filename, struct file_metadata** file_metadata);
+static int get_metadata_mkv(int device, char* filename, struct file_metadata** file_metadata);
 static bool metadata_supported(int device, struct file_metadata* fm);
 
 static uint32_t id3_be_u32(const unsigned char b[4]);
@@ -351,6 +353,10 @@ hrmp_file_metadata(int device, char* f, struct file_metadata** fm)
    {
       type = TYPE_DFF;
    }
+   else if (hrmp_ends_with(f, ".mkv") || hrmp_ends_with(f, ".mka"))
+   {
+      type = TYPE_MKV;
+   }
 
    if (type == TYPE_WAV || type == TYPE_FLAC || type == TYPE_MP3)
    {
@@ -377,6 +383,17 @@ hrmp_file_metadata(int device, char* f, struct file_metadata** fm)
    else if (type == TYPE_DFF)
    {
       if (get_metadata_dff(device, f, &m))
+      {
+         if (!config->quiet)
+         {
+            printf("Unsupported metadata for %s\n", f);
+         }
+         goto error;
+      }
+   }
+   else if (type == TYPE_MKV)
+   {
+      if (get_metadata_mkv(device, f, &m))
       {
          if (!config->quiet)
          {
@@ -607,6 +624,10 @@ hrmp_print_file_metadata(struct file_metadata* fm)
       else if (fm->type == TYPE_DFF)
       {
          printf("  Type: TYPE_DFF\n");
+      }
+      else if (fm->type == TYPE_MKV)
+      {
+         printf("  Type: TYPE_MKV\n");
       }
       else
       {
@@ -1292,6 +1313,137 @@ error:
    if (f != NULL)
    {
       fclose(f);
+   }
+   free(fm);
+   return 1;
+}
+
+static int
+get_metadata_mkv(int device, char* filename, struct file_metadata** file_metadata)
+{
+   struct file_metadata* fm = NULL;
+   MkvDemuxer* demux = NULL;
+   MkvAudioInfo ai;
+   uint64_t total_bytes = 0;
+
+   *file_metadata = NULL;
+
+   if (init_metadata(filename, TYPE_MKV, &fm))
+   {
+      goto error;
+   }
+
+   if (hrmp_mkv_open_path(filename, &demux) < 0 || !demux)
+   {
+      hrmp_log_error("MKV: failed to open '%s'", filename);
+      goto error;
+   }
+   if (hrmp_mkv_get_audio_info(demux, &ai) < 0)
+   {
+      hrmp_log_error("MKV: failed to read audio info '%s'", filename);
+      goto error;
+   }
+
+   /* Accept PCM INT in MKV directly, Opus and AAC decoded to PCM by mkv.c */
+   if (ai.codec == MKV_CODEC_PCM_INT)
+   {
+      fm->channels = (unsigned)ai.channels;
+      fm->sample_rate = (unsigned)(ai.sample_rate > 0 ? (unsigned)(ai.sample_rate + 0.5) : 0);
+      fm->bits_per_sample = ai.bit_depth;
+      if (fm->bits_per_sample == 16)
+      {
+         fm->format = FORMAT_16;
+      }
+      else if (fm->bits_per_sample == 24)
+      {
+         fm->format = FORMAT_24;
+      }
+      else if (fm->bits_per_sample == 32)
+      {
+         fm->format = FORMAT_32;
+      }
+      else
+      {
+         hrmp_log_error("MKV: unsupported PCM bit depth: %u", fm->bits_per_sample);
+         goto error;
+      }
+   }
+   else if (ai.codec == MKV_CODEC_OPUS)
+   {
+      /* Decoded S16LE @ 48kHz */
+      fm->channels = (unsigned)(ai.channels ? ai.channels : 2);
+      fm->sample_rate = 48000;
+      fm->bits_per_sample = 16;
+      fm->format = FORMAT_16;
+   }
+   else if (ai.codec == MKV_CODEC_AAC)
+   {
+      /* Decoded S16LE; sample rate/channels from track info (or decoder) */
+      fm->channels = (unsigned)(ai.channels ? ai.channels : 2);
+      fm->sample_rate = (unsigned)(ai.sample_rate > 0 ? (unsigned)(ai.sample_rate + 0.5) : 48000);
+      fm->bits_per_sample = 16;
+      fm->format = FORMAT_16;
+   }
+   else
+   {
+      hrmp_log_error("MKV: unsupported codec '%s' (PCM/Opus/AAC supported)", ai.codec_id_str);
+      goto error;
+   }
+
+   /* Require stereo like other formats in this player */
+   if (fm->channels != 2)
+   {
+      hrmp_log_error("MKV: unsupported number of channels (%u != 2)", fm->channels);
+      goto error;
+   }
+
+   fm->pcm_rate = fm->sample_rate;
+
+   /* Pre-scan to compute duration and total samples (post-decode for Opus/AAC). */
+   while (1)
+   {
+      MkvPacket pkt = {0};
+      int got = hrmp_mkv_read_packet(demux, &pkt);
+      if (got < 0)
+      {
+         hrmp_log_error("MKV: error during metadata scan");
+         goto error;
+      }
+      if (got == 0)
+      {
+         break; /* end */
+      }
+      total_bytes += (uint64_t)pkt.size;
+      hrmp_mkv_free_packet(&pkt);
+   }
+
+   if (fm->channels > 0 && fm->bits_per_sample > 0)
+   {
+      unsigned bps8 = fm->bits_per_sample / 8u;
+      uint64_t bytes_per_frame = (uint64_t)fm->channels * (uint64_t)bps8;
+      if (bytes_per_frame == 0)
+      {
+         goto error;
+      }
+      fm->total_samples = (unsigned long)(total_bytes / bytes_per_frame);
+      fm->duration = (fm->sample_rate > 0)
+                     ? (double)((double)fm->total_samples / (double)fm->sample_rate)
+                     : 0.0;
+      fm->data_size = (unsigned long)total_bytes;
+   }
+
+   fm->file_size = hrmp_get_file_size(filename);
+
+   hrmp_mkv_close(demux);
+   demux = NULL;
+
+   *file_metadata = fm;
+   return 0;
+
+error:
+   if (demux)
+   {
+      hrmp_mkv_close(demux);
    }
    free(fm);
    return 1;

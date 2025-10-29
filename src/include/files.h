@@ -47,6 +47,7 @@ extern "C" {
 #define TYPE_MP3     3
 #define TYPE_DSF     4
 #define TYPE_DFF     5
+#define TYPE_MKV     6
 
 #define FORMAT_UNKNOWN 0
 #define FORMAT_16      1

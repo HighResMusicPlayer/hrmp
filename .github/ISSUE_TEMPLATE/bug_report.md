@@ -33,6 +33,18 @@ What is the version of libsndfile ?
 
 Please, use `rpm -qa | grep libsndfile | sort` or similar
 
+**opus**
+
+What is the version of opus ?
+
+Please, use `rpm -qa | grep opus | sort` or similar
+
+**faad2**
+
+What is the version of faad2 ?
+
+Please, use `rpm -qa | grep  | sort` or similar
+
 **OS**
 
 Which Operating System (OS) is used ?
