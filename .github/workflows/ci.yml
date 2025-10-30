@@ -29,8 +29,8 @@ jobs:
           git gcc clang clang-tools cmake make \
           libasound2-dev \
           libsndfile1 libsndfile1-dev \
-          opus opus-dev \
-          faad libfaad \
+          opus-tools libopus-dev \
+          faad libfaad-dev \
           python3-docutils \
           check graphviz doxygen \
           pandoc texlive texlive-latex-extra \
