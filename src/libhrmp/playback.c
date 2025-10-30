@@ -590,6 +590,43 @@ playback_mkv(snd_pcm_t* pcm_handle, struct playback* pb, int number, int total)
 
    for (;;)
    {
+      int kb = do_keyboard(NULL, NULL, pb);
+      if (kb == 1)
+      {
+         break;
+      }
+      else if (kb == 2)
+      {
+         uint64_t target_samples = (uint64_t)pb->current_samples;
+         uint64_t target_ns = (sr > 0) ? (target_samples * 1000000000ULL) / (uint64_t)sr : 0ULL;
+
+         hrmp_mkv_close(demux);
+         if (hrmp_mkv_open_path(pb->fm->name, &demux) < 0 || !demux)
+         {
+            hrmp_log_error("MKV: reopen failed for seek");
+            goto error;
+         }
+         for (;;)
+         {
+            MkvPacket spkt = {0};
+            int sgot = hrmp_mkv_read_packet(demux, &spkt);
+            if (sgot <= 0)
+            {
+               hrmp_mkv_free_packet(&spkt);
+               break;
+            }
+            if (spkt.pts_ns >= 0 && (uint64_t)spkt.pts_ns >= target_ns)
+            {
+               hrmp_mkv_free_packet(&spkt);
+               break;
+            }
+            hrmp_mkv_free_packet(&spkt);
+         }
+
+         hrmp_alsa_reset_handle(pb->pcm_handle);
+         last_pts_ns = (int64_t)target_ns;
+      }
+
       MkvPacket pkt = {0};
       int got = hrmp_mkv_read_packet(demux, &pkt);
       if (got < 0)
@@ -607,7 +644,6 @@ playback_mkv(snd_pcm_t* pcm_handle, struct playback* pb, int number, int total)
       {
          writei_all(pcm_handle, pkt.data, (snd_pcm_uframes_t)frames, bytes_per_frame);
 
-         /* Update time: if PTS present, use it; fallback to frame count. */
          if (pkt.pts_ns >= 0)
          {
             last_pts_ns = pkt.pts_ns;
@@ -1457,11 +1493,6 @@ do_keyboard(FILE* f, SNDFILE* sndf, struct playback* pb)
 
    config = (struct configuration*)shmem;
 
-   if (f == NULL && sndf == NULL)
-   {
-      goto skip;
-   }
-
 keyboard:
    keyboard_action = hrmp_keyboard_get();
 
@@ -1473,7 +1504,7 @@ keyboard:
    }
    else if (keyboard_action == KEYBOARD_ENTER)
    {
-      goto skip;
+      return 1;
    }
    else if (keyboard_action == KEYBOARD_SPACE)
    {
@@ -1517,6 +1548,18 @@ keyboard:
       {
          delta_samples = seconds * (int64_t)pb->fm->sample_rate;
       }
+      else if (pb->fm->type == TYPE_MKV)
+      {
+         if (pb->fm->duration > 0.0 && pb->fm->total_samples > 0)
+         {
+            double samples_per_sec = (double)pb->fm->total_samples / pb->fm->duration;
+            delta_samples = (int64_t)(samples_per_sec * (double)seconds);
+         }
+         else
+         {
+            delta_samples = seconds * (int64_t)pb->fm->sample_rate;
+         }
+      }
       else
       {
          delta_samples = (int64_t)((double)seconds * (pb->fm->total_samples / pb->fm->duration));
@@ -1551,8 +1594,11 @@ keyboard:
 
             pb->current_samples = (unsigned long)((aligned_bytes / 2u) * 8u);
          }
+
+         hrmp_alsa_reset_handle(pb->pcm_handle);
+         print_progress(pb);
       }
-      else
+      else if (pb->fm->type != TYPE_MKV)
       {
          if (new_pos_samples >= (int64_t)pb->fm->total_samples)
          {
@@ -1569,11 +1615,24 @@ keyboard:
             sf_seek(sndf, (sf_count_t)new_pos_samples, SEEK_CUR);
             pb->current_samples = (unsigned long)new_pos_samples;
          }
+
+         hrmp_alsa_reset_handle(pb->pcm_handle);
+         print_progress(pb);
       }
-
-      hrmp_alsa_reset_handle(pb->pcm_handle);
-
-      print_progress(pb);
+      else
+      {
+         if (new_pos_samples < 0)
+         {
+            new_pos_samples = 0;
+         }
+         if (pb->fm->total_samples > 0 && (uint64_t)new_pos_samples > (uint64_t)pb->fm->total_samples)
+         {
+            new_pos_samples = (int64_t)pb->fm->total_samples;
+         }
+         pb->current_samples = (unsigned long)new_pos_samples;
+         print_progress(pb);
+         return 2;
+      }
    }
    else if (keyboard_action == KEYBOARD_COMMA)
    {
@@ -1626,8 +1685,4 @@ keyboard:
    }
 
    return 0;
-
-skip:
-
-   return 1;
 }
