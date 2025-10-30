@@ -353,7 +353,7 @@ hrmp_file_metadata(int device, char* f, struct file_metadata** fm)
    {
       type = TYPE_DFF;
    }
-   else if (hrmp_ends_with(f, ".mkv") || hrmp_ends_with(f, ".mka"))
+   else if (hrmp_ends_with(f, ".mkv") || hrmp_ends_with(f, ".mka") || hrmp_ends_with(f, ".webm"))
    {
       type = TYPE_MKV;
    }

@@ -640,6 +640,7 @@ playback_mkv(snd_pcm_t* pcm_handle, struct playback* pb, int number, int total)
 
 error:
 
+   print_progress_done(pb);
    hrmp_mkv_close(demux);
    return 1;
 }
@@ -744,7 +745,14 @@ playback_identifier(struct file_metadata* fm, char** identifer)
    }
    else if (fm->type == TYPE_MKV)
    {
-      id = hrmp_append(id, "MKV/");
+      if (hrmp_ends_with(fm->name, ".webm"))
+      {
+         id = hrmp_append(id, "WEBM/");
+      }
+      else
+      {
+         id = hrmp_append(id, "MKV/");
+      }
    }
 
    switch (fm->sample_rate)

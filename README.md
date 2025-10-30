@@ -21,6 +21,7 @@ See [Configuration](./doc/CONFIGURATION.md) on how to configure `hrmp`.
 
 * MP3
 * MKV
+* WEBM
 
 ## Overview
 
