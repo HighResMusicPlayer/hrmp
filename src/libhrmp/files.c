@@ -441,7 +441,7 @@ metadata_supported(int device, struct file_metadata* fm)
 
    if (device >= 0 && fm != NULL)
    {
-      if (fm->channels != 2)
+      if (fm->channels == 0 || fm->channels > 6)
       {
          return false;
       }
@@ -871,7 +871,7 @@ get_metadata(char* filename, int type, struct file_metadata** file_metadata)
       fm->pcm_rate = info->samplerate;
       fm->channels = info->channels;
 
-      if (fm->channels != 2)
+      if (fm->channels == 0 || fm->channels > 6)
       {
          if (config->experimental)
          {
@@ -1237,10 +1237,14 @@ get_metadata_dff(int device, char* filename, struct file_metadata** file_metadat
       }
       else if (strncmp(id4, "DSD ", 4) == 0)
       {
-         /* Data chunk: current position is at data start */
          data_size = chunk_size;
          saw_dsd_data = true;
-         break;
+
+         if (fseek(f, (long)chunk_size, SEEK_CUR) != 0)
+         {
+            hrmp_log_error("fseek failed (skip DSD data)\n");
+            goto error;
+         }
       }
       else
       {
@@ -1279,7 +1283,6 @@ get_metadata_dff(int device, char* filename, struct file_metadata** file_metadat
    fm->channels = (int)channel_number;
    fm->bits_per_sample = 1;
 
-   /* Compute total samples per channel: bytes -> bits, then divide by channels */
    if (channel_number > 0)
    {
       uint64_t total_bits = data_size * 8ULL;
@@ -1303,6 +1306,9 @@ get_metadata_dff(int device, char* filename, struct file_metadata** file_metadat
    {
       fm->pcm_rate = 0;
    }
+
+   fm->data_size = (unsigned long)data_size;
+   fm->block_size = 0;
 
    *file_metadata = fm;
 
@@ -1390,10 +1396,9 @@ get_metadata_mkv(int device, char* filename, struct file_metadata** file_metadat
       goto error;
    }
 
-   /* Require stereo like other formats in this player */
-   if (fm->channels != 2)
+   if (fm->channels == 0 || fm->channels > 6)
    {
-      hrmp_log_error("MKV: unsupported number of channels (%u != 2)", fm->channels);
+      hrmp_log_error("MKV: unsupported number of channels (%u), only 1..6 supported", fm->channels);
       goto error;
    }
 

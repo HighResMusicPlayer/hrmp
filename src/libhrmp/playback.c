@@ -35,11 +35,12 @@
 #include <files.h>
 #include <keyboard.h>
 #include <logging.h>
+#include <mkv.h>
 #include <playback.h>
 #include <utils.h>
-#include <mkv.h> /* MKV PCM/Opus/AAC demuxer */
 
 /* system */
+#include <limits.h>
 #include <math.h>
 #include <sndfile.h>
 #include <stdbool.h>
@@ -48,7 +49,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <limits.h>   /* for ULONG_MAX */
 #include <alsa/asoundlib.h>
 
 #define DOP_MARKER_8MSB 0xFA
@@ -83,9 +83,10 @@ static unsigned frames_from_ms(struct playback* pb, unsigned ms);
 
 static void write_dsd_center_pad(struct playback* pb, unsigned frames, uint8_t* marker);
 static void write_dsd_fadeout(struct playback* pb, unsigned ms, uint8_t* marker);
-
-static int dop_s32le(FILE* f, struct playback* pb);
-static int dsd_u32_be(FILE* f, struct playback* pb);
+static int dsd_play_dop_s32le(FILE* f, struct playback* pb,
+                              uint32_t in_channels, uint32_t stride_per_ch_hint, uint64_t bytes_left);
+static int dsd_play_native_u32_be(FILE* f, struct playback* pb,
+                                  uint32_t in_channels, uint32_t stride_per_ch_hint, uint64_t bytes_left);
 
 static int do_keyboard(FILE* f, SNDFILE* sndf, struct playback* pb);
 
@@ -130,7 +131,8 @@ static void
 write_dsd_center_pad(struct playback* pb, unsigned frames, uint8_t* marker)
 {
    struct configuration* config = (struct configuration*)shmem;
-   size_t bytes_per_frame = 8;
+   uint32_t ch_out = 2;
+   size_t bytes_per_frame = (size_t)ch_out * 4;
    size_t sz = (size_t)frames * bytes_per_frame;
 
    if (!frames)
@@ -152,14 +154,14 @@ write_dsd_center_pad(struct playback* pb, unsigned frames, uint8_t* marker)
       {
          uint8_t a = (i & 1) ? 0x55 : 0xAA;
          uint8_t b = (uint8_t) ~a;
-         pr[i * 8 + 0] = 0x00;
-         pr[i * 8 + 1] = a;
-         pr[i * 8 + 2] = b;
-         pr[i * 8 + 3] = m;
-         pr[i * 8 + 4] = 0x00;
-         pr[i * 8 + 5] = a;
-         pr[i * 8 + 6] = b;
-         pr[i * 8 + 7] = m;
+         for (uint32_t c = 0; c < ch_out; ++c)
+         {
+            size_t off = (size_t)i * bytes_per_frame + (size_t)c * 4u;
+            pr[off + 0] = 0x00;
+            pr[off + 1] = a;
+            pr[off + 2] = b;
+            pr[off + 3] = m;
+         }
          m = (m == DOP_MARKER_8LSB) ? DOP_MARKER_8MSB : DOP_MARKER_8LSB;
       }
       writei_all(pb->pcm_handle, pr, frames, bytes_per_frame);
@@ -174,14 +176,14 @@ write_dsd_center_pad(struct playback* pb, unsigned frames, uint8_t* marker)
       {
          uint8_t a = (i & 1) ? 0x55 : 0xAA;
          uint8_t b = (uint8_t) ~a;
-         pr[i * 8 + 0] = a;
-         pr[i * 8 + 1] = b;
-         pr[i * 8 + 2] = a;
-         pr[i * 8 + 3] = b;
-         pr[i * 8 + 4] = a;
-         pr[i * 8 + 5] = b;
-         pr[i * 8 + 6] = a;
-         pr[i * 8 + 7] = b;
+         for (uint32_t c = 0; c < ch_out; ++c)
+         {
+            size_t off = (size_t)i * bytes_per_frame + (size_t)c * 4u;
+            pr[off + 0] = a;
+            pr[off + 1] = b;
+            pr[off + 2] = a;
+            pr[off + 3] = b;
+         }
       }
       writei_all(pb->pcm_handle, pr, frames, bytes_per_frame);
    }
@@ -312,7 +314,8 @@ playback_sndfile(snd_pcm_t* pcm_handle, struct playback* pb, int number, int tot
          bytes_per_sample = 4;
          break;
    }
-   bytes_per_frame = (size_t)(bytes_per_sample * info->channels);
+
+   bytes_per_frame = (size_t)(bytes_per_sample * 2);
 
    input_buffer_size = sizeof(int32_t) * pcm_period_size * info->channels;
    input_buffer = (int32_t*)malloc(input_buffer_size);
@@ -334,29 +337,87 @@ playback_sndfile(snd_pcm_t* pcm_handle, struct playback* pb, int number, int tot
    while ((frames_read = sf_readf_int(f, input_buffer, pcm_period_size)) > 0)
    {
       size_t outpos = 0;
+      int in_ch = info->channels;
+
       for (sf_count_t fi = 0; fi < frames_read; ++fi)
       {
-         for (int ch = 0; ch < info->channels; ++ch)
+         if (in_ch == 2)
          {
-            int32_t sample = input_buffer[fi * info->channels + ch];
+            int32_t L = input_buffer[fi * in_ch + 0];
+            int32_t R = input_buffer[fi * in_ch + 1];
+
             if (pb->fm->container == 16)
             {
-               int16_t s16 = (int16_t)(sample >> 16);
+               int16_t l16 = (int16_t)(L >> 16);
+               int16_t r16 = (int16_t)(R >> 16);
+               output_buffer[outpos++] = (uint8_t)(l16 & 0xFF);
+               output_buffer[outpos++] = (uint8_t)((l16 >> 8) & 0xFF);
+               output_buffer[outpos++] = (uint8_t)(r16 & 0xFF);
+               output_buffer[outpos++] = (uint8_t)((r16 >> 8) & 0xFF);
+            }
+            else if (pb->fm->container == 24)
+            {
+               output_buffer[outpos++] = (uint8_t)(L & 0xFF);
+               output_buffer[outpos++] = (uint8_t)((L >> 8) & 0xFF);
+               output_buffer[outpos++] = (uint8_t)((L >> 16) & 0xFF);
+               output_buffer[outpos++] = (uint8_t)(R & 0xFF);
+               output_buffer[outpos++] = (uint8_t)((R >> 8) & 0xFF);
+               output_buffer[outpos++] = (uint8_t)((R >> 16) & 0xFF);
+            }
+            else
+            {
+               output_buffer[outpos++] = (uint8_t)(L & 0xFF);
+               output_buffer[outpos++] = (uint8_t)((L >> 8) & 0xFF);
+               output_buffer[outpos++] = (uint8_t)((L >> 16) & 0xFF);
+               output_buffer[outpos++] = (uint8_t)((L >> 24) & 0xFF);
+               output_buffer[outpos++] = (uint8_t)(R & 0xFF);
+               output_buffer[outpos++] = (uint8_t)((R >> 8) & 0xFF);
+               output_buffer[outpos++] = (uint8_t)((R >> 16) & 0xFF);
+               output_buffer[outpos++] = (uint8_t)((R >> 24) & 0xFF);
+            }
+         }
+         else
+         {
+            int64_t acc = 0;
+            for (int ch = 0; ch < in_ch; ++ch)
+            {
+               acc += (int64_t)input_buffer[fi * in_ch + ch];
+            }
+            int32_t mono = (int32_t)(acc / (int64_t)in_ch);
+
+            if (pb->fm->container == 16)
+            {
+               int16_t s16 = (int16_t)(mono >> 16);
+               /* L */
+               output_buffer[outpos++] = (uint8_t)(s16 & 0xFF);
+               output_buffer[outpos++] = (uint8_t)((s16 >> 8) & 0xFF);
+               /* R */
                output_buffer[outpos++] = (uint8_t)(s16 & 0xFF);
                output_buffer[outpos++] = (uint8_t)((s16 >> 8) & 0xFF);
             }
             else if (pb->fm->container == 24)
             {
-               output_buffer[outpos++] = (uint8_t)(sample & 0xFF);
-               output_buffer[outpos++] = (uint8_t)((sample >> 8) & 0xFF);
-               output_buffer[outpos++] = (uint8_t)((sample >> 16) & 0xFF);
+               /* L */
+               output_buffer[outpos++] = (uint8_t)(mono & 0xFF);
+               output_buffer[outpos++] = (uint8_t)((mono >> 8) & 0xFF);
+               output_buffer[outpos++] = (uint8_t)((mono >> 16) & 0xFF);
+               /* R */
+               output_buffer[outpos++] = (uint8_t)(mono & 0xFF);
+               output_buffer[outpos++] = (uint8_t)((mono >> 8) & 0xFF);
+               output_buffer[outpos++] = (uint8_t)((mono >> 16) & 0xFF);
             }
             else
             {
-               output_buffer[outpos++] = (uint8_t)(sample & 0xFF);
-               output_buffer[outpos++] = (uint8_t)((sample >> 8) & 0xFF);
-               output_buffer[outpos++] = (uint8_t)((sample >> 16) & 0xFF);
-               output_buffer[outpos++] = (uint8_t)((sample >> 24) & 0xFF);
+               /* L */
+               output_buffer[outpos++] = (uint8_t)(mono & 0xFF);
+               output_buffer[outpos++] = (uint8_t)((mono >> 8) & 0xFF);
+               output_buffer[outpos++] = (uint8_t)((mono >> 16) & 0xFF);
+               output_buffer[outpos++] = (uint8_t)((mono >> 24) & 0xFF);
+               /* R */
+               output_buffer[outpos++] = (uint8_t)(mono & 0xFF);
+               output_buffer[outpos++] = (uint8_t)((mono >> 8) & 0xFF);
+               output_buffer[outpos++] = (uint8_t)((mono >> 16) & 0xFF);
+               output_buffer[outpos++] = (uint8_t)((mono >> 24) & 0xFF);
             }
          }
       }
@@ -459,14 +520,18 @@ playback_dsf(snd_pcm_t* pcm_handle, struct playback* pb, int number, int total)
       goto error;
    }
 
+   uint32_t ch_in = pb->fm->channels > 0 ? pb->fm->channels : 2;
+   uint32_t stride = pb->fm->block_size > 0 ? pb->fm->block_size : 4096;
+   uint64_t left = pb->fm->data_size;
+
    if (config->dop && (pb->fm->alsa_snd == SND_PCM_FORMAT_S32 ||
                        pb->fm->alsa_snd == SND_PCM_FORMAT_S32_LE))
    {
-      dop_s32le(f, pb);
+      dsd_play_dop_s32le(f, pb, ch_in, stride, left);
    }
    else
    {
-      dsd_u32_be(f, pb);
+      dsd_play_native_u32_be(f, pb, ch_in, stride, left);
    }
 
    fclose(f);
@@ -512,21 +577,26 @@ playback_dff(snd_pcm_t* pcm_handle, struct playback* pb, int number, int total)
       goto error;
    }
 
-   while (fread(id4, 1, 4, f) == 4)
+   for (;;)
    {
+      if (fread(id4, 1, 4, f) != 4)
+      {
+         break;
+      }
       uint64_t chunk_size = hrmp_read_be_u64(f);
       if (strncmp(id4, "DSD ", 4) == 0)
       {
+         uint32_t ch_in = pb->fm->channels > 0 ? pb->fm->channels : 2;
+         uint32_t stride = 4096;
          if (config->dop && (pb->fm->alsa_snd == SND_PCM_FORMAT_S32 ||
                              pb->fm->alsa_snd == SND_PCM_FORMAT_S32_LE))
          {
-            dop_s32le(f, pb);
+            dsd_play_dop_s32le(f, pb, ch_in, stride, chunk_size);
          }
          else
          {
-            dsd_u32_be(f, pb);
+            dsd_play_native_u32_be(f, pb, ch_in, stride, chunk_size);
          }
-
          goto done;
       }
       else if (strncmp(id4, "DST ", 4) == 0)
@@ -534,10 +604,12 @@ playback_dff(snd_pcm_t* pcm_handle, struct playback* pb, int number, int total)
          hrmp_log_error("DST-compressed DFF is not supported (CMPR='DST ')");
          goto error;
       }
-
-      if (fseek(f, (long)chunk_size, SEEK_CUR) != 0)
+      else
       {
-         break;
+         if (fseek(f, (long)chunk_size, SEEK_CUR) != 0)
+         {
+            break;
+         }
       }
    }
 
@@ -574,15 +646,15 @@ playback_mkv(snd_pcm_t* pcm_handle, struct playback* pb, int number, int total)
       goto error;
    }
 
-   unsigned channels = pb->fm->channels ? pb->fm->channels : (unsigned)ai.channels;
+   unsigned in_channels = pb->fm->channels ? pb->fm->channels : (unsigned)ai.channels;
    unsigned bits = pb->fm->bits_per_sample ? pb->fm->bits_per_sample : (unsigned)ai.bit_depth;
    unsigned bps8 = bits / 8u;
-   size_t bytes_per_frame = (size_t)channels * (size_t)bps8;
+   size_t in_bytes_per_frame = (size_t)in_channels * (size_t)bps8;
    unsigned sr = pb->fm->sample_rate ? pb->fm->sample_rate : (unsigned)(ai.sample_rate + 0.5);
 
-   if (channels == 0 || bps8 == 0 || bytes_per_frame == 0 || sr == 0)
+   if (in_channels == 0 || bps8 == 0 || in_bytes_per_frame == 0 || sr == 0)
    {
-      hrmp_log_error("MKV: invalid PCM geometry ch=%u bits=%u sr=%u", channels, bits, sr);
+      hrmp_log_error("MKV: invalid PCM geometry ch=%u bits=%u sr=%u", in_channels, bits, sr);
       goto error;
    }
 
@@ -639,26 +711,127 @@ playback_mkv(snd_pcm_t* pcm_handle, struct playback* pb, int number, int total)
          break;
       }
 
-      size_t frames = bytes_per_frame ? (pkt.size / bytes_per_frame) : 0;
-      if (frames > 0)
+      size_t in_frames = in_bytes_per_frame ? (pkt.size / in_bytes_per_frame) : 0;
+      if (in_frames == 0)
       {
-         writei_all(pcm_handle, pkt.data, (snd_pcm_uframes_t)frames, bytes_per_frame);
+         hrmp_mkv_free_packet(&pkt);
+         continue;
+      }
 
-         if (pkt.pts_ns >= 0)
+      if (in_channels == 2)
+      {
+         size_t out_bpf = (size_t)2 * (size_t)bps8;
+         writei_all(pcm_handle, pkt.data, (snd_pcm_uframes_t)in_frames, out_bpf);
+      }
+      else
+      {
+         size_t out_bpf = (size_t)2 * (size_t)bps8;
+         size_t out_bytes = in_frames * out_bpf;
+         uint8_t* out = (uint8_t*)malloc(out_bytes);
+         if (!out)
          {
-            last_pts_ns = pkt.pts_ns;
-            uint64_t ns = (uint64_t)last_pts_ns;
-            uint64_t samples64 = (sr > 0) ? (ns * (uint64_t)sr) / 1000000000ULL : 0ULL;
-            pb->current_samples = (unsigned long)(samples64 > (uint64_t)ULONG_MAX ? (uint64_t)ULONG_MAX : samples64);
+            hrmp_log_error("MKV: OOM");
+            hrmp_mkv_free_packet(&pkt);
+            goto error;
+         }
+
+         if (bps8 == 2)
+         {
+            const int16_t* in = (const int16_t*)pkt.data;
+            size_t w = 0;
+            for (size_t i = 0; i < in_frames; ++i)
+            {
+               int64_t acc = 0;
+               for (unsigned ch = 0; ch < in_channels; ++ch)
+               {
+                  acc += (int64_t)in[i * in_channels + ch];
+               }
+               int16_t s = (int16_t)(acc / (int64_t)in_channels);
+               /* L */
+               out[w++] = (uint8_t)(s & 0xFF);
+               out[w++] = (uint8_t)((s >> 8) & 0xFF);
+               /* R */
+               out[w++] = (uint8_t)(s & 0xFF);
+               out[w++] = (uint8_t)((s >> 8) & 0xFF);
+            }
+         }
+         else if (bps8 == 3)
+         {
+            const uint8_t* in = (const uint8_t*)pkt.data;
+            size_t w = 0;
+            for (size_t i = 0; i < in_frames; ++i)
+            {
+               int64_t acc = 0;
+               for (unsigned ch = 0; ch < in_channels; ++ch)
+               {
+                  const uint8_t* p = &in[(i * in_channels + ch) * 3];
+                  int32_t v = (int32_t)(p[0] | (p[1] << 8) | (p[2] << 16));
+                  if (p[2] & 0x80)
+                  {
+                     v |= 0xFF000000;
+                  }
+                  acc += (int64_t)v;
+               }
+               int32_t s = (int32_t)(acc / (int64_t)in_channels);
+               /* L */
+               out[w++] = (uint8_t)(s & 0xFF);
+               out[w++] = (uint8_t)((s >> 8) & 0xFF);
+               out[w++] = (uint8_t)((s >> 16) & 0xFF);
+               /* R */
+               out[w++] = (uint8_t)(s & 0xFF);
+               out[w++] = (uint8_t)((s >> 8) & 0xFF);
+               out[w++] = (uint8_t)((s >> 16) & 0xFF);
+            }
+         }
+         else if (bps8 == 4)
+         {
+            const int32_t* in = (const int32_t*)pkt.data;
+            size_t w = 0;
+            for (size_t i = 0; i < in_frames; ++i)
+            {
+               int64_t acc = 0;
+               for (unsigned ch = 0; ch < in_channels; ++ch)
+               {
+                  acc += (int64_t)in[i * in_channels + ch];
+               }
+               int32_t s = (int32_t)(acc / (int64_t)in_channels);
+               /* L */
+               out[w++] = (uint8_t)(s & 0xFF);
+               out[w++] = (uint8_t)((s >> 8) & 0xFF);
+               out[w++] = (uint8_t)((s >> 16) & 0xFF);
+               out[w++] = (uint8_t)((s >> 24) & 0xFF);
+               /* R */
+               out[w++] = (uint8_t)(s & 0xFF);
+               out[w++] = (uint8_t)((s >> 8) & 0xFF);
+               out[w++] = (uint8_t)((s >> 16) & 0xFF);
+               out[w++] = (uint8_t)((s >> 24) & 0xFF);
+            }
          }
          else
          {
-            pb->current_samples += (unsigned long)frames;
+            free(out);
+            hrmp_log_error("MKV: unsupported bit depth %u for downmix", bits);
+            hrmp_mkv_free_packet(&pkt);
+            goto error;
          }
 
-         print_progress(pb);
+         writei_all(pcm_handle, out, (snd_pcm_uframes_t)in_frames, out_bpf);
+         free(out);
       }
 
+      if (pkt.pts_ns >= 0)
+      {
+         last_pts_ns = pkt.pts_ns;
+         uint64_t ns = (uint64_t)last_pts_ns;
+         uint64_t samples64 = (sr > 0) ? (ns * (uint64_t)sr) / 1000000000ULL : 0ULL;
+         pb->current_samples = (unsigned long)(samples64 > (uint64_t)ULONG_MAX ? (uint64_t)ULONG_MAX : samples64);
+      }
+      else
+      {
+         pb->current_samples += (unsigned long)in_frames;
+      }
+
+      print_progress(pb);
       hrmp_mkv_free_packet(&pkt);
    }
 
@@ -999,7 +1172,7 @@ set_volume(int device, int volume)
    /* Map percent -> range */
    vol = minv + (volume * (maxv - minv)) / 100;
 
-   /* Set volume for all channels (left/right) */
+   /* Set volume for all channels */
    if ((err = snd_mixer_selem_set_playback_volume_all(elem, vol)) < 0)
    {
       hrmp_log_error("Error: set playback volume: %s", snd_strerror(err));
@@ -1092,7 +1265,7 @@ print_progress(struct playback* pb)
          percent = 100;
       }
 
-      /* Manual zero-padding to avoid %02d formatting issues */
+      /* Manual zero-padding */
       fmt2(current_min, cur_m2);
       fmt2(current_sec, cur_s2);
       fmt2(total_min, tot_m2);
@@ -1181,43 +1354,36 @@ print_progress_done(struct playback* pb)
 }
 
 static int
-dop_s32le(FILE* f, struct playback* pb)
+dsd_play_dop_s32le(FILE* f, struct playback* pb,
+                   uint32_t in_channels, uint32_t stride_per_ch_hint, uint64_t bytes_left)
 {
-   uint32_t N = pb->fm->block_size;
-   uint8_t* blk = NULL;
-   uint32_t frames_per_block = N / 2u;
-   size_t bytes_per_frame = 8;
-   uint8_t* out = NULL;
-
-   blk = (uint8_t*)malloc(2u * N);
-   if (blk == NULL)
+   uint32_t ch_out = 2;
+   size_t bytes_per_frame = (size_t)ch_out * 4u;
+   uint32_t stride = (stride_per_ch_hint > 0) ? stride_per_ch_hint : 4096u;
+   if (stride < 2)
    {
-      hrmp_log_error("OOM");
-      goto error;
+      stride = 2;
    }
-
-   out = (uint8_t*)malloc(frames_per_block * bytes_per_frame);
-   if (out == NULL)
-   {
-      hrmp_log_error("OOM");
-      goto error;
-   }
+   stride = (stride / 2u) * 2u;
 
    unsigned pre = (pb->fm->sample_rate >= 11289600u) ? 4096 : 2048;
-   uint8_t* pr = (uint8_t*)malloc(pre * bytes_per_frame);
-   if (pr != NULL)
+   size_t pre_bytes = (size_t)pre * bytes_per_frame;
+   uint8_t* pr = (uint8_t*)malloc(pre_bytes);
+   if (pr)
    {
       uint8_t m = DOP_MARKER_8LSB;
       for (unsigned i = 0; i < pre; ++i)
       {
-         pr[i * 8 + 0] = 0x00;
-         pr[i * 8 + 1] = 0x00;
-         pr[i * 8 + 2] = 0x00;
-         pr[i * 8 + 3] = m;
-         pr[i * 8 + 4] = 0x00;
-         pr[i * 8 + 5] = 0x00;
-         pr[i * 8 + 6] = 0x00;
-         pr[i * 8 + 7] = m;
+         uint8_t a = (i & 1) ? 0x55 : 0xAA;
+         uint8_t b = (uint8_t) ~a;
+         for (uint32_t c = 0; c < ch_out; ++c)
+         {
+            size_t off = (size_t)i * bytes_per_frame + (size_t)c * 4u;
+            pr[off + 0] = 0x00;
+            pr[off + 1] = a;
+            pr[off + 2] = b;
+            pr[off + 3] = m;
+         }
          m = (m == DOP_MARKER_8LSB) ? DOP_MARKER_8MSB : DOP_MARKER_8LSB;
       }
       snd_pcm_writei(pb->pcm_handle, pr, pre);
@@ -1226,59 +1392,107 @@ dop_s32le(FILE* f, struct playback* pb)
    else
    {
       hrmp_log_error("DoP: Prefill error");
-      goto error;
+      return 1;
    }
 
    uint8_t marker = DOP_MARKER_8LSB;
-   uint64_t left = pb->fm->data_size;
 
-   while (left >= (uint64_t)(2u * N))
+   size_t in_batch_max = (size_t)in_channels * (size_t)stride;
+   uint8_t* blk = (uint8_t*)malloc(in_batch_max);
+   if (!blk)
    {
-      if (read_exact(f, blk, 2u * N) < 0)
+      hrmp_log_error("OOM");
+      return 1;
+   }
+
+   size_t out_cap = (size_t)(stride / 2u) * bytes_per_frame;
+   if (out_cap == 0)
+   {
+      out_cap = bytes_per_frame * 1u;
+   }
+   uint8_t* out = (uint8_t*)malloc(out_cap);
+   if (!out)
+   {
+      free(blk);
+      hrmp_log_error("OOM");
+      return 1;
+   }
+
+   while (bytes_left > 0)
+   {
+      uint64_t per_ch_avail = bytes_left / (uint64_t)in_channels;
+      uint32_t per_ch = stride;
+      if (per_ch_avail < (uint64_t)per_ch)
+      {
+         per_ch = (uint32_t)per_ch_avail;
+      }
+      per_ch = (per_ch / 2u) * 2u; /* align to 2 bytes */
+      if (per_ch < 2u)
       {
          break;
       }
-      left -= (uint64_t)(2u * N);
 
-      uint8_t* L = blk;
-      uint8_t* R = blk + N;
-
-      for (uint32_t j = 0, i = 0; j < N; j += 2, ++i)
+      size_t to_read = (size_t)in_channels * (size_t)per_ch;
+      if (read_exact(f, blk, to_read) < 0)
       {
-         uint8_t l0 = L[j];
-         uint8_t l1 = L[j + 1];
-         uint8_t r0 = R[j];
-         uint8_t r1 = R[j + 1];
+         break;
+      }
+      bytes_left -= (uint64_t)to_read;
 
-         l0 = bitrev8(l0);
-         l1 = bitrev8(l1);
-         r0 = bitrev8(r0);
-         r1 = bitrev8(r1);
+      size_t frames = (size_t)per_ch / 2u;
+      size_t need = frames * bytes_per_frame;
+      if (need > out_cap)
+      {
+         uint8_t* np = (uint8_t*)realloc(out, need);
+         if (!np)
+         {
+            hrmp_log_error("OOM");
+            break;
+         }
+         out = np;
+         out_cap = need;
+      }
 
-         uint8_t t = l0;
+      size_t woff = 0;
+      for (size_t i = 0; i < frames; ++i)
+      {
+         /* Source ch0 and ch1 if present, else duplicate ch0 to both */
+         uint32_t cL = 0;
+         uint32_t cR = (in_channels >= 2 ? 1u : 0u);
+
+         const uint8_t* lp = blk + (size_t)cL * (size_t)per_ch + (size_t)i * 2u;
+         const uint8_t* rp = blk + (size_t)cR * (size_t)per_ch + (size_t)i * 2u;
+
+         uint8_t l0 = bitrev8(lp[0]), l1 = bitrev8(lp[1]);
+         uint8_t r0 = bitrev8(rp[0]), r1 = bitrev8(rp[1]);
+
+         uint8_t t;
+         t = l0;
          l0 = l1;
          l1 = t;
          t = r0;
          r0 = r1;
          r1 = t;
 
-         uint8_t* frm = &out[i * 8];
-         frm[0] = 0x00;
-         frm[1] = l0;
-         frm[2] = l1;
-         frm[3] = marker;
-         frm[4] = 0x00;
-         frm[5] = r0;
-         frm[6] = r1;
-         frm[7] = marker;
+         /* L */
+         out[woff + 0] = 0x00;
+         out[woff + 1] = l0;
+         out[woff + 2] = l1;
+         out[woff + 3] = marker;
+         /* R */
+         out[woff + 4] = 0x00;
+         out[woff + 5] = r0;
+         out[woff + 6] = r1;
+         out[woff + 7] = marker;
+         woff += 8;
 
          marker = (marker == DOP_MARKER_8LSB) ? DOP_MARKER_8MSB : DOP_MARKER_8LSB;
       }
 
-      uint32_t to_write = frames_per_block;
-      uint8_t* p = out;
-
-      while (to_write)
+      /* Write */
+      snd_pcm_sframes_t to_write = (snd_pcm_sframes_t)frames;
+      const uint8_t* p = out;
+      while (to_write > 0)
       {
          snd_pcm_sframes_t n = snd_pcm_writei(pb->pcm_handle, p, to_write);
          if (n < 0)
@@ -1287,21 +1501,20 @@ dop_s32le(FILE* f, struct playback* pb)
             if (n < 0)
             {
                hrmp_log_error("ALSA write failed: %s", snd_strerror((int)n));
-               goto error;
+               goto done;
             }
             continue;
          }
-
-         if ((uint32_t)n > to_write)
+         if (n > to_write)
          {
             n = to_write;
          }
-
          p += (size_t)n * bytes_per_frame;
-         to_write -= (uint32_t)n;
+         to_write -= n;
 
          print_progress(pb);
-         pb->current_samples += pb->fm->block_size * 8;
+         /* Each DoP PCM frame carries 16 DSD samples per channel */
+         pb->current_samples += (unsigned long)(n * 16u);
 
          if (do_keyboard(f, NULL, pb))
          {
@@ -1318,128 +1531,131 @@ done:
    {
       write_dsd_center_pad(pb, (unsigned)period_size, &marker);
    }
-
-   {
-      unsigned post_frames = frames_from_ms(pb, HRMP_DSD_POSTROLL_MS);
-      write_dsd_center_pad(pb, post_frames, &marker);
-   }
+   unsigned post_frames = frames_from_ms(pb, HRMP_DSD_POSTROLL_MS);
+   write_dsd_center_pad(pb, post_frames, &marker);
 
    print_progress_done(pb);
 
    free(out);
    free(blk);
-
    return 0;
-
-error:
-
-   print_progress_done(pb);
-
-   if (out)
-   {
-      free(out);
-   }
-   if (blk)
-   {
-      free(blk);
-   }
-
-   return 1;
 }
 
 static int
-dsd_u32_be(FILE* f, struct playback* pb)
+dsd_play_native_u32_be(FILE* f, struct playback* pb,
+                       uint32_t in_channels, uint32_t stride_per_ch_hint, uint64_t bytes_left)
 {
-   uint32_t N = pb->fm->block_size;
-   uint8_t* blk = NULL;
-   uint32_t frames_per_block = N / 4u;
-   size_t bytes_per_frame = 8;
-   uint8_t* out = NULL;
-   uint64_t left = 0;
-   uint8_t m_ignored = DOP_MARKER_8LSB;
-   snd_pcm_uframes_t buffer_size = 0;
-   snd_pcm_uframes_t period_size = 0;
+   uint32_t ch_out = 2;
+   size_t bytes_per_frame = (size_t)ch_out * 4u;
+   uint32_t stride = (stride_per_ch_hint > 0) ? stride_per_ch_hint : 4096u;
+   if (stride < 4)
+   {
+      stride = 4;
+   }
+   stride = (stride / 4u) * 4u;
 
-   blk = (uint8_t*)malloc(2u * N);
-   if (blk == NULL)
+   size_t in_batch_max = (size_t)in_channels * (size_t)stride;
+   uint8_t* blk = (uint8_t*)malloc(in_batch_max);
+   if (!blk)
    {
       hrmp_log_error("OOM");
-      goto error;
+      return 1;
    }
-
-   out = (uint8_t*)malloc((size_t)frames_per_block * bytes_per_frame);
-   if (out == NULL)
+   size_t out_cap = (size_t)(stride / 4u) * bytes_per_frame;
+   if (out_cap == 0)
    {
+      out_cap = bytes_per_frame;
+   }
+   uint8_t* out = (uint8_t*)malloc(out_cap);
+   if (!out)
+   {
+      free(blk);
       hrmp_log_error("OOM");
-      goto error;
+      return 1;
    }
 
-   left = pb->fm->data_size;
-
-   while (left >= (uint64_t)(2u * N))
+   while (bytes_left > 0)
    {
-      if (read_exact(f, blk, 2u * N) < 0)
+      uint64_t per_ch_avail = bytes_left / (uint64_t)in_channels;
+      uint32_t per_ch = stride;
+      if (per_ch_avail < (uint64_t)per_ch)
+      {
+         per_ch = (uint32_t)per_ch_avail;
+      }
+      per_ch = (per_ch / 4u) * 4u;
+      if (per_ch < 4u)
       {
          break;
       }
-      left -= (uint64_t)(2u * N);
 
-      uint8_t* L = blk;
-      uint8_t* R = blk + N;
-
-      size_t w = 0;
-      for (uint32_t i = 0; i < frames_per_block; ++i)
+      size_t to_read = (size_t)in_channels * (size_t)per_ch;
+      if (read_exact(f, blk, to_read) < 0)
       {
-         uint8_t* lp = &L[i * 4];
-         uint8_t* rp = &R[i * 4];
-         uint8_t lb0 = bitrev8(lp[0]);
-         uint8_t lb1 = bitrev8(lp[1]);
-         uint8_t lb2 = bitrev8(lp[2]);
-         uint8_t lb3 = bitrev8(lp[3]);
-         uint8_t rb0 = bitrev8(rp[0]);
-         uint8_t rb1 = bitrev8(rp[1]);
-         uint8_t rb2 = bitrev8(rp[2]);
-         uint8_t rb3 = bitrev8(rp[3]);
+         break;
+      }
+      bytes_left -= (uint64_t)to_read;
 
-         out[w + 0] = lb0;
-         out[w + 1] = lb1;
-         out[w + 2] = lb2;
-         out[w + 3] = lb3;
-
-         out[w + 4] = rb0;
-         out[w + 5] = rb1;
-         out[w + 6] = rb2;
-         out[w + 7] = rb3;
-
-         w += 8;
+      size_t frames = (size_t)per_ch / 4u;
+      size_t need = frames * bytes_per_frame;
+      if (need > out_cap)
+      {
+         uint8_t* np = (uint8_t*)realloc(out, need);
+         if (!np)
+         {
+            hrmp_log_error("OOM");
+            break;
+         }
+         out = np;
+         out_cap = need;
       }
 
-      uint32_t to_write = frames_per_block;
-      size_t off = 0;
-      while (to_write)
+      size_t woff = 0;
+      for (size_t i = 0; i < frames; ++i)
       {
-         snd_pcm_sframes_t n = snd_pcm_writei(pb->pcm_handle, &out[off], to_write);
+         uint32_t cL = 0;
+         uint32_t cR = (in_channels >= 2 ? 1u : 0u);
+
+         const uint8_t* lp = blk + (size_t)cL * (size_t)per_ch + (size_t)i * 4u;
+         const uint8_t* rp = blk + (size_t)cR * (size_t)per_ch + (size_t)i * 4u;
+
+         out[woff + 0] = bitrev8(lp[0]);
+         out[woff + 1] = bitrev8(lp[1]);
+         out[woff + 2] = bitrev8(lp[2]);
+         out[woff + 3] = bitrev8(lp[3]);
+
+         out[woff + 4] = bitrev8(rp[0]);
+         out[woff + 5] = bitrev8(rp[1]);
+         out[woff + 6] = bitrev8(rp[2]);
+         out[woff + 7] = bitrev8(rp[3]);
+
+         woff += 8;
+      }
+
+      snd_pcm_sframes_t to_write = (snd_pcm_sframes_t)frames;
+      const uint8_t* p = out;
+      while (to_write > 0)
+      {
+         snd_pcm_sframes_t n = snd_pcm_writei(pb->pcm_handle, p, to_write);
          if (n < 0)
          {
             n = snd_pcm_recover(pb->pcm_handle, (int)n, 1);
             if (n < 0)
             {
                hrmp_log_error("ALSA write failed: %s", snd_strerror((int)n));
-               goto error;
+               goto done;
             }
             continue;
          }
-
-         if ((uint32_t)n > to_write)
+         if (n > to_write)
          {
             n = to_write;
          }
-
-         off += (size_t)n * bytes_per_frame;
-         to_write -= (uint32_t)n;
+         p += (size_t)n * bytes_per_frame;
+         to_write -= n;
 
          print_progress(pb);
-         pb->current_samples += pb->fm->block_size * 8;
+         /* Each native DSD_U32_BE frame carries 32 DSD samples per channel */
+         pb->current_samples += (unsigned long)(n * 32u);
 
          if (do_keyboard(f, NULL, pb))
          {
@@ -1449,15 +1665,14 @@ dsd_u32_be(FILE* f, struct playback* pb)
    }
 
 done:
-
-   write_dsd_fadeout(pb, HRMP_DSD_FADEOUT_MS, &m_ignored);
-
-   if (snd_pcm_get_params(pb->pcm_handle, &buffer_size, &period_size) == 0 && period_size > 0)
    {
-      write_dsd_center_pad(pb, (unsigned)period_size, &m_ignored);
-   }
-
-   {
+      uint8_t m_ignored = DOP_MARKER_8LSB;
+      write_dsd_fadeout(pb, HRMP_DSD_FADEOUT_MS, &m_ignored);
+      snd_pcm_uframes_t buffer_size = 0, period_size = 0;
+      if (snd_pcm_get_params(pb->pcm_handle, &buffer_size, &period_size) == 0 && period_size > 0)
+      {
+         write_dsd_center_pad(pb, (unsigned)period_size, &m_ignored);
+      }
       unsigned post_frames = frames_from_ms(pb, HRMP_DSD_POSTROLL_MS);
       write_dsd_center_pad(pb, post_frames, &m_ignored);
    }
@@ -1468,21 +1683,6 @@ done:
    free(blk);
 
    return 0;
-
-error:
-
-   print_progress_done(pb);
-
-   if (out)
-   {
-      free(out);
-   }
-   if (blk)
-   {
-      free(blk);
-   }
-
-   return 1;
 }
 
 static int
@@ -1567,36 +1767,35 @@ keyboard:
 
       new_pos_samples = (int64_t)pb->current_samples + delta_samples;
 
-      if (pb->fm->type == TYPE_DSF || pb->fm->type == TYPE_DFF)
+      if (pb->fm->type == TYPE_DSF)
       {
-         if (new_pos_samples >= (int64_t)pb->fm->total_samples)
-         {
-            fseek(f, 0L, SEEK_END);
-            pb->current_samples = pb->fm->total_samples;
-         }
-         else if (new_pos_samples <= 0)
+         if (new_pos_samples <= 0)
          {
             fseek(f, 92L, SEEK_SET);
             pb->current_samples = 0;
          }
          else
          {
-            uint64_t pair_bytes = 2u * (uint64_t)pb->fm->block_size;
-            uint64_t target_bytes = (uint64_t)(new_pos_samples / 8) * 2u;
-            uint64_t aligned_bytes = pair_bytes ? (target_bytes / pair_bytes) * pair_bytes : target_bytes;
-
+            uint64_t bytes_group = (uint64_t)pb->fm->channels * (uint64_t)pb->fm->block_size;
+            if (bytes_group == 0)
+            {
+               bytes_group = (uint64_t)pb->fm->channels * 4096ULL;
+            }
+            uint64_t approx_target_bytes = (uint64_t)(new_pos_samples / 8) * (uint64_t)pb->fm->channels;
+            uint64_t aligned_bytes = bytes_group ? (approx_target_bytes / bytes_group) * bytes_group : approx_target_bytes;
             if (aligned_bytes > pb->fm->data_size)
             {
-               aligned_bytes = (pb->fm->data_size / pair_bytes) * pair_bytes;
+               aligned_bytes = (pb->fm->data_size / bytes_group) * bytes_group;
             }
-
             fseek(f, 92L + (long)aligned_bytes, SEEK_SET);
-
-            pb->current_samples = (unsigned long)((aligned_bytes / 2u) * 8u);
+            pb->current_samples = (unsigned long)((aligned_bytes / (uint64_t)pb->fm->channels) * 8ULL);
          }
-
          hrmp_alsa_reset_handle(pb->pcm_handle);
          print_progress(pb);
+      }
+      else if (pb->fm->type == TYPE_DFF)
+      {
+         return 1;
       }
       else if (pb->fm->type != TYPE_MKV)
       {
