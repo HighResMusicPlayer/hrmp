@@ -91,6 +91,37 @@ static int dsd_play_native_u32_be(FILE* f, struct playback* pb,
 static int do_keyboard(FILE* f, SNDFILE* sndf, struct playback* pb);
 
 static void
+normalize_pcm_rate(struct configuration* config, struct file_metadata* fm)
+{
+   if (!fm)
+   {
+      return;
+   }
+
+   unsigned new_pcm_rate = fm->sample_rate;
+
+   if (fm->bits_per_sample == 1)
+   {
+      if (config && config->dop)
+      {
+         if (fm->sample_rate >= 16u)
+         {
+            new_pcm_rate = fm->sample_rate / 16u;
+         }
+      }
+      else
+      {
+         if (fm->sample_rate >= 32u)
+         {
+            new_pcm_rate = fm->sample_rate / 32u;
+         }
+      }
+   }
+
+   fm->pcm_rate = new_pcm_rate;
+}
+
+static void
 writei_all(snd_pcm_t* h, void* buf, snd_pcm_uframes_t frames, size_t bytes_per_frame)
 {
    uint8_t* p = (uint8_t*)buf;
@@ -116,8 +147,9 @@ writei_all(snd_pcm_t* h, void* buf, snd_pcm_uframes_t frames, size_t bytes_per_f
 static unsigned
 frames_from_ms(struct playback* pb, unsigned ms)
 {
-   struct configuration* config = (struct configuration*)shmem;
-   unsigned rate = config->dop ? pb->fm->pcm_rate : pb->fm->sample_rate;
+   unsigned rate =
+      (pb && pb->fm && pb->fm->pcm_rate) ? pb->fm->pcm_rate
+      : (pb && pb->fm ? pb->fm->sample_rate : 0u);
 
    if (rate == 0)
    {
@@ -208,6 +240,8 @@ hrmp_playback(int device, int number, int total, struct file_metadata* fm)
    struct configuration* config = NULL;
 
    config = (struct configuration*)shmem;
+
+   normalize_pcm_rate(config, fm);
 
    if (hrmp_alsa_init_handle(device, fm, &pcm_handle))
    {
@@ -1574,6 +1608,9 @@ dsd_play_native_u32_be(FILE* f, struct playback* pb,
       return 1;
    }
 
+   bool need_bit_reverse = (pb->fm->type == TYPE_DSF);
+   bool interleaved = (pb->fm->type == TYPE_DFF);
+
    while (bytes_left > 0)
    {
       uint64_t per_ch_avail = bytes_left / (uint64_t)in_channels;
@@ -1595,7 +1632,7 @@ dsd_play_native_u32_be(FILE* f, struct playback* pb,
       }
       bytes_left -= (uint64_t)to_read;
 
-      size_t frames = (size_t)per_ch / 4u;
+      size_t frames = to_read / ((size_t)in_channels * 4u);
       size_t need = frames * bytes_per_frame;
       if (need > out_cap)
       {
@@ -1610,25 +1647,75 @@ dsd_play_native_u32_be(FILE* f, struct playback* pb,
       }
 
       size_t woff = 0;
-      for (size_t i = 0; i < frames; ++i)
+      if (interleaved)
       {
          uint32_t cL = 0;
          uint32_t cR = (in_channels >= 2 ? 1u : 0u);
 
-         const uint8_t* lp = blk + (size_t)cL * (size_t)per_ch + (size_t)i * 4u;
-         const uint8_t* rp = blk + (size_t)cR * (size_t)per_ch + (size_t)i * 4u;
+         for (size_t i = 0; i < frames; ++i)
+         {
+            size_t base = i * (size_t)in_channels * 4u;
 
-         out[woff + 0] = bitrev8(lp[0]);
-         out[woff + 1] = bitrev8(lp[1]);
-         out[woff + 2] = bitrev8(lp[2]);
-         out[woff + 3] = bitrev8(lp[3]);
+            uint8_t lb0 = blk[base + 0 * (size_t)in_channels + cL];
+            uint8_t lb1 = blk[base + 1 * (size_t)in_channels + cL];
+            uint8_t lb2 = blk[base + 2 * (size_t)in_channels + cL];
+            uint8_t lb3 = blk[base + 3 * (size_t)in_channels + cL];
 
-         out[woff + 4] = bitrev8(rp[0]);
-         out[woff + 5] = bitrev8(rp[1]);
-         out[woff + 6] = bitrev8(rp[2]);
-         out[woff + 7] = bitrev8(rp[3]);
+            uint8_t rb0 = blk[base + 0 * (size_t)in_channels + cR];
+            uint8_t rb1 = blk[base + 1 * (size_t)in_channels + cR];
+            uint8_t rb2 = blk[base + 2 * (size_t)in_channels + cR];
+            uint8_t rb3 = blk[base + 3 * (size_t)in_channels + cR];
 
-         woff += 8;
+            out[woff + 0] = lb0;
+            out[woff + 1] = lb1;
+            out[woff + 2] = lb2;
+            out[woff + 3] = lb3;
+
+            out[woff + 4] = rb0;
+            out[woff + 5] = rb1;
+            out[woff + 6] = rb2;
+            out[woff + 7] = rb3;
+
+            woff += 8;
+         }
+      }
+      else
+      {
+         for (size_t i = 0; i < frames; ++i)
+         {
+            uint32_t cL = 0;
+            uint32_t cR = (in_channels >= 2 ? 1u : 0u);
+
+            const uint8_t* lp = blk + (size_t)cL * (size_t)per_ch + (size_t)i * 4u;
+            const uint8_t* rp = blk + (size_t)cR * (size_t)per_ch + (size_t)i * 4u;
+
+            if (need_bit_reverse)
+            {
+               out[woff + 0] = bitrev8(lp[0]);
+               out[woff + 1] = bitrev8(lp[1]);
+               out[woff + 2] = bitrev8(lp[2]);
+               out[woff + 3] = bitrev8(lp[3]);
+
+               out[woff + 4] = bitrev8(rp[0]);
+               out[woff + 5] = bitrev8(rp[1]);
+               out[woff + 6] = bitrev8(rp[2]);
+               out[woff + 7] = bitrev8(rp[3]);
+            }
+            else
+            {
+               out[woff + 0] = lp[0];
+               out[woff + 1] = lp[1];
+               out[woff + 2] = lp[2];
+               out[woff + 3] = lp[3];
+
+               out[woff + 4] = rp[0];
+               out[woff + 5] = rp[1];
+               out[woff + 6] = rp[2];
+               out[woff + 7] = rp[3];
+            }
+
+            woff += 8;
+         }
       }
 
       snd_pcm_sframes_t to_write = (snd_pcm_sframes_t)frames;
