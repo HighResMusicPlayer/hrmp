@@ -1,5 +1,5 @@
 Name:          hrmp
-Version:       0.7.0
+Version:       0.7.1
 Release:       1%{dist}
 Summary:       High-Resolution Music Player
 License:       BSD
