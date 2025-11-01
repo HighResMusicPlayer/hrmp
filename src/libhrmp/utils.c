@@ -536,10 +536,8 @@ hrmp_get_files(int device, char* base, bool recursive, struct deque* files)
 
          if (hrmp_file_metadata(device, d, &fm) == 0)
          {
-            char* v = NULL;
-
-            v = hrmp_append(v, d);
-            hrmp_deque_add(files, NULL, (uintptr_t)v, ValueString);
+            hrmp_deque_add(files, NULL, (uintptr_t)fm, ValueMem);
+            fm = NULL;
          }
 
          free(fm);
