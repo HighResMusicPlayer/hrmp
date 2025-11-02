@@ -90,7 +90,9 @@ id3_copy_text_utf8(char* dst, size_t dstsz, const unsigned char* data, size_t le
    size_t n = (len > 0) ? (len - 1) : 0;
 
    while (n > 0 && p[n - 1] == '\0')
+   {
       n--;
+   }
 
    if (enc == 3) /* UTF-8 */
    {
