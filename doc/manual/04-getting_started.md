@@ -43,6 +43,7 @@ device=FIIO K19
 
 log_type = file
 log_level = info
+log_path = /tmp/hrmp.log
 
 [FIIO K19]
 device=iec958:CARD=K19,DEV=0
@@ -57,7 +58,7 @@ device with its device address.
 
 We are now ready to run **hrmp**.
 
-See [Configuration](./CONFIGURATION.md) for all configuration options.
+See the **Configuration** chapter for all configuration options.
 
 ## Running
 
@@ -66,6 +67,8 @@ We will run **hrmp** using the command
 ```
 hrmp -c hrmp.conf <directory|files>
 ```
+
+See the **Keyboard shortcuts** section for all key commands.
 
 The default configuration of **hrmp** is loaded from `~/.hrmp/hrmp.conf`.
 

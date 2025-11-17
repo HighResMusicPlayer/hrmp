@@ -41,6 +41,7 @@ device=FIIO K19
 
 log_type = file
 log_level = info
+log_path = /tmp/hrmp.log
 
 [FIIO K19]
 device=iec958:CARD=K19,DEV=0
@@ -64,6 +65,8 @@ We will run `hrmp` using the command
 ```
 hrmp -c hrmp.conf <directory|files>
 ```
+
+See [CLI](./CLI.md) for all key commands.
 
 The default configuration of `hrmp` is loaded from `~/.hrmp/hrmp.conf`.
 
