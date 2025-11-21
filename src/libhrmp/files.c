@@ -782,7 +782,7 @@ init_metadata(char* filename, int type, struct file_metadata** file_metadata)
 
    fm->type = type;
    memcpy(fm->name, filename, strlen(filename));
-   fm->format = type;
+   fm->format = FORMAT_UNKNOWN;
    fm->file_size = hrmp_get_file_size(filename);
    fm->sample_rate = 0;
    fm->pcm_rate = 0;
