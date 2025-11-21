@@ -790,10 +790,6 @@ init_metadata(char* filename, int type, struct file_metadata** file_metadata)
    fm->pcm_rate = 0;
    fm->channels = 0;
    fm->bits_per_sample = 0;
-   if (type == TYPE_MP3)
-   {
-      fm->bits_per_sample = 16;
-   }
    fm->total_samples = 0;
    fm->duration = 0.0;
    fm->alsa_snd = 0;
@@ -843,6 +839,12 @@ get_metadata(char* filename, int type, struct file_metadata** file_metadata)
          goto error;
       }
 
+      if (config->developer)
+      {
+         /* https://libsndfile.github.io/libsndfile/api.html */
+         hrmp_log_debug("Info format: %X", info->format);
+      }
+
       if (type == TYPE_WAV)
       {
          if (!(info->format & SF_FORMAT_WAV))
@@ -859,6 +861,9 @@ get_metadata(char* filename, int type, struct file_metadata** file_metadata)
       }
       else if (type == TYPE_MP3)
       {
+         fm->format = FORMAT_16;
+         fm->bits_per_sample = 16;
+
          if (!(info->format & SF_FORMAT_MPEG_LAYER_III))
          {
             goto error;
@@ -884,14 +889,17 @@ get_metadata(char* filename, int type, struct file_metadata** file_metadata)
 
       if ((info->format & 0xFF) == SF_FORMAT_PCM_16)
       {
+         fm->format = FORMAT_16;
          fm->bits_per_sample = 16;
       }
       else if ((info->format & 0xFF) == SF_FORMAT_PCM_24)
       {
+         fm->format = FORMAT_24;
          fm->bits_per_sample = 24;
       }
       else if ((info->format & 0xFF) == SF_FORMAT_PCM_32)
       {
+         fm->format = FORMAT_32;
          fm->bits_per_sample = 32;
       }
 

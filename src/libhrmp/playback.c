@@ -259,6 +259,11 @@ hrmp_playback(int device, int number, int total, struct file_metadata* fm)
       goto error;
    }
 
+   if (config->developer)
+   {
+      hrmp_print_file_metadata(fm);
+   }
+
    if (fm->type == TYPE_WAV || fm->type == TYPE_FLAC || fm->type == TYPE_MP3)
    {
       ret = playback_sndfile(pcm_handle, pb, number, total);
@@ -963,10 +968,6 @@ playback_identifier(struct file_metadata* fm, char** identifer)
    config = (struct configuration*)shmem;
 
    *identifer = NULL;
-
-#ifdef DEBUG
-   hrmp_print_file_metadata(fm);
-#endif
 
    id = hrmp_append_char(id, '[');
 

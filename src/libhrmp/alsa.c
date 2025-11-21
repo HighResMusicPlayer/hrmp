@@ -60,7 +60,6 @@ hrmp_alsa_init_handle(int device, struct file_metadata* fm, snd_pcm_t** handle)
 
    if (find_best_format(device, fm, &fmt))
    {
-      hrmp_log_error("find_best_format %s/%d", config->devices[device].name, fm->format);
       goto error;
    }
 

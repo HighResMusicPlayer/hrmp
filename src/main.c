@@ -388,7 +388,8 @@ main(int argc, char** argv)
 
             while (hrmp_deque_iterator_next(files_iterator))
             {
-               printf("Queued: %s\n", (char*)hrmp_value_data(files_iterator->value));
+               struct file_metadata* fm = (struct file_metadata*)hrmp_value_data(files_iterator->value);
+               printf("Queued: %s\n", fm->name);
             }
 
             hrmp_deque_iterator_destroy(files_iterator);
