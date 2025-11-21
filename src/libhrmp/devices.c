@@ -68,10 +68,6 @@ hrmp_check_devices(void)
       {
          char* selem = NULL;
 
-         if (config->developer)
-         {
-            printf("Device: %s (Active)\n", config->devices[i].name);
-         }
          check_capabilities(config->devices[i].device, i);
          config->devices[i].hardware = get_hardware_number(config->devices[i].name);
 
@@ -84,13 +80,6 @@ hrmp_check_devices(void)
          config->devices[i].active = true;
 
          free(selem);
-      }
-      else
-      {
-         if (config->developer)
-         {
-            printf("Device: %s (Inactive)\n", config->devices[i].name);
-         }
       }
    }
 }

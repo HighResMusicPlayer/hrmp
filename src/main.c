@@ -314,9 +314,10 @@ main(int argc, char** argv)
 
       hrmp_check_devices();
 
-#ifdef DEBUG
-      hrmp_print_devices();
-#endif
+      if (config->developer)
+      {
+         hrmp_print_devices();
+      }
 
       if (device_name != NULL)
       {

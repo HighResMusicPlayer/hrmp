@@ -69,14 +69,18 @@ hrmp_keyboard_get(void)
 {
    int ret = KEYBOARD_IGNORE;
    int c = 0;
+   struct configuration* config = NULL;
+
+   config = (struct configuration*)shmem;
 
    c = getchar();
 
    if (c >= 0)
    {
-#ifdef DEBUG
-      printf("Keyboard: %d\n", c);
-#endif
+      if (config->developer)
+      {
+         printf("Keyboard: %d\n", c);
+      }
 
       switch (c)
       {
