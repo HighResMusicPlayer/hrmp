@@ -69,6 +69,33 @@ hrmp_alsa_reset_handle(snd_pcm_t* handle);
 int
 hrmp_alsa_close_handle(snd_pcm_t* handle);
 
+/**
+ * Initialize the volume for a device
+ * @param device The device
+ * @param volume The volume
+ * @return 0 upon success, 1 is failure
+ */
+int
+hrmp_alsa_init_volume(int device);
+
+/**
+ * Get the volume for a device
+ * @param device The device
+ * @param volume The volume
+ * @return 0 upon success, 1 is failure
+ */
+int
+hrmp_alsa_get_volume(int device, int* volume);
+
+/**
+ * Set the volume for a device
+ * @param device The device
+ * @param volume The volume
+ * @return 0 upon success, 1 is failure
+ */
+int
+hrmp_alsa_set_volume(int device, int volume);
+
 #ifdef __cplusplus
 }
 #endif

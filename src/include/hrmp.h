@@ -179,6 +179,7 @@ struct device
    struct capabilities capabilities; /**< The capabilities of the device */
    bool is_paused;                   /**< Is the device paused ? */
    bool active;                      /**< Is the device active ? */
+   int volume;                       /**< The current volume */
 };
 
 /** @struct configuration

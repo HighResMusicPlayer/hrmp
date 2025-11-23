@@ -58,6 +58,7 @@ static int as_int(char* str, int* i);
 static int as_logging_type(char* str);
 static int as_logging_level(char* str);
 static int as_logging_mode(char* str);
+static int as_volume(char* str);
 
 static unsigned int as_update_process_title(char* str, unsigned int* policy, unsigned int default_policy);
 
@@ -100,8 +101,8 @@ hrmp_init_configuration(void* shm)
 
    config = (struct configuration*)shm;
 
-   config->volume = 100;
-   config->prev_volume = 100;
+   config->volume = -1;
+   config->prev_volume = -1;
    config->is_muted = false;
 
    config->dop = false;
@@ -196,6 +197,7 @@ hrmp_read_configuration(void* shm, char* filename, bool emitWarnings)
                drv.active = false;
                memset(&drv.name, 0, sizeof(drv.name));
                memcpy(&drv.name, &section, strlen(section));
+               drv.volume = -1;
                idx_device++;
             }
          }
@@ -289,11 +291,18 @@ hrmp_read_configuration(void* shm, char* filename, bool emitWarnings)
                      unknown = false;
                   }
                }
+               else if (key_in_section("volume", section, key, true, &unknown))
+               {
+                  config->volume = as_volume(value);
+               }
+               else if (key_in_section("volume", section, key, false, &unknown))
+               {
+                  drv.volume = as_volume(value);
+               }
                else
                {
                   unknown = true;
                }
-
                if (unknown && emitWarnings)
                {
                   // we cannot use logging here...
@@ -734,6 +743,28 @@ as_logging_mode(char* str)
    return HRMP_LOGGING_MODE_APPEND;
 }
 
+static int
+as_volume(char* str)
+{
+   int i = 100;
+
+   if (as_int(str, &i))
+   {
+      i = 100;
+   }
+
+   if (i > 100)
+   {
+      i = 100;
+   }
+   else if (i < -1)
+   {
+      i = -1;
+   }
+
+   return i;
+}
+
 /**
  * Checks if the configuration of the first server
  * is the same as the configuration of the second server.
@@ -810,7 +841,6 @@ is_empty_string(char* s)
 static bool
 key_in_section(char* wanted, char* section, char* key, bool global, bool* unknown)
 {
-
    // first of all, look for a key match
    if (strncmp(wanted, key, MISC_LENGTH))
    {
@@ -1048,7 +1078,6 @@ hrmp_write_config_value(char* buffer, char* config_key, size_t buffer_size)
       {
          return to_string(buffer, config->log_line_prefix, buffer_size);
       }
-
       else if (!strncmp(key, "log_level", MISC_LENGTH))
       {
          return to_log_level(buffer, config->log_level);

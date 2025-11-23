@@ -58,9 +58,10 @@ hrmp_keyboard_mode(bool enable);
 
 /**
  * Get a keyboard command
+ * @param keyboard_code Debug information
  * @return The command, otherwise KEYBOARD_IGNORE
  */
 int
-hrmp_keyboard_get(void);
+hrmp_keyboard_get(char** keyboard_code);
 
 #endif

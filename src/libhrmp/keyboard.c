@@ -30,6 +30,7 @@
 
 #include <hrmp.h>
 #include <keyboard.h>
+#include <utils.h>
 
 #include <fcntl.h>
 #include <stdint.h>
@@ -65,10 +66,11 @@ hrmp_keyboard_mode(bool enable)
 }
 
 int
-hrmp_keyboard_get(void)
+hrmp_keyboard_get(char** keyboard_code)
 {
    int ret = KEYBOARD_IGNORE;
    int c = 0;
+   char* k = NULL;
    struct configuration* config = NULL;
 
    config = (struct configuration*)shmem;
@@ -79,7 +81,8 @@ hrmp_keyboard_get(void)
    {
       if (config->developer)
       {
-         printf("Keyboard: %d\n", c);
+         k = hrmp_append(k, "Keyboard: ");
+         k = hrmp_append_int(k, c);
       }
 
       switch (c)
@@ -121,6 +124,8 @@ hrmp_keyboard_get(void)
             break;
       }
    }
+
+   *keyboard_code = k;
 
    return ret;
 }

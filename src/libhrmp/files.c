@@ -842,7 +842,7 @@ get_metadata(char* filename, int type, struct file_metadata** file_metadata)
       if (config->developer)
       {
          /* https://libsndfile.github.io/libsndfile/api.html */
-         hrmp_log_debug("Info format: %X", info->format);
+         printf("Format: 0x%X (%s)\n", info->format, filename);
       }
 
       if (type == TYPE_WAV)

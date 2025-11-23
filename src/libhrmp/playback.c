@@ -60,9 +60,7 @@
 static int playback_init(int device, int number, int total, snd_pcm_t* pcm_handle, struct file_metadata* fm, struct playback** playback);
 static int playback_identifier(struct file_metadata* fm, char** identifer);
 
-static int set_volume(int device, int volume);
-
-static void print_progress(struct playback* pb);
+static char* get_progress(struct playback* pb);
 static void print_progress_done(struct playback* pb);
 
 static int read_exact(FILE* f, void* buf, size_t n);
@@ -88,7 +86,7 @@ static int dsd_play_dop_s32le(FILE* f, struct playback* pb,
 static int dsd_play_native_u32_be(FILE* f, struct playback* pb,
                                   uint32_t in_channels, uint32_t stride_per_ch_hint, uint64_t bytes_left);
 
-static int do_keyboard(FILE* f, SNDFILE* sndf, struct playback* pb);
+static int do_keyboard(FILE* f, SNDFILE* sndf, struct playback* pb, char** k);
 
 static void
 normalize_pcm_rate(struct configuration* config, struct file_metadata* fm)
@@ -377,6 +375,9 @@ playback_sndfile(snd_pcm_t* pcm_handle, struct playback* pb, int number, int tot
    {
       size_t outpos = 0;
       int in_ch = info->channels;
+      char* p = NULL;
+      char* k = NULL;
+      int kb = 0;
 
       for (sf_count_t fi = 0; fi < frames_read; ++fi)
       {
@@ -478,16 +479,38 @@ playback_sndfile(snd_pcm_t* pcm_handle, struct playback* pb, int number, int tot
          }
       }
 
-      print_progress(pb);
+      p = get_progress(pb);
       pb->current_samples += (unsigned long)frames_read;
 
-      if (do_keyboard(NULL, f, pb))
+      kb = do_keyboard(NULL, f, pb, &k);
+
+      if (kb == 1)
       {
          break;
       }
 
       memset(input_buffer, 0, input_buffer_size);
       memset(output_buffer, 0, output_buffer_size);
+
+      if (p != NULL)
+      {
+         printf("%s", p);
+         fflush(stdout);
+         free(p);
+         p = NULL;
+      }
+
+      if (k != NULL)
+      {
+         p = hrmp_append(p, "\n");
+         p = hrmp_append(p, k);
+         printf("%s\n", p);
+         free(k);
+         free(p);
+         p = NULL;
+         k = NULL;
+         fflush(stdout);
+      }
    }
 
    print_progress_done(pb);
@@ -701,7 +724,11 @@ playback_mkv(snd_pcm_t* pcm_handle, struct playback* pb, int number, int total)
 
    for (;;)
    {
-      int kb = do_keyboard(NULL, NULL, pb);
+      int kb;
+      char* p = NULL;
+      char* k = NULL;
+
+      kb = do_keyboard(NULL, NULL, pb, &k);
       if (kb == 1)
       {
          break;
@@ -870,7 +897,28 @@ playback_mkv(snd_pcm_t* pcm_handle, struct playback* pb, int number, int total)
          pb->current_samples += (unsigned long)in_frames;
       }
 
-      print_progress(pb);
+      p = get_progress(pb);
+
+      if (p != NULL)
+      {
+         printf("%s", p);
+         fflush(stdout);
+         free(p);
+         p = NULL;
+      }
+
+      if (k != NULL)
+      {
+         p = hrmp_append(p, "\n");
+         p = hrmp_append(p, k);
+         printf("%s\n", p);
+         free(k);
+         free(p);
+         p = NULL;
+         k = NULL;
+         fflush(stdout);
+      }
+
       hrmp_mkv_free_packet(&pkt);
    }
 
@@ -1123,116 +1171,10 @@ error:
    return 1;
 }
 
-static int
-set_volume(int device, int volume)
+static char*
+get_progress(struct playback* pb)
 {
-   int err = 0;
-   snd_mixer_t* handle = NULL;
-   snd_mixer_selem_id_t* sid = NULL;
-   snd_mixer_elem_t* elem = NULL;
-   long minv = 0;
-   long maxv = 0;
-   long vol = 0;
-   char address[MISC_LENGTH];
-   struct configuration* config = NULL;
-
-   config = (struct configuration*)shmem;
-
-   config->prev_volume = config->volume;
-
-   if (volume < 0)
-   {
-      volume = 0;
-   }
-   else if (volume > 100)
-   {
-      volume = 100;
-   }
-
-   if ((err = snd_mixer_open(&handle, 0)) < 0)
-   {
-      hrmp_log_error("Error: snd_mixer_open: %s", snd_strerror(err));
-      goto error;
-   }
-
-   memset(&address[0], 0, sizeof(address));
-   hrmp_snprintf(&address[0], sizeof(address), "hw:%d", config->devices[device].hardware);
-
-   if ((err = snd_mixer_attach(handle, &address[0])) < 0)
-   {
-      hrmp_log_error("Error: snd_mixer_attach(%s): %s", config->devices[device].name, snd_strerror(err));
-      goto error;
-   }
-
-   if ((err = snd_mixer_selem_register(handle, NULL, NULL)) < 0)
-   {
-      hrmp_log_error("Error: snd_mixer_selem_register: %s", snd_strerror(err));
-      goto error;
-   }
-
-   if ((err = snd_mixer_load(handle)) < 0)
-   {
-      hrmp_log_error("Error: snd_mixer_load: %s", snd_strerror(err));
-      goto error;
-   }
-
-   snd_mixer_selem_id_malloc(&sid);
-   if (!sid)
-   {
-      hrmp_log_error("Error: failed to allocate selem id");
-      goto error;
-   }
-
-   snd_mixer_selem_id_set_index(sid, 0);
-   snd_mixer_selem_id_set_name(sid, config->devices[device].selem);
-
-   elem = snd_mixer_find_selem(handle, sid);
-   snd_mixer_selem_id_free(sid);
-
-   if (!elem)
-   {
-      hrmp_log_error("Error: simple element '%s' not found on card '%s'",
-                     config->devices[device].selem, config->devices[device].name);
-      goto error;
-   }
-
-   if (snd_mixer_selem_has_playback_volume(elem) == 0)
-   {
-      hrmp_log_error("Error: element '%s' has no playback volume",
-                     config->devices[device].selem);
-      goto error;
-   }
-
-   snd_mixer_selem_get_playback_volume_range(elem, &minv, &maxv);
-   /* Map percent -> range */
-   vol = minv + (volume * (maxv - minv)) / 100;
-
-   /* Set volume for all channels */
-   if ((err = snd_mixer_selem_set_playback_volume_all(elem, vol)) < 0)
-   {
-      hrmp_log_error("Error: set playback volume: %s", snd_strerror(err));
-      goto error;
-   }
-
-   config->volume = volume;
-
-   snd_mixer_close(handle);
-
-   return 0;
-
-error:
-
-   if (handle != NULL)
-   {
-      snd_mixer_close(handle);
-   }
-
-   return 1;
-}
-
-static void
-print_progress(struct playback* pb)
-{
+   char* print = NULL;
    struct configuration* config = NULL;
 
    config = (struct configuration*)shmem;
@@ -1321,17 +1263,24 @@ print_progress(struct playback* pb)
                        total_min, tot_s2);
       }
 
-      printf("\r[%d/%d] %s: %s %s (%s) (%d%%)",
-             pb->file_number,
-             pb->total_number,
-             config->devices[pb->device].name,
-             pb->fm->name,
-             pb->identifier,
-             &t[0],
-             percent);
-
-      fflush(stdout);
+      print = hrmp_append(print, "\r[");
+      print = hrmp_append_int(print, pb->file_number);
+      print = hrmp_append_char(print, '/');
+      print = hrmp_append_int(print, pb->total_number);
+      print = hrmp_append_char(print, ' ');
+      print = hrmp_append(print, config->devices[pb->device].name);
+      print = hrmp_append(print, ": ");
+      print = hrmp_append(print, pb->fm->name);
+      print = hrmp_append_char(print, ' ');
+      print = hrmp_append(print, pb->identifier);
+      print = hrmp_append(print, " (");
+      print = hrmp_append(print, &t[0]);
+      print = hrmp_append(print, ") (");
+      print = hrmp_append_int(print, percent);
+      print = hrmp_append(print, "%)");
    }
+
+   return print;
 }
 
 static void
@@ -1376,13 +1325,9 @@ print_progress_done(struct playback* pb)
                        total_min, tot_s2, total_min, tot_s2);
       }
 
-      printf("\r[%d/%d] %s: %s %s (%s) (100%%)\n",
-             pb->file_number,
-             pb->total_number,
-             config->devices[pb->device].name,
-             pb->fm->name,
-             pb->identifier,
-             &t[0]);
+      printf("\x1b[2K\r[%d/%d] %s: %s %s (%s) (100%%)\n", pb->file_number,
+             pb->total_number, config->devices[pb->device].name, pb->fm->name,
+             pb->identifier, &t[0]);
 
       fflush(stdout);
    }
@@ -1526,10 +1471,13 @@ dsd_play_dop_s32le(FILE* f, struct playback* pb,
 
       /* Write */
       snd_pcm_sframes_t to_write = (snd_pcm_sframes_t)frames;
-      const uint8_t* p = out;
+      const uint8_t* bytes = out;
       while (to_write > 0)
       {
-         snd_pcm_sframes_t n = snd_pcm_writei(pb->pcm_handle, p, to_write);
+         char* p = NULL;
+         char* k = NULL;
+         int kb = 0;
+         snd_pcm_sframes_t n = snd_pcm_writei(pb->pcm_handle, bytes, to_write);
          if (n < 0)
          {
             n = snd_pcm_recover(pb->pcm_handle, (int)n, 1);
@@ -1544,16 +1492,40 @@ dsd_play_dop_s32le(FILE* f, struct playback* pb,
          {
             n = to_write;
          }
-         p += (size_t)n * bytes_per_frame;
+         bytes += (size_t)n * bytes_per_frame;
          to_write -= n;
 
-         print_progress(pb);
          /* Each DoP PCM frame carries 16 DSD samples per channel */
          pb->current_samples += (unsigned long)(n * 16u);
 
-         if (do_keyboard(f, NULL, pb))
+         kb = do_keyboard(f, NULL, pb, &k);
+
+         if (kb == 1)
          {
+            free(k);
             goto done;
+         }
+
+         p = get_progress(pb);
+
+         if (p != NULL)
+         {
+            printf("%s", p);
+            fflush(stdout);
+            free(p);
+            p = NULL;
+         }
+
+         if (k != NULL)
+         {
+            p = hrmp_append(p, "\n");
+            p = hrmp_append(p, k);
+            printf("%s\n", p);
+            free(k);
+            free(p);
+            p = NULL;
+            k = NULL;
+            fflush(stdout);
          }
       }
    }
@@ -1720,10 +1692,14 @@ dsd_play_native_u32_be(FILE* f, struct playback* pb,
       }
 
       snd_pcm_sframes_t to_write = (snd_pcm_sframes_t)frames;
-      const uint8_t* p = out;
+      const uint8_t* bytes = out;
       while (to_write > 0)
       {
-         snd_pcm_sframes_t n = snd_pcm_writei(pb->pcm_handle, p, to_write);
+         char* p = NULL;
+         char* k = NULL;
+         int kb = 0;
+         snd_pcm_sframes_t n = snd_pcm_writei(pb->pcm_handle, bytes, to_write);
+
          if (n < 0)
          {
             n = snd_pcm_recover(pb->pcm_handle, (int)n, 1);
@@ -1741,13 +1717,35 @@ dsd_play_native_u32_be(FILE* f, struct playback* pb,
          p += (size_t)n * bytes_per_frame;
          to_write -= n;
 
-         print_progress(pb);
+         p = get_progress(pb);
          /* Each native DSD_U32_BE frame carries 32 DSD samples per channel */
          pb->current_samples += (unsigned long)(n * 32u);
 
-         if (do_keyboard(f, NULL, pb))
+         kb = do_keyboard(f, NULL, pb, &k);
+
+         if (kb == 1)
          {
             goto done;
+         }
+
+         if (p != NULL)
+         {
+            printf("%s", p);
+            fflush(stdout);
+            free(p);
+            p = NULL;
+         }
+
+         if (k != NULL)
+         {
+            p = hrmp_append(p, "\n");
+            p = hrmp_append(p, k);
+            printf("%s\n", p);
+            free(k);
+            free(p);
+            p = NULL;
+            k = NULL;
+            fflush(stdout);
          }
       }
    }
@@ -1774,24 +1772,30 @@ done:
 }
 
 static int
-do_keyboard(FILE* f, SNDFILE* sndf, struct playback* pb)
+do_keyboard(FILE* f, SNDFILE* sndf, struct playback* pb, char** print)
 {
+   char* k = NULL;
    int keyboard_action;
    struct configuration* config = NULL;
 
    config = (struct configuration*)shmem;
 
+   *print = NULL;
+
 keyboard:
-   keyboard_action = hrmp_keyboard_get();
+   k = NULL;
+   keyboard_action = hrmp_keyboard_get(&k);
 
    if (keyboard_action == KEYBOARD_Q)
    {
       print_progress_done(pb);
       hrmp_keyboard_mode(false);
+      free(k);
       exit(0);
    }
    else if (keyboard_action == KEYBOARD_ENTER)
    {
+      free(k);
       return 1;
    }
    else if (keyboard_action == KEYBOARD_SPACE)
@@ -1803,6 +1807,7 @@ keyboard:
       else
       {
          config->devices[pb->device].is_paused = true;
+         free(k);
          SLEEP_AND_GOTO(10000L, keyboard);
       }
    }
@@ -1879,10 +1884,10 @@ keyboard:
             pb->current_samples = (unsigned long)((aligned_bytes / (uint64_t)pb->fm->channels) * 8ULL);
          }
          hrmp_alsa_reset_handle(pb->pcm_handle);
-         print_progress(pb);
       }
       else if (pb->fm->type == TYPE_DFF)
       {
+         free(k);
          return 1;
       }
       else if (pb->fm->type != TYPE_MKV)
@@ -1904,7 +1909,6 @@ keyboard:
          }
 
          hrmp_alsa_reset_handle(pb->pcm_handle);
-         print_progress(pb);
       }
       else
       {
@@ -1917,7 +1921,7 @@ keyboard:
             new_pos_samples = (int64_t)pb->fm->total_samples;
          }
          pb->current_samples = (unsigned long)new_pos_samples;
-         print_progress(pb);
+         free(k);
          return 2;
       }
    }
@@ -1927,7 +1931,18 @@ keyboard:
 
       if (!config->is_muted)
       {
-         set_volume(pb->device, new_volume);
+         if (new_volume < 0)
+         {
+            new_volume = 0;
+         }
+
+         hrmp_alsa_set_volume(pb->device, new_volume);
+
+         if (config->developer)
+         {
+            k = hrmp_append(k, " Volume: ");
+            k = hrmp_append_int(k, new_volume);
+         }
       }
    }
    else if (keyboard_action == KEYBOARD_PERIOD)
@@ -1936,7 +1951,18 @@ keyboard:
 
       if (!config->is_muted)
       {
-         set_volume(pb->device, new_volume);
+         if (new_volume > 100)
+         {
+            new_volume = 100;
+         }
+
+         hrmp_alsa_set_volume(pb->device, new_volume);
+
+         if (config->developer)
+         {
+            k = hrmp_append(k, " Volume: ");
+            k = hrmp_append_int(k, new_volume);
+         }
       }
    }
    else if (keyboard_action == KEYBOARD_M)
@@ -1947,21 +1973,37 @@ keyboard:
       {
          new_volume = config->prev_volume;
          config->is_muted = false;
+
+         if (config->developer)
+         {
+            k = hrmp_append(k, " Volume: ");
+            k = hrmp_append_int(k, new_volume);
+         }
       }
       else
       {
          new_volume = 0;
          config->is_muted = true;
+
+         if (config->developer)
+         {
+            k = hrmp_append(k, " Volume: 0");
+         }
       }
 
-      set_volume(pb->device, new_volume);
+      hrmp_alsa_set_volume(pb->device, new_volume);
    }
    else if (keyboard_action == KEYBOARD_SLASH)
    {
       int new_volume = 100;
 
       config->is_muted = false;
-      set_volume(pb->device, new_volume);
+      hrmp_alsa_set_volume(pb->device, new_volume);
+
+      if (config->developer)
+      {
+         k = hrmp_append(k, " Volume: 100");
+      }
    }
    else
    {
@@ -1970,6 +2012,8 @@ keyboard:
          SLEEP_AND_GOTO(10000L, keyboard);
       }
    }
+
+   *print = k;
 
    return 0;
 }

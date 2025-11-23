@@ -33,6 +33,7 @@
 #include <alsa.h>
 #include <files.h>
 #include <logging.h>
+#include <utils.h>
 
 #include <stdbool.h>
 #include <stdio.h>
@@ -254,6 +255,247 @@ hrmp_alsa_close_handle(snd_pcm_t* handle)
    }
 
    return 0;
+}
+
+int
+hrmp_alsa_init_volume(int device)
+{
+   int current_volume = -1;
+   int volume = -1;
+   struct configuration* config = NULL;
+
+   config = (struct configuration*)shmem;
+
+   if (hrmp_alsa_get_volume(device, &current_volume))
+   {
+      current_volume = 100;
+   }
+
+   volume = config->devices[device].volume;
+
+   if (volume < 0)
+   {
+      volume = config->volume;
+   }
+
+   if (volume >= 0)
+   {
+      if (volume > 100)
+      {
+         volume = 100;
+      }
+
+      hrmp_alsa_set_volume(device, volume);
+   }
+   else
+   {
+      volume = current_volume;
+   }
+
+   config->volume = volume;
+   config->prev_volume = volume;
+
+   if (config->developer)
+   {
+      printf("Volume: %d\n", volume);
+   }
+
+   return 0;
+}
+
+int
+hrmp_alsa_get_volume(int device, int* volume)
+{
+   int err = 0;
+   snd_mixer_t* handle = NULL;
+   snd_mixer_selem_id_t* sid = NULL;
+   snd_mixer_elem_t* elem = NULL;
+   snd_mixer_selem_channel_id_t chn = SND_MIXER_SCHN_FRONT_LEFT;
+   long vol = 0;
+   char address[MISC_LENGTH];
+   struct configuration* config = NULL;
+
+   config = (struct configuration*)shmem;
+
+   if ((err = snd_mixer_open(&handle, 0)) < 0)
+   {
+      hrmp_log_error("Error: snd_mixer_open: %s", snd_strerror(err));
+      goto error;
+   }
+
+   memset(&address[0], 0, sizeof(address));
+   hrmp_snprintf(&address[0], sizeof(address), "hw:%d", config->devices[device].hardware);
+
+   if ((err = snd_mixer_attach(handle, &address[0])) < 0)
+   {
+      hrmp_log_error("Error: snd_mixer_attach(%s): %s", config->devices[device].name, snd_strerror(err));
+      goto error;
+   }
+
+   if ((err = snd_mixer_selem_register(handle, NULL, NULL)) < 0)
+   {
+      hrmp_log_error("Error: snd_mixer_selem_register: %s", snd_strerror(err));
+      goto error;
+   }
+
+   if ((err = snd_mixer_load(handle)) < 0)
+   {
+      hrmp_log_error("Error: snd_mixer_load: %s", snd_strerror(err));
+      goto error;
+   }
+
+   snd_mixer_selem_id_malloc(&sid);
+   if (!sid)
+   {
+      hrmp_log_error("Error: failed to allocate selem id");
+      goto error;
+   }
+
+   snd_mixer_selem_id_set_index(sid, 0);
+   snd_mixer_selem_id_set_name(sid, config->devices[device].selem);
+
+   elem = snd_mixer_find_selem(handle, sid);
+   snd_mixer_selem_id_free(sid);
+
+   if (!elem)
+   {
+      hrmp_log_error("Error: simple element '%s' not found on card '%s'",
+                     config->devices[device].selem, config->devices[device].name);
+      goto error;
+   }
+
+   if (snd_mixer_selem_has_playback_volume(elem) == 0)
+   {
+      hrmp_log_error("Error: element '%s' has no playback volume",
+                     config->devices[device].selem);
+      goto error;
+   }
+
+   if ((err = snd_mixer_selem_get_playback_volume(elem, chn, &vol)) < 0)
+   {
+      hrmp_log_error("Error: get playback volume: %s", snd_strerror(err));
+      goto error;
+   }
+
+   *volume = (int)vol;
+
+   snd_mixer_close(handle);
+
+   return 0;
+
+error:
+
+   if (handle != NULL)
+   {
+      snd_mixer_close(handle);
+   }
+
+   return 1;
+}
+
+int
+hrmp_alsa_set_volume(int device, int volume)
+{
+   int err = 0;
+   snd_mixer_t* handle = NULL;
+   snd_mixer_selem_id_t* sid = NULL;
+   snd_mixer_elem_t* elem = NULL;
+   long minv = 0;
+   long maxv = 0;
+   long vol = 0;
+   char address[MISC_LENGTH];
+   struct configuration* config = NULL;
+
+   config = (struct configuration*)shmem;
+
+   config->prev_volume = config->volume;
+
+   if (volume < 0)
+   {
+      volume = 0;
+   }
+   else if (volume > 100)
+   {
+      volume = 100;
+   }
+
+   if ((err = snd_mixer_open(&handle, 0)) < 0)
+   {
+      hrmp_log_error("Error: snd_mixer_open: %s", snd_strerror(err));
+      goto error;
+   }
+
+   memset(&address[0], 0, sizeof(address));
+   hrmp_snprintf(&address[0], sizeof(address), "hw:%d", config->devices[device].hardware);
+
+   if ((err = snd_mixer_attach(handle, &address[0])) < 0)
+   {
+      hrmp_log_error("Error: snd_mixer_attach(%s): %s", config->devices[device].name, snd_strerror(err));
+      goto error;
+   }
+
+   if ((err = snd_mixer_selem_register(handle, NULL, NULL)) < 0)
+   {
+      hrmp_log_error("Error: snd_mixer_selem_register: %s", snd_strerror(err));
+      goto error;
+   }
+
+   if ((err = snd_mixer_load(handle)) < 0)
+   {
+      hrmp_log_error("Error: snd_mixer_load: %s", snd_strerror(err));
+      goto error;
+   }
+
+   snd_mixer_selem_id_malloc(&sid);
+   if (!sid)
+   {
+      hrmp_log_error("Error: failed to allocate selem id");
+      goto error;
+   }
+
+   snd_mixer_selem_id_set_index(sid, 0);
+   snd_mixer_selem_id_set_name(sid, config->devices[device].selem);
+
+   elem = snd_mixer_find_selem(handle, sid);
+   snd_mixer_selem_id_free(sid);
+
+   if (!elem)
+   {
+      hrmp_log_error("Error: simple element '%s' not found on card '%s'",
+                     config->devices[device].selem, config->devices[device].name);
+      goto error;
+   }
+
+   if (snd_mixer_selem_has_playback_volume(elem) == 0)
+   {
+      hrmp_log_error("Error: element '%s' has no playback volume",
+                     config->devices[device].selem);
+      goto error;
+   }
+
+   snd_mixer_selem_get_playback_volume_range(elem, &minv, &maxv);
+   vol = minv + (volume * (maxv - minv)) / 100;
+
+   if ((err = snd_mixer_selem_set_playback_volume_all(elem, vol)) < 0)
+   {
+      hrmp_log_error("Error: set playback volume: %s", snd_strerror(err));
+      goto error;
+   }
+
+   config->volume = volume;
+
+   snd_mixer_close(handle);
+
+   return 0;
+
+error:
+
+   if (handle != NULL)
+   {
+      snd_mixer_close(handle);
+   }
+
+   return 1;
 }
 
 static int

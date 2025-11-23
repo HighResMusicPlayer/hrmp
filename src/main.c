@@ -337,6 +337,8 @@ main(int argc, char** argv)
 
       if (active_device >= 0)
       {
+         hrmp_alsa_init_volume(active_device);
+
          if (hrmp_deque_create(false, &files))
          {
             printf("Error creating files list\n");
