@@ -28,6 +28,9 @@ OPTIONS
 device
   The default device
 
+volume
+  The volume in percent. -1 means use current volume
+
 log_type
   The logging type (console, file, syslog). Default is console
 
@@ -64,6 +67,9 @@ device
 
 description
   The description of the device
+
+volume
+  The volume in percent. -1 means use current volume
 
 REPORTING BUGS
 ==============
