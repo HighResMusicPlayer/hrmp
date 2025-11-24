@@ -101,4 +101,4 @@ Consider giving the project a [star](https://github.com/HighResMusicPlayer/hrmp/
 
 ## License
 
-[BSD-3-Clause](https://opensource.org/licenses/BSD-3-Clause)
+[GPL v3](https://www.gnu.org/licenses/gpl-3.0.en.html)
