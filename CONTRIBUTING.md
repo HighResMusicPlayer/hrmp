@@ -20,7 +20,7 @@ This document will hopefully help you contribute to hrmp.
 
 ## Legal
 
-All contributions to hrmp are licensed under the [The 3-Clause BSD License](https://opensource.org/licenses/BSD-3-Clause).
+All contributions to hrmp are licensed under the [GPL v3 license](https://www.gnu.org/licenses/gpl-3.0.en.html)
 
 ## Reporting an issue
 

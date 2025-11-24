@@ -2,7 +2,7 @@ Name:          hrmp
 Version:       0.9.0
 Release:       1%{dist}
 Summary:       High-Resolution Music Player
-License:       BSD
+License:       GPL
 URL:           https://github.com/HighResMusicPlayer/hrmp
 Source0:       https://github.com/HighResMusicPlayer/hrmp/releases/download/%{version}/hrmp-%{version}.tar.gz
 
