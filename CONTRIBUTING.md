@@ -34,7 +34,7 @@ Don't forget to indicate your hrmp version.
 For Red Hat RPM based distributions use the following command:
 
 ```
-dnf install git gcc cmake make
+dnf install git gcc clang clang-analyzer cmake make python3-docutils libasan libasan-static alsa-lib alsa-lib-devel libsndfile libsndfile-devel opus opus-devel faad2-libs faad2-devel
 ```
 
 in order to get the necessary dependencies.
@@ -78,7 +78,7 @@ for more information.
 
 * Discuss the feature
 * Do development
-  + Follow the code style
+  + Follow the code style - use the `uncrustify.sh` script
 * Commits should be atomic and semantic. Therefore, squash your pull request before submission and keep it rebased until merged
   + If your feature has independent parts submit those as separate pull requests
 
