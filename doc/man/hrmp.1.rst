@@ -56,7 +56,7 @@ hrmp is maintained on GitHub at https://github.com/HighResMusicPlayer/hrmp/
 COPYRIGHT
 =========
 
-hrmp is licensed under the GNU Public License version 3.
+hrmp is licensed under the GNU General Public License version 3.
 
 SEE ALSO
 ========
