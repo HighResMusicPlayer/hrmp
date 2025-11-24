@@ -13,4 +13,4 @@
 [submission]: https://github.com/HighResMusicPlayer/hrmp/pulls
 [conduct]: https://github.com/HighResMusicPlayer/hrmp/blob/main/CODE_OF_CONDUCT.md
 [star]: https://github.com/HighResMusicPlayer/hrmp/stargazers
-[license]: https://opensource.org/licenses/BSD-3-Clause
+[license]: https://opensource.org/license/gpl-3-0

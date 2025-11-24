@@ -1,40 +1,26 @@
 /*
  * Copyright (C) 2025 The HighResMusicPlayer community
  *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * 3. Neither the name of the copyright holder nor the names of its contributors
- * may be used to endorse or promote products derived from this software without
- * specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 /* hrmp */
 #include <hrmp.h>
-#include <deque.h>
 #include <files.h>
+#include <list.h>
 #include <logging.h>
 #include <utils.h>
-#include <value.h>
 
 /* system */
 #include <dirent.h>
@@ -494,22 +480,18 @@ hrmp_exists(char* f)
 }
 
 int
-hrmp_get_files(int device, char* base, bool recursive, struct deque* files)
+hrmp_get_files(int device, char* base, bool recursive, struct list* files)
 {
    DIR* dir = NULL;
    struct dirent* entry;
 
-   if (base == NULL)
+   if (base == NULL || files == NULL)
    {
       goto error;
    }
 
-   if (files == NULL)
-   {
-      goto error;
-   }
-
-   if (!(dir = opendir(base)))
+   dir = opendir(base);
+   if (dir == NULL)
    {
       goto error;
    }
@@ -532,30 +514,17 @@ hrmp_get_files(int device, char* base, bool recursive, struct deque* files)
 
       if (hrmp_is_file(d))
       {
-         struct file_metadata* fm = NULL;
-
-         if (hrmp_file_metadata(device, d, &fm) == 0)
-         {
-            hrmp_deque_add(files, NULL, (uintptr_t)fm, ValueMem);
-            fm = NULL;
-         }
-
-         free(fm);
+         hrmp_list_append(files, d);
       }
-      else
+      else if (recursive && hrmp_is_directory(d))
       {
-         if (recursive && hrmp_is_directory(d))
-         {
-            hrmp_get_files(device, d, recursive, files);
-         }
+         hrmp_get_files(device, d, recursive, files);
       }
 
       free(d);
-      d = NULL;
    }
 
    closedir(dir);
-   dir = NULL;
 
    return 0;
 
