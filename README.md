@@ -23,19 +23,6 @@ See [Configuration](./doc/CONFIGURATION.md) on how to configure `hrmp`.
 * MKV
 * WEBM
 
-## Overview
-
-`hrmp` makes use of
-
-* [ALSA](https://www.alsa-project.org/wiki/Main_Page)
-* [libsndfile](https://libsndfile.github.io/libsndfile/)
-* [opus](https://github.com/xiph/opus)
-* [faad2](https://github.com/knik0/faad2)
-
-## Tested platforms
-
-* [Fedora](https://getfedora.org/) 42+
-
 ## Compiling the source
 
 `hrmp` requires
@@ -48,12 +35,16 @@ See [Configuration](./doc/CONFIGURATION.md) on how to configure `hrmp`.
 * [opus](https://github.com/xiph/opus)
 * [faad2](https://github.com/knik0/faad2)
 * [rst2man](https://docutils.sourceforge.io/)
-* [pandoc](https://pandoc.org/)
-* [texlive](https://www.tug.org/texlive/)
+
 
 ```sh
 dnf install git gcc clang clang-analyzer cmake make python3-docutils libasan libasan-static alsa-lib alsa-lib-devel libsndfile libsndfile-devel opus opus-devel faad2-libs faad2-devel
 ```
+
+Optionally dependencies
+
+* [pandoc](https://pandoc.org/)
+* [texlive](https://www.tug.org/texlive/)
 
 ### Release build
 
@@ -81,6 +72,10 @@ cd build
 cmake -DCMAKE_C_COMPILER=clang -DCMAKE_BUILD_TYPE=Debug ..
 make
 ```
+
+## Tested platforms
+
+* [Fedora](https://getfedora.org/) 42+
 
 ## Contributing
 
