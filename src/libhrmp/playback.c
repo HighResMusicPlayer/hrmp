@@ -1254,7 +1254,7 @@ get_progress(struct playback* pb)
       print = hrmp_append_int(print, pb->file_number);
       print = hrmp_append_char(print, '/');
       print = hrmp_append_int(print, pb->total_number);
-      print = hrmp_append_char(print, ' ');
+      print = hrmp_append(print, "] ");
       print = hrmp_append(print, config->devices[pb->device].name);
       print = hrmp_append(print, ": ");
       print = hrmp_append(print, pb->fm->name);
