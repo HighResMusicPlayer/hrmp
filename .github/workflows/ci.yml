@@ -20,7 +20,7 @@ jobs:
       fail-fast: false
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Dependencies
         run: |
@@ -61,7 +61,7 @@ jobs:
 
       - name: Upload Build and Run Logs as Artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: logs-${{ matrix.compiler }}-${{ matrix.build_type }}
           path: /home/runner/work/hrmp/hrmp/build/log
