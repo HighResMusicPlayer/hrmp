@@ -136,6 +136,7 @@ hrmp_print_devices(void)
       printf("  Device: %s\n", config->devices[i].device);
       printf("  Description: %s\n", config->devices[i].description);
       printf("  Active:    %s\n", config->devices[i].active ? "Yes" : "No");
+      printf("  Volume:    %d\n", config->devices[i].volume < 0 ? config->volume : config->devices[i].volume);
 
       if (config->devices[i].active ||
           has_capabilities(config->devices[i].capabilities))
