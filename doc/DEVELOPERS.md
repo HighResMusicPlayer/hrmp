@@ -107,6 +107,15 @@ and then save that to `~/.hrmp/hrmp.conf` as the default configuration.
 
 Now that we have `hrmp` installed, we can continue to enhance its functionality.
 
+## Developer options
+
+The following command line options are for developers only, and hence isn't documented elsewhere.
+
+| Command line option | Description |
+| :------------------ | :---------- |
+| `--developer`       | Enable information for developers about DAC setup and audio files |
+| `--fallback`        | Enable on-board DAC for minimum playback of non-DSD files |
+
 ## Audio formats
 
 ### FLAC

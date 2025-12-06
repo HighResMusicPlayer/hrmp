@@ -41,6 +41,12 @@ hrmp_memory_stream_buffer_init(struct stream_buffer** buffer)
    b->size = DEFAULT_BUFFER_SIZE;
    b->start = b->end = b->cursor = 0;
    b->buffer = aligned_alloc((size_t)ALIGNMENT_SIZE, DEFAULT_BUFFER_SIZE);
+   if (b->buffer == NULL)
+   {
+      free(b);
+      *buffer = NULL;
+      return;
+   }
    *buffer = b;
 }
 

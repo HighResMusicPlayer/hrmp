@@ -35,7 +35,6 @@ extern "C" {
  */
 struct playback
 {
-   int device;                    /**< The device */
    size_t file_size;              /**< The file size */
    int file_number;               /**< The file number */
    int total_number;              /**< The total number */
@@ -47,14 +46,13 @@ struct playback
 
 /**
  * Play back a file
- * @param device The device
  * @param number The file number
  * @param total The total number of files
  * @param fm The file metadata
  * @return 0 upon success, otherwise 1
  */
 int
-hrmp_playback(int device, int number, int total, struct file_metadata* fm);
+hrmp_playback(int number, int total, struct file_metadata* fm);
 
 #ifdef __cplusplus
 }

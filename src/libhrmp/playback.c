@@ -44,7 +44,7 @@
 #define HRMP_DSD_FADEOUT_MS  20u
 #define HRMP_DSD_POSTROLL_MS 60u
 
-static int playback_init(int device, int number, int total, snd_pcm_t* pcm_handle, struct file_metadata* fm, struct playback** playback);
+static int playback_init(int number, int total, snd_pcm_t* pcm_handle, struct file_metadata* fm, struct playback** playback);
 static int playback_identifier(struct file_metadata* fm, char** identifer);
 
 static char* get_progress(struct playback* pb);
@@ -217,7 +217,7 @@ write_dsd_fadeout(struct playback* pb, unsigned ms, uint8_t* marker)
 }
 
 int
-hrmp_playback(int device, int number, int total, struct file_metadata* fm)
+hrmp_playback(int number, int total, struct file_metadata* fm)
 {
    int ret = 1;
    snd_pcm_t* pcm_handle = NULL;
@@ -228,19 +228,18 @@ hrmp_playback(int device, int number, int total, struct file_metadata* fm)
 
    normalize_pcm_rate(config, fm);
 
-   if (hrmp_alsa_init_handle(device, fm, &pcm_handle))
+   if (hrmp_alsa_init_handle(fm, &pcm_handle))
    {
-      hrmp_log_error("Could not initialize '%s' for '%s'",
-                     config->devices[device].name, fm->name);
+      hrmp_log_error("Could not initialize '%s' for '%s'", &config->active_device.name[0], fm->name);
       goto error;
    }
 
-   config->devices[device].is_paused = false;
+   config->active_device.is_paused = false;
 
-   if (playback_init(device, number, total, pcm_handle, fm, &pb))
+   if (playback_init(number, total, pcm_handle, fm, &pb))
    {
       hrmp_log_error("Could not initialize '%s' for '%s'",
-                     config->devices[device].name, fm->name);
+                     &config->active_device.name[0], fm->name);
       goto error;
    }
 
@@ -473,6 +472,8 @@ playback_sndfile(snd_pcm_t* pcm_handle, struct playback* pb, int number, int tot
 
       if (kb == 1)
       {
+         free(p);
+         p = NULL;
          break;
       }
 
@@ -756,6 +757,7 @@ playback_mkv(snd_pcm_t* pcm_handle, struct playback* pb, int number, int total)
       int got = hrmp_mkv_read_packet(demux, &pkt);
       if (got < 0)
       {
+         hrmp_mkv_free_packet(&pkt);
          hrmp_log_error("MKV: read error");
          goto error;
       }
@@ -942,7 +944,7 @@ fmt2(int v, char out[3])
 }
 
 static int
-playback_init(int device, int number, int total,
+playback_init(int number, int total,
               snd_pcm_t* pcm_handle, struct file_metadata* fm,
               struct playback** playback)
 {
@@ -965,7 +967,6 @@ playback_init(int device, int number, int total,
       goto error;
    }
 
-   pb->device = device;
    pb->file_size = hrmp_get_file_size(fm->name);
    pb->file_number = number;
    pb->total_number = total;
@@ -1255,7 +1256,7 @@ get_progress(struct playback* pb)
       print = hrmp_append_char(print, '/');
       print = hrmp_append_int(print, pb->total_number);
       print = hrmp_append(print, "] ");
-      print = hrmp_append(print, config->devices[pb->device].name);
+      print = hrmp_append(print, &config->active_device.name[0]);
       print = hrmp_append(print, ": ");
       print = hrmp_append(print, pb->fm->name);
       print = hrmp_append_char(print, ' ');
@@ -1313,7 +1314,7 @@ print_progress_done(struct playback* pb)
       }
 
       printf("\x1b[2K\r[%d/%d] %s: %s %s (%s) (100%%)\n", pb->file_number,
-             pb->total_number, config->devices[pb->device].name, pb->fm->name,
+             pb->total_number, &config->active_device.name[0], pb->fm->name,
              pb->identifier, &t[0]);
 
       fflush(stdout);
@@ -1712,6 +1713,8 @@ dsd_play_native_u32_be(FILE* f, struct playback* pb,
 
          if (kb == 1)
          {
+            free(p);
+            p = NULL;
             goto done;
          }
 
@@ -1787,13 +1790,13 @@ keyboard:
    }
    else if (keyboard_action == KEYBOARD_SPACE)
    {
-      if (config->devices[pb->device].is_paused)
+      if (config->active_device.is_paused)
       {
-         config->devices[pb->device].is_paused = false;
+         config->active_device.is_paused = false;
       }
       else
       {
-         config->devices[pb->device].is_paused = true;
+         config->active_device.is_paused = true;
          free(k);
          SLEEP_AND_GOTO(10000L, keyboard);
       }
@@ -1914,87 +1917,99 @@ keyboard:
    }
    else if (keyboard_action == KEYBOARD_COMMA)
    {
-      int new_volume = config->volume - 5;
-
-      if (!config->is_muted)
+      if (config->active_device.has_volume)
       {
-         if (new_volume < 0)
-         {
-            new_volume = 0;
-         }
+         int new_volume = config->volume - 5;
 
-         hrmp_alsa_set_volume(pb->device, new_volume);
-
-         if (config->developer)
+         if (!config->is_muted)
          {
-            k = hrmp_append(k, " Volume: ");
-            k = hrmp_append_int(k, new_volume);
+            if (new_volume < 0)
+            {
+               new_volume = 0;
+            }
+
+            hrmp_alsa_set_volume(new_volume);
+
+            if (config->developer)
+            {
+               k = hrmp_append(k, " Volume: ");
+               k = hrmp_append_int(k, new_volume);
+            }
          }
       }
    }
    else if (keyboard_action == KEYBOARD_PERIOD)
    {
-      int new_volume = config->volume + 5;
-
-      if (!config->is_muted)
+      if (config->active_device.has_volume)
       {
-         if (new_volume > 100)
-         {
-            new_volume = 100;
-         }
+         int new_volume = config->volume + 5;
 
-         hrmp_alsa_set_volume(pb->device, new_volume);
-
-         if (config->developer)
+         if (!config->is_muted)
          {
-            k = hrmp_append(k, " Volume: ");
-            k = hrmp_append_int(k, new_volume);
+            if (new_volume > 100)
+            {
+               new_volume = 100;
+            }
+
+            hrmp_alsa_set_volume(new_volume);
+
+            if (config->developer)
+            {
+               k = hrmp_append(k, " Volume: ");
+               k = hrmp_append_int(k, new_volume);
+            }
          }
       }
    }
    else if (keyboard_action == KEYBOARD_M)
    {
-      int new_volume;
-
-      if (config->is_muted)
+      if (config->active_device.has_volume)
       {
-         new_volume = config->prev_volume;
-         config->is_muted = false;
+         int new_volume;
 
-         if (config->developer)
+         if (config->is_muted)
          {
-            k = hrmp_append(k, " Volume: ");
-            k = hrmp_append_int(k, new_volume);
-         }
-      }
-      else
-      {
-         new_volume = 0;
-         config->is_muted = true;
+            new_volume = config->prev_volume;
+            config->is_muted = false;
 
-         if (config->developer)
+            if (config->developer)
+            {
+               k = hrmp_append(k, " Volume: ");
+               k = hrmp_append_int(k, new_volume);
+            }
+         }
+         else
          {
-            k = hrmp_append(k, " Volume: 0");
-         }
-      }
+            new_volume = 0;
+            config->is_muted = true;
 
-      hrmp_alsa_set_volume(pb->device, new_volume);
+            if (config->developer)
+            {
+               k = hrmp_append(k, " Volume: 0");
+            }
+         }
+
+         hrmp_alsa_set_volume(new_volume);
+      }
    }
    else if (keyboard_action == KEYBOARD_SLASH)
    {
-      int new_volume = 100;
-
-      config->is_muted = false;
-      hrmp_alsa_set_volume(pb->device, new_volume);
-
-      if (config->developer)
+      if (config->active_device.has_volume)
       {
-         k = hrmp_append(k, " Volume: 100");
+         int new_volume = 100;
+
+         config->is_muted = false;
+         hrmp_alsa_set_volume(new_volume);
+
+         if (config->developer)
+         {
+            k = hrmp_append(k, " Volume: 100");
+         }
       }
    }
    else
    {
-      if (config->devices[pb->device].is_paused)
+      if (config->active_device.is_paused)
       {
          SLEEP_AND_GOTO(10000L, keyboard);
       }

@@ -18,9 +18,9 @@
 /* hrmp */
 #include <hrmp.h>
 #include <configuration.h>
+#include <devices.h>
 #include <logging.h>
 #include <shmem.h>
-#include <stddef.h>
 #include <utils.h>
 
 /* system */
@@ -30,6 +30,7 @@
 #include <limits.h>
 #include <stdatomic.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -100,6 +101,12 @@ hrmp_init_configuration(void* shm)
    atomic_init(&config->log_lock, STATE_FREE);
 
    config->update_process_title = UPDATE_PROCESS_TITLE_VERBOSE;
+
+   for (int i = 0; i < NUMBER_OF_DEVICES; i++)
+   {
+      hrmp_init_device(&config->devices[i]);
+   }
+   hrmp_init_device(&config->active_device);
 
    return 0;
 }

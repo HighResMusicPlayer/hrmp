@@ -74,13 +74,12 @@ struct file_metadata
 
 /**
  * Get the file metadata
- * @param device The device
  * @param f The file
  * @param fm The file metadata
  * @return The result or NULL if not supported
  */
 int
-hrmp_file_metadata(int device, char* f, struct file_metadata** fm);
+hrmp_file_metadata(char* f, struct file_metadata** fm);
 
 /**
  * Print the file metadata

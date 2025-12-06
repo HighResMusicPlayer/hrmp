@@ -33,10 +33,10 @@
 
 static int init_metadata(char* filename, int type, struct file_metadata** file_metadata);
 static int get_metadata(char* filename, int type, struct file_metadata** file_metadata);
-static int get_metadata_dsf(int device, char* filename, struct file_metadata** file_metadata);
-static int get_metadata_dff(int device, char* filename, struct file_metadata** file_metadata);
-static int get_metadata_mkv(int device, char* filename, struct file_metadata** file_metadata);
-static bool metadata_supported(int device, struct file_metadata* fm);
+static int get_metadata_dsf(char* filename, struct file_metadata** file_metadata);
+static int get_metadata_dff(char* filename, struct file_metadata** file_metadata);
+static int get_metadata_mkv(char* filename, struct file_metadata** file_metadata);
+static bool metadata_supported(struct file_metadata* fm);
 
 static uint32_t id3_be_u32(const unsigned char b[4]);
 static uint32_t id3_synchsafe32(const unsigned char b[4]);
@@ -313,7 +313,7 @@ done:
 }
 
 int
-hrmp_file_metadata(int device, char* f, struct file_metadata** fm)
+hrmp_file_metadata(char* f, struct file_metadata** fm)
 {
    int type = TYPE_UNKNOWN;
    struct file_metadata* m = NULL;
@@ -322,6 +322,11 @@ hrmp_file_metadata(int device, char* f, struct file_metadata** fm)
    config = (struct configuration*)shmem;
 
    *fm = NULL;
+
+   if (strlen(&config->active_device.device[0]) == 0)
+   {
+      goto error;
+   }
 
    if (hrmp_ends_with(f, ".wav"))
    {
@@ -361,7 +366,7 @@ hrmp_file_metadata(int device, char* f, struct file_metadata** fm)
    }
    else if (type == TYPE_DSF)
    {
-      if (get_metadata_dsf(device, f, &m))
+      if (get_metadata_dsf(f, &m))
       {
          if (!config->quiet)
          {
@@ -372,7 +377,7 @@ hrmp_file_metadata(int device, char* f, struct file_metadata** fm)
    }
    else if (type == TYPE_DFF)
    {
-      if (get_metadata_dff(device, f, &m))
+      if (get_metadata_dff(f, &m))
       {
          if (!config->quiet)
          {
@@ -383,7 +388,7 @@ hrmp_file_metadata(int device, char* f, struct file_metadata** fm)
    }
    else if (type == TYPE_MKV)
    {
-      if (get_metadata_mkv(device, f, &m))
+      if (get_metadata_mkv(f, &m))
       {
          if (!config->quiet)
          {
@@ -401,7 +406,7 @@ hrmp_file_metadata(int device, char* f, struct file_metadata** fm)
       goto error;
    }
 
-   if (!metadata_supported(device, m))
+   if (!metadata_supported(m))
    {
       if (!config->quiet)
       {
@@ -423,13 +428,13 @@ error:
 }
 
 static bool
-metadata_supported(int device, struct file_metadata* fm)
+metadata_supported(struct file_metadata* fm)
 {
    struct configuration* config = NULL;
 
    config = (struct configuration*)shmem;
 
-   if (device >= 0 && fm != NULL)
+   if (fm != NULL)
    {
       if (fm->channels == 0 || fm->channels > 6)
       {
@@ -438,7 +443,7 @@ metadata_supported(int device, struct file_metadata* fm)
 
       if (fm->bits_per_sample == 16)
       {
-         if (config->devices[device].capabilities.s16_le)
+         if (config->active_device.capabilities.s16_le)
          {
             switch (fm->sample_rate)
             {
@@ -448,8 +453,14 @@ metadata_supported(int device, struct file_metadata* fm)
                case 96000:
                case 176400:
                case 192000:
+                  return true;
+                  break;
                case 352800:
                case 384000:
+                  if (config->fallback)
+                  {
+                     return false;
+                  }
                   return true;
                   break;
                default:
@@ -470,8 +481,8 @@ metadata_supported(int device, struct file_metadata* fm)
       }
       else if (fm->bits_per_sample == 24)
       {
-         if (config->devices[device].capabilities.s24_3le ||
-             config->devices[device].capabilities.s32_le)
+         if (config->active_device.capabilities.s24_3le ||
+             config->active_device.capabilities.s32_le)
          {
             switch (fm->sample_rate)
             {
@@ -481,8 +492,14 @@ metadata_supported(int device, struct file_metadata* fm)
                case 96000:
                case 176400:
                case 192000:
+                  return true;
+                  break;
                case 352800:
                case 384000:
+                  if (config->fallback)
+                  {
+                     return false;
+                  }
                   return true;
                   break;
                default:
@@ -503,8 +520,8 @@ metadata_supported(int device, struct file_metadata* fm)
       }
       else if (fm->bits_per_sample == 32)
       {
-         if (config->devices[device].capabilities.s24_3le ||
-             config->devices[device].capabilities.s32_le)
+         if (config->active_device.capabilities.s24_3le ||
+             config->active_device.capabilities.s32_le)
          {
             if (fm->type == TYPE_FLAC)
             {
@@ -519,8 +536,14 @@ metadata_supported(int device, struct file_metadata* fm)
                case 96000:
                case 176400:
                case 192000:
+                  return true;
+                  break;
                case 352800:
                case 384000:
+                  if (config->fallback)
+                  {
+                     return false;
+                  }
                   return true;
                   break;
                default:
@@ -541,11 +564,11 @@ metadata_supported(int device, struct file_metadata* fm)
       }
       else if (fm->bits_per_sample == 1)
       {
-         if (config->devices[device].capabilities.dsd_u8 ||
-             config->devices[device].capabilities.dsd_u16_le ||
-             config->devices[device].capabilities.dsd_u16_be ||
-             config->devices[device].capabilities.dsd_u32_le ||
-             config->devices[device].capabilities.dsd_u32_be)
+         if (config->active_device.capabilities.dsd_u8 ||
+             config->active_device.capabilities.dsd_u16_le ||
+             config->active_device.capabilities.dsd_u16_be ||
+             config->active_device.capabilities.dsd_u32_le ||
+             config->active_device.capabilities.dsd_u32_be)
          {
             switch (fm->sample_rate)
             {
@@ -771,7 +794,7 @@ init_metadata(char* filename, int type, struct file_metadata** file_metadata)
    memset(fm, 0, sizeof(struct file_metadata));
 
    fm->type = type;
-   memcpy(fm->name, filename, strlen(filename));
+   hrmp_snprintf(fm->name, sizeof(fm->name), "%s", filename);
    fm->format = FORMAT_UNKNOWN;
    fm->file_size = hrmp_get_file_size(filename);
    fm->sample_rate = 0;
@@ -954,7 +977,7 @@ error:
 }
 
 static int
-get_metadata_dsf(int device, char* filename, struct file_metadata** file_metadata)
+get_metadata_dsf(char* filename, struct file_metadata** file_metadata)
 {
    FILE* f = NULL;
    char id4[5] = {0};
@@ -1037,8 +1060,8 @@ get_metadata_dsf(int device, char* filename, struct file_metadata** file_metadat
    fm->format = FORMAT_1;
    fm->file_size = hrmp_get_file_size(filename);
    fm->sample_rate = srate;
-   if (config->dop && (config->devices[device].capabilities.s32 ||
-                       config->devices[device].capabilities.s32_le))
+   if (config->dop && (config->active_device.capabilities.s32 ||
+                       config->active_device.capabilities.s32_le))
    {
       fm->pcm_rate = srate / 16;
    }
@@ -1077,7 +1100,7 @@ error:
 }
 
 static int
-get_metadata_dff(int device, char* filename, struct file_metadata** file_metadata)
+get_metadata_dff(char* filename, struct file_metadata** file_metadata)
 {
    FILE* f = NULL;
    char id4[5] = {0};
@@ -1295,8 +1318,8 @@ get_metadata_dff(int device, char* filename, struct file_metadata** file_metadat
       }
    }
 
-   if (config->dop && (config->devices[device].capabilities.s32 ||
-                       config->devices[device].capabilities.s32_le))
+   if (config->dop && (config->active_device.capabilities.s32 ||
+                       config->active_device.capabilities.s32_le))
    {
       fm->pcm_rate = srate / 16;
    }
@@ -1323,7 +1346,7 @@ error:
 }
 
 static int
-get_metadata_mkv(int device, char* filename, struct file_metadata** file_metadata)
+get_metadata_mkv(char* filename, struct file_metadata** file_metadata)
 {
    struct file_metadata* fm = NULL;
    MkvDemuxer* demux = NULL;

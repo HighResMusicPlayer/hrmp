@@ -28,7 +28,7 @@ extern "C" {
 #include <stdlib.h>
 
 /**
- * Check if devices are active
+ * Check if IEC598 devices are active
  */
 void
 hrmp_check_devices(void);
@@ -42,12 +42,28 @@ bool
 hrmp_is_device_known(char* name);
 
 /**
- * Return the active device
- * @param name Device hint
- * @return The active device, or -1
+ * Initialize a device
+ * @param device The device
+ * @return 0 upon success, otherwise 1
  */
 int
-hrmp_active_device(char* name);
+hrmp_init_device(struct device* device);
+
+/**
+ * Create an active device
+ * @param device_name The device name
+ * @return 0 upon success, otherwise 1
+ */
+int
+hrmp_create_active_device(char* device_name);
+
+/**
+ * Activate a device
+ * @param name The device name
+ * @return 0 upon success, otherwise 1
+ */
+int
+hrmp_activate_device(char* name);
 
 /**
  * Print devices
@@ -56,10 +72,23 @@ void
 hrmp_print_devices(void);
 
 /**
+ * Print a device
+ * @param device The device
+ */
+void
+hrmp_print_device(struct device* device);
+
+/**
  * Print a sample configuration
  */
 void
 hrmp_sample_configuration(void);
+
+/**
+ * List fallback devices
+ */
+void
+hrmp_list_fallback_devices(void);
 
 #ifdef __cplusplus
 }

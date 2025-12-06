@@ -157,16 +157,16 @@ struct capabilities
  */
 struct device
 {
-   char id[MISC_LENGTH];             /**< The identifier of the device */
    char name[MISC_LENGTH];           /**< The full name of the device */
    char device[MISC_LENGTH];         /**< The device */
    char description[MISC_LENGTH];    /**< The description of the device */
    int hardware;                     /**< The hardware number of the device */
    char selem[MISC_LENGTH];          /**< The hardware selem of the device */
    struct capabilities capabilities; /**< The capabilities of the device */
-   bool is_paused;                   /**< Is the device paused ? */
    bool active;                      /**< Is the device active ? */
+   bool has_volume;                  /**< Has volume control */
    int volume;                       /**< The current volume */
+   bool is_paused;                   /**< Is the active device paused ? */
 };
 
 /** @struct configuration
@@ -174,33 +174,36 @@ struct device
  */
 struct configuration
 {
-   char configuration_path[MAX_PATH]; /**< The configuration path */
+   char configuration_path[MAX_PATH];       /**< The configuration path */
 
-   char device[MISC_LENGTH];          /**< The name of the default device */
+   char device[MISC_LENGTH];                 /**< The name of the default device */
 
-   bool quiet;                        /**< The quiet the output */
+   struct device active_device;              /**< The active device */
 
-   int volume;                        /**< The current volume */
-   int prev_volume;                   /**< The previous volume */
-   bool is_muted;                     /**< Is muted */
+   bool quiet;                               /**< Quiet the output */
 
-   bool experimental;                 /**< Allow experimental features */
-   bool developer;                    /**< Enable developer features */
+   int volume;                               /**< The current volume */
+   int prev_volume;                          /**< The previous volume */
+   bool is_muted;                            /**< Is muted */
 
-   bool dop;                          /**< DoP mode */
+   bool experimental;                        /**< Allow experimental features */
+   bool developer;                           /**< Enable developer features */
+   bool fallback;                            /**< Enable fallback features */
 
-   int log_type;                      /**< The logging type */
-   int log_level;                     /**< The logging level */
-   char log_path[MISC_LENGTH];        /**< The logging path */
-   int log_mode;                      /**< The logging mode */
-   char log_line_prefix[MISC_LENGTH]; /**< The logging prefix */
-   atomic_schar log_lock;             /**< The logging lock */
+   bool dop;                                 /**< DoP mode */
 
-   unsigned int update_process_title; /**< Behaviour for updating the process title */
+   int log_type;                             /**< The logging type */
+   int log_level;                            /**< The logging level */
+   char log_path[MISC_LENGTH];               /**< The logging path */
+   int log_mode;                             /**< The logging mode */
+   char log_line_prefix[MISC_LENGTH];        /**< The logging prefix */
+   atomic_schar log_lock;                    /**< The logging lock */
 
-   int number_of_devices;             /**< The number of devices */
+   unsigned int update_process_title;        /**< Behaviour for updating the process title */
 
-   struct device devices[NUMBER_OF_DEVICES]; /**< The devices */
+   int number_of_devices;                    /**< The number of devices */
+
+   struct device devices[NUMBER_OF_DEVICES]; /**< The IEC598 devices */
 };
 
 #ifdef __cplusplus

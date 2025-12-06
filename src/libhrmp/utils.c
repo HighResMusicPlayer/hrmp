@@ -480,7 +480,7 @@ hrmp_exists(char* f)
 }
 
 int
-hrmp_get_files(int device, char* base, bool recursive, struct list* files)
+hrmp_get_files(char* base, bool recursive, struct list* files)
 {
    DIR* dir = NULL;
    struct dirent* entry;
@@ -518,7 +518,7 @@ hrmp_get_files(int device, char* base, bool recursive, struct list* files)
       }
       else if (recursive && hrmp_is_directory(d))
       {
-         hrmp_get_files(device, d, recursive, files);
+         hrmp_get_files(d, recursive, files);
       }
 
       free(d);
@@ -677,6 +677,11 @@ hrmp_append(char* orig, char* s)
    }
 
    n = (char*)realloc(orig, orig_length + s_length + 1);
+   if (n == NULL)
+   {
+      hrmp_log_error("realloc failed");
+      return orig;
+   }
 
    memcpy(n + orig_length, s, s_length);
 

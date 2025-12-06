@@ -32,13 +32,15 @@
 
 #include <alsa/asoundlib.h>
 
-static void check_capabilities(char* device, int index);
-static bool support_mask(char* device, snd_pcm_format_t format);
+static void check_capabilities(struct device* device);
+static bool support_mask(struct device* device, snd_pcm_format_t format);
 static char* clean_description(char* s);
 static bool is_device_active(char* device);
 static int get_hardware_number(char* device);
 static char* get_hardware_selem(int hardware);
 static bool has_capabilities(struct capabilities c);
+
+static int copy_device_index(int index);
 
 void
 hrmp_check_devices(void)
@@ -55,7 +57,7 @@ hrmp_check_devices(void)
       {
          char* selem = NULL;
 
-         check_capabilities(config->devices[i].device, i);
+         check_capabilities(&config->devices[i]);
          config->devices[i].hardware = get_hardware_number(config->devices[i].name);
 
          selem = get_hardware_selem(config->devices[i].hardware);
@@ -90,32 +92,110 @@ hrmp_is_device_known(char* name)
 }
 
 int
-hrmp_active_device(char* name)
+hrmp_init_device(struct device* device)
 {
+
+   memset(&device->name[0], 0, MISC_LENGTH);
+   memset(&device->device[0], 0, MISC_LENGTH);
+   memset(&device->description[0], 0, MISC_LENGTH);
+   device->hardware = -1;
+   memset(&device->selem[0], 0, MISC_LENGTH);
+   memset((void*)&device->capabilities, 0, sizeof(struct capabilities));
+   device->active = false;
+   device->volume = 0;
+   device->is_paused = true;
+
+   return 0;
+}
+
+int
+hrmp_create_active_device(char* device_name)
+{
+   int hw = -1;
+   char* s = NULL;
    struct configuration* config = NULL;
 
    config = (struct configuration*)shmem;
 
-   for (int i = 0; i < config->number_of_devices; i++)
+   memcpy(&config->active_device.name, device_name, strlen(device_name));
+   memcpy(&config->active_device.device, device_name, strlen(device_name));
+   memcpy(&config->active_device.description, "Fallback device", strlen("Fallback device"));
+
+   config->active_device.has_volume = false;
+   config->active_device.volume = 70;
+
+   hw = get_hardware_number(device_name);
+   if (hw == -1)
    {
-      if (name != NULL && !strcmp(name, config->devices[i].name) && config->devices[i].active)
+      /* TODO */
+      hw = 0;
+   }
+   s = get_hardware_selem(hw);
+
+   config->active_device.hardware = hw;
+   if (s != NULL)
+   {
+      memcpy(&config->active_device.selem, s, strlen(s));
+      config->active_device.has_volume = true;
+   }
+
+   config->active_device.active = true;
+   config->active_device.is_paused = false;
+
+   check_capabilities(&config->active_device);
+
+   free(s);
+
+   return 0;
+}
+
+int
+hrmp_activate_device(char* name)
+{
+   bool found = false;
+   struct configuration* config = NULL;
+
+   config = (struct configuration*)shmem;
+
+   if (name != NULL)
+   {
+      for (int i = 0; !found && i < config->number_of_devices; i++)
       {
-         return i;
+         if (!strcmp(name, config->devices[i].name) && config->devices[i].active)
+         {
+            copy_device_index(i);
+            found = true;
+         }
+      }
+
+      for (int i = 0; !found && i < config->number_of_devices; i++)
+      {
+         if (!strcmp(name, config->devices[i].device) && config->devices[i].active)
+         {
+            copy_device_index(i);
+            found = true;
+         }
       }
    }
 
-   if (name == NULL || strlen(name) == 0)
+   if (!found)
    {
       for (int i = 0; i < config->number_of_devices; i++)
       {
          if (config->devices[i].active)
          {
-            return i;
+            copy_device_index(i);
+            found = true;
          }
       }
    }
 
-   return -1;
+   if (found)
+   {
+      return 0;
+   }
+
+   return 1;
 }
 
 void
@@ -132,75 +212,7 @@ hrmp_print_devices(void)
 
    for (int i = 0; i < config->number_of_devices; i++)
    {
-      printf("%s\n", config->devices[i].name);
-      printf("  Device: %s\n", config->devices[i].device);
-      printf("  Description: %s\n", config->devices[i].description);
-      printf("  Active:    %s\n", config->devices[i].active ? "Yes" : "No");
-      printf("  Volume:    %d\n", config->devices[i].volume < 0 ? config->volume : config->devices[i].volume);
-
-      if (config->devices[i].active ||
-          has_capabilities(config->devices[i].capabilities))
-      {
-         printf("  16bit:\n");
-         printf("    S16:     %s\n", config->devices[i].capabilities.s16 ? "Yes" : "No");
-         printf("    S16_LE:  %s\n", config->devices[i].capabilities.s16_le ? "Yes" : "No");
-         printf("    S16_BE:  %s\n", config->devices[i].capabilities.s16_be ? "Yes" : "No");
-         printf("    U16:     %s\n", config->devices[i].capabilities.u16 ? "Yes" : "No");
-         printf("    U16_LE:  %s\n", config->devices[i].capabilities.u16_le ? "Yes" : "No");
-         printf("    U16_BE:  %s\n", config->devices[i].capabilities.u16_be ? "Yes" : "No");
-         printf("  24bit:\n");
-         printf("    S24:     %s\n", config->devices[i].capabilities.s24 ? "Yes" : "No");
-         printf("    S24_3LE: %s\n", config->devices[i].capabilities.s24_3le ? "Yes" : "No");
-         printf("    S24_LE:  %s\n", config->devices[i].capabilities.s24_le ? "Yes" : "No");
-         printf("    S24_BE:  %s\n", config->devices[i].capabilities.s24_be ? "Yes" : "No");
-         printf("    U24:     %s\n", config->devices[i].capabilities.u24 ? "Yes" : "No");
-         printf("    U24_LE:  %s\n", config->devices[i].capabilities.u24_le ? "Yes" : "No");
-         printf("    U24_BE:  %s\n", config->devices[i].capabilities.u24_be ? "Yes" : "No");
-         printf("  32bit:\n");
-         printf("    S32:     %s\n", config->devices[i].capabilities.s32 ? "Yes" : "No");
-         printf("    S32_LE:  %s\n", config->devices[i].capabilities.s32_le ? "Yes" : "No");
-         printf("    S32_BE:  %s\n", config->devices[i].capabilities.s32_be ? "Yes" : "No");
-         printf("    U32:     %s\n", config->devices[i].capabilities.u32 ? "Yes" : "No");
-         printf("    U32_LE:  %s\n", config->devices[i].capabilities.u32_le ? "Yes" : "No");
-         printf("    U32_BE:  %s\n", config->devices[i].capabilities.u32_be ? "Yes" : "No");
-         printf("  DSD:\n");
-         printf("    U8:      %s\n", config->devices[i].capabilities.dsd_u8 ? "Yes" : "No");
-         printf("    U16_LE:  %s\n", config->devices[i].capabilities.dsd_u16_le ? "Yes" : "No");
-         printf("    U16_BE:  %s\n", config->devices[i].capabilities.dsd_u16_be ? "Yes" : "No");
-         printf("    U32_LE:  %s\n", config->devices[i].capabilities.dsd_u32_le ? "Yes" : "No");
-         printf("    U32_BE:  %s\n", config->devices[i].capabilities.dsd_u32_be ? "Yes" : "No");
-      }
-      else
-      {
-         printf("  16bit:\n");
-         printf("    S16:     Unknown\n");
-         printf("    S16_LE:  Unknown\n");
-         printf("    S16_BE:  Unknown\n");
-         printf("    U16:     Unknown\n");
-         printf("    U16_LE:  Unknown\n");
-         printf("    U16_BE:  Unknown\n");
-         printf("  24bit:\n");
-         printf("    S24:     Unknown\n");
-         printf("    S24_3LE: Unknown\n");
-         printf("    S24_LE:  Unknown\n");
-         printf("    S24_BE:  Unknown\n");
-         printf("    U24:     Unknown\n");
-         printf("    U24_LE:  Unknown\n");
-         printf("    U24_BE:  Unknown\n");
-         printf("  32bit:\n");
-         printf("    S32:     Unknown\n");
-         printf("    S32_LE:  Unknown\n");
-         printf("    S32_BE:  Unknown\n");
-         printf("    U32:     Unknown\n");
-         printf("    U32_LE:  Unknown\n");
-         printf("    U32_BE:  Unknown\n");
-         printf("  DSD:\n");
-         printf("    U8:      Unknown\n");
-         printf("    U16_LE:  Unknown\n");
-         printf("    U16_BE:  Unknown\n");
-         printf("    U32_LE:  Unknown\n");
-         printf("    U32_BE:  Unknown\n");
-      }
+      hrmp_print_device(&config->devices[i]);
 
       if (i < config->number_of_devices - 1)
       {
@@ -210,9 +222,94 @@ hrmp_print_devices(void)
 }
 
 void
+hrmp_print_device(struct device* device)
+{
+   struct configuration* config = NULL;
+
+   config = (struct configuration*)shmem;
+
+   if (config->quiet)
+   {
+      return;
+   }
+
+   printf("%s\n", device->name);
+   printf("  Device: %s\n", device->device);
+   printf("  Description: %s\n", device->description);
+   printf("  Hardware: %d\n", device->hardware);
+   printf("  Selem: %s\n", device->selem);
+   printf("  Active:    %s\n", device->active ? "Yes" : "No");
+   printf("  Volume:    %d\n", device->volume < 0 ? config->volume : device->volume);
+   printf("  Paused:    %s\n", device->is_paused ? "Yes" : "No");
+
+   if (device->active || has_capabilities(device->capabilities))
+   {
+      printf("  16bit:\n");
+      printf("    S16:     %s\n", device->capabilities.s16 ? "Yes" : "No");
+      printf("    S16_LE:  %s\n", device->capabilities.s16_le ? "Yes" : "No");
+      printf("    S16_BE:  %s\n", device->capabilities.s16_be ? "Yes" : "No");
+      printf("    U16:     %s\n", device->capabilities.u16 ? "Yes" : "No");
+      printf("    U16_LE:  %s\n", device->capabilities.u16_le ? "Yes" : "No");
+      printf("    U16_BE:  %s\n", device->capabilities.u16_be ? "Yes" : "No");
+      printf("  24bit:\n");
+      printf("    S24:     %s\n", device->capabilities.s24 ? "Yes" : "No");
+      printf("    S24_3LE: %s\n", device->capabilities.s24_3le ? "Yes" : "No");
+      printf("    S24_LE:  %s\n", device->capabilities.s24_le ? "Yes" : "No");
+      printf("    S24_BE:  %s\n", device->capabilities.s24_be ? "Yes" : "No");
+      printf("    U24:     %s\n", device->capabilities.u24 ? "Yes" : "No");
+      printf("    U24_LE:  %s\n", device->capabilities.u24_le ? "Yes" : "No");
+      printf("    U24_BE:  %s\n", device->capabilities.u24_be ? "Yes" : "No");
+      printf("  32bit:\n");
+      printf("    S32:     %s\n", device->capabilities.s32 ? "Yes" : "No");
+      printf("    S32_LE:  %s\n", device->capabilities.s32_le ? "Yes" : "No");
+      printf("    S32_BE:  %s\n", device->capabilities.s32_be ? "Yes" : "No");
+      printf("    U32:     %s\n", device->capabilities.u32 ? "Yes" : "No");
+      printf("    U32_LE:  %s\n", device->capabilities.u32_le ? "Yes" : "No");
+      printf("    U32_BE:  %s\n", device->capabilities.u32_be ? "Yes" : "No");
+      printf("  DSD:\n");
+      printf("    U8:      %s\n", device->capabilities.dsd_u8 ? "Yes" : "No");
+      printf("    U16_LE:  %s\n", device->capabilities.dsd_u16_le ? "Yes" : "No");
+      printf("    U16_BE:  %s\n", device->capabilities.dsd_u16_be ? "Yes" : "No");
+      printf("    U32_LE:  %s\n", device->capabilities.dsd_u32_le ? "Yes" : "No");
+      printf("    U32_BE:  %s\n", device->capabilities.dsd_u32_be ? "Yes" : "No");
+   }
+   else
+   {
+      printf("  16bit:\n");
+      printf("    S16:     Unknown\n");
+      printf("    S16_LE:  Unknown\n");
+      printf("    S16_BE:  Unknown\n");
+      printf("    U16:     Unknown\n");
+      printf("    U16_LE:  Unknown\n");
+      printf("    U16_BE:  Unknown\n");
+      printf("  24bit:\n");
+      printf("    S24:     Unknown\n");
+      printf("    S24_3LE: Unknown\n");
+      printf("    S24_LE:  Unknown\n");
+      printf("    S24_BE:  Unknown\n");
+      printf("    U24:     Unknown\n");
+      printf("    U24_LE:  Unknown\n");
+      printf("    U24_BE:  Unknown\n");
+      printf("  32bit:\n");
+      printf("    S32:     Unknown\n");
+      printf("    S32_LE:  Unknown\n");
+      printf("    S32_BE:  Unknown\n");
+      printf("    U32:     Unknown\n");
+      printf("    U32_LE:  Unknown\n");
+      printf("    U32_BE:  Unknown\n");
+      printf("  DSD:\n");
+      printf("    U8:      Unknown\n");
+      printf("    U16_LE:  Unknown\n");
+      printf("    U16_BE:  Unknown\n");
+      printf("    U32_LE:  Unknown\n");
+      printf("    U32_BE:  Unknown\n");
+   }
+}
+
+void
 hrmp_sample_configuration(void)
 {
-   char** hints;
+   char** hints = NULL;
    int err;
    char** n;
    char* name;
@@ -229,7 +326,7 @@ hrmp_sample_configuration(void)
    if (err != 0)
    {
       hrmp_log_error("ALSA: Cannot get device names");
-      return;
+      goto cleanup;
    }
 
    n = hints;
@@ -286,6 +383,7 @@ hrmp_sample_configuration(void)
    config->number_of_devices = dn;
 
    snd_device_name_free_hint((void**)hints);
+   hints = NULL;
 
    printf("[hrmp]\n");
    printf("\n");
@@ -322,86 +420,131 @@ hrmp_sample_configuration(void)
          printf("\n");
       }
    }
+
+cleanup:
+
+   if (hints != NULL)
+   {
+      snd_device_name_free_hint((void**)hints);
+   }
+}
+
+void
+hrmp_list_fallback_devices(void)
+{
+   char** hints = NULL;
+   int err;
+   char** n;
+   char* name;
+
+   err = snd_device_name_hint(-1, "pcm", (void***)&hints);
+   if (err != 0)
+   {
+      hrmp_log_error("ALSA: Cannot get device names");
+      goto cleanup;
+   }
+
+   n = hints;
+   while (*n != NULL)
+   {
+      name = snd_device_name_get_hint(*n, "NAME");
+
+      if (name != NULL && hrmp_starts_with(name, "front"))
+      {
+         printf("Available: %s\n", name);
+      }
+
+      free(name);
+      name = NULL;
+
+      n++;
+   }
+
+   snd_device_name_free_hint((void**)hints);
+   hints = NULL;
+
+cleanup:
+
+   if (hints != NULL)
+   {
+      snd_device_name_free_hint((void**)hints);
+   }
 }
 
 static void
-check_capabilities(char* device, int index)
+check_capabilities(struct device* device)
 {
-   struct configuration* config = NULL;
-
-   config = (struct configuration*)shmem;
-
-   memset(&config->devices[index].capabilities, 0, sizeof(struct capabilities));
+   memset((void*)&device->capabilities, 0, sizeof(struct capabilities));
 
    /* DSD */
-   config->devices[index].capabilities.dsd_u8 =
+   device->capabilities.dsd_u8 =
       support_mask(device, SND_PCM_FORMAT_DSD_U8);
-   config->devices[index].capabilities.dsd_u16_le =
+   device->capabilities.dsd_u16_le =
       support_mask(device, SND_PCM_FORMAT_DSD_U16_LE);
-   config->devices[index].capabilities.dsd_u16_be =
+   device->capabilities.dsd_u16_be =
       support_mask(device, SND_PCM_FORMAT_DSD_U16_BE);
 
-   config->devices[index].capabilities.dsd_u32_le =
+   device->capabilities.dsd_u32_le =
       support_mask(device, SND_PCM_FORMAT_DSD_U32_LE);
-   config->devices[index].capabilities.dsd_u32_be =
+   device->capabilities.dsd_u32_be =
       support_mask(device, SND_PCM_FORMAT_DSD_U32_BE);
 
    /* 32-bit */
-   config->devices[index].capabilities.s32 =
+   device->capabilities.s32 =
       support_mask(device, SND_PCM_FORMAT_S32);
-   config->devices[index].capabilities.s32_le =
+   device->capabilities.s32_le =
       support_mask(device, SND_PCM_FORMAT_S32_LE);
-   config->devices[index].capabilities.s32_be =
+   device->capabilities.s32_be =
       support_mask(device, SND_PCM_FORMAT_S32_BE);
 
-   config->devices[index].capabilities.u32 =
+   device->capabilities.u32 =
       support_mask(device, SND_PCM_FORMAT_U32);
-   config->devices[index].capabilities.u32_le =
+   device->capabilities.u32_le =
       support_mask(device, SND_PCM_FORMAT_U32_LE);
-   config->devices[index].capabilities.u32_be =
+   device->capabilities.u32_be =
       support_mask(device, SND_PCM_FORMAT_U32_BE);
 
    /* 24-bit */
-   config->devices[index].capabilities.s24 =
+   device->capabilities.s24 =
       support_mask(device, SND_PCM_FORMAT_S24);
-   config->devices[index].capabilities.s24_3le =
+   device->capabilities.s24_3le =
       support_mask(device, SND_PCM_FORMAT_S24_3LE);
-   config->devices[index].capabilities.s24_le =
+   device->capabilities.s24_le =
       support_mask(device, SND_PCM_FORMAT_S24_LE);
-   config->devices[index].capabilities.s24_be =
+   device->capabilities.s24_be =
       support_mask(device, SND_PCM_FORMAT_S24_BE);
 
-   config->devices[index].capabilities.u24 =
+   device->capabilities.u24 =
       support_mask(device, SND_PCM_FORMAT_U24);
-   config->devices[index].capabilities.u24_le =
+   device->capabilities.u24_le =
       support_mask(device, SND_PCM_FORMAT_U24_LE);
-   config->devices[index].capabilities.u24_be =
+   device->capabilities.u24_be =
       support_mask(device, SND_PCM_FORMAT_U24_BE);
 
    /* 16-bit */
-   config->devices[index].capabilities.s16 =
+   device->capabilities.s16 =
       support_mask(device, SND_PCM_FORMAT_S16);
-   config->devices[index].capabilities.s16_le =
+   device->capabilities.s16_le =
       support_mask(device, SND_PCM_FORMAT_S16_LE);
-   config->devices[index].capabilities.s16_be =
+   device->capabilities.s16_be =
       support_mask(device, SND_PCM_FORMAT_S16_BE);
 
-   config->devices[index].capabilities.u16 =
+   device->capabilities.u16 =
       support_mask(device, SND_PCM_FORMAT_U16);
-   config->devices[index].capabilities.u16_le =
+   device->capabilities.u16_le =
       support_mask(device, SND_PCM_FORMAT_U16_LE);
-   config->devices[index].capabilities.u16_be =
+   device->capabilities.u16_be =
       support_mask(device, SND_PCM_FORMAT_U16_BE);
 }
 
 static bool
-support_mask(char* device, snd_pcm_format_t format)
+support_mask(struct device* device, snd_pcm_format_t format)
 {
    int err;
    snd_pcm_t* h = NULL;
    snd_pcm_hw_params_t* hw = NULL;
 
-   if ((err = snd_pcm_open(&h, device, SND_PCM_STREAM_PLAYBACK, 0)) < 0)
+   if ((err = snd_pcm_open(&h, device->device, SND_PCM_STREAM_PLAYBACK, 0)) < 0)
    {
       goto format_no;
    }
@@ -485,7 +628,7 @@ is_device_active(char* device)
    int err;
    snd_pcm_t* handle = NULL;
    snd_pcm_hw_params_t* hw = NULL;
-   char** hints;
+   char** hints = NULL;
    char** n;
    char* name;
    bool found = false;
@@ -532,6 +675,7 @@ is_device_active(char* device)
    snd_pcm_close(handle);
 
    snd_device_name_free_hint((void**)hints);
+   hints = NULL;
 
    return true;
 
@@ -589,11 +733,11 @@ get_hardware_number(char* device)
          continue;
       }
 
-      snd_ctl_card_info_malloc(&info);
-      if (!info)
+      if (snd_ctl_card_info_malloc(&info) < 0 || info == NULL)
       {
          hrmp_log_error("snd_ctl_card_info_malloc failed");
          snd_ctl_close(ctl);
+         ctl = NULL;
          goto done;
       }
 
@@ -684,6 +828,7 @@ get_hardware_selem(int hardware)
    }
 
    count = snd_mixer_get_count(mixer);
+
    if (count == 1)
    {
       snd_mixer_selem_id_t* sid;
@@ -743,4 +888,24 @@ has_capabilities(struct capabilities c)
    }
 
    return false;
+}
+
+static int
+copy_device_index(int i)
+{
+   struct configuration* config = NULL;
+
+   config = (struct configuration*)shmem;
+
+   memcpy(&config->active_device.name, &config->devices[i].name[0], MISC_LENGTH);
+   memcpy(&config->active_device.device, &config->devices[i].device[0], MISC_LENGTH);
+   memcpy(&config->active_device.description, &config->devices[i].description[0], MISC_LENGTH);
+   config->active_device.hardware = config->devices[i].hardware;
+   memcpy(&config->active_device.selem, &config->devices[i].selem[0], MISC_LENGTH);
+   memcpy((void*)&config->active_device.capabilities, (void*)&config->devices[i].capabilities, sizeof(struct capabilities));
+   config->active_device.active = config->devices[i].active;
+   config->active_device.volume = config->devices[i].volume;
+   config->active_device.is_paused = config->devices[i].is_paused;
+
+   return 0;
 }

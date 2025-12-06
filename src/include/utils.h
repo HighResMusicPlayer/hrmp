@@ -156,14 +156,13 @@ hrmp_is_file(char* file);
 
 /**
  * Get the files of a directory
- * @param device The device
  * @param base The directory
  * @param recursive Should we recurse down
  * @param files The files
  * @return The result
  */
 int
-hrmp_get_files(int device, char* base, bool recursive, struct list* files);
+hrmp_get_files(char* base, bool recursive, struct list* files);
 
 /**
  * Does a string start with another string

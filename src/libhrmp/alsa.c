@@ -28,10 +28,10 @@
 
 #define MAX_BUFFER_SIZE 131072
 
-static int find_best_format(int device, struct file_metadata* fm, snd_pcm_format_t* format);
+static int find_best_format(struct file_metadata* fm, snd_pcm_format_t* format);
 
 int
-hrmp_alsa_init_handle(int device, struct file_metadata* fm, snd_pcm_t** handle)
+hrmp_alsa_init_handle(struct file_metadata* fm, snd_pcm_t** handle)
 {
    int err;
    snd_pcm_t* h = NULL;
@@ -44,52 +44,62 @@ hrmp_alsa_init_handle(int device, struct file_metadata* fm, snd_pcm_t** handle)
 
    config = (struct configuration*)shmem;
 
+   if (strlen(config->active_device.device) == 0)
+   {
+      hrmp_log_error("Active device is not set");
+      goto error;
+   }
+
    *handle = NULL;
 
-   if (find_best_format(device, fm, &fmt))
+   if (find_best_format(fm, &fmt))
    {
       goto error;
    }
 
-   if ((err = snd_pcm_open(&h, config->devices[device].device, SND_PCM_STREAM_PLAYBACK, 0)) < 0)
+   if ((err = snd_pcm_open(&h, &config->active_device.device[0], SND_PCM_STREAM_PLAYBACK, 0)) < 0)
    {
-      hrmp_log_error("snd_pcm_open %s/%s", config->devices[device].name, snd_strerror(err));
+      hrmp_log_error("snd_pcm_open %s/%s", &config->active_device.name[0], snd_strerror(err));
       goto error;
    }
 
    if ((err = snd_pcm_hw_params_malloc(&hw_params)) < 0)
    {
-      hrmp_log_error("snd_pcm_hw_params_malloc %s/%s", config->devices[device].name, snd_strerror(err));
+      hrmp_log_error("snd_pcm_hw_params_malloc %s/%s", &config->active_device.name[0], snd_strerror(err));
       goto error;
    }
 
    if ((err = snd_pcm_hw_params_any(h, hw_params)) < 0)
    {
-      hrmp_log_error("snd_pcm_hw_params_any %s/%s", config->devices[device].name, snd_strerror(err));
+      hrmp_log_error("snd_pcm_hw_params_any %s/%s", &config->active_device.name[0], snd_strerror(err));
       goto error;
    }
 
    if ((err = snd_pcm_hw_params_set_rate_resample(h, hw_params, 0)) < 0)
    {
-      hrmp_log_error("snd_pcm_hw_params_set_rate_resample %s/%s", config->devices[device].name, snd_strerror(err));
+      hrmp_log_error("snd_pcm_hw_params_set_rate_resample %s/%s",
+                     &config->active_device.name[0], snd_strerror(err));
       goto error;
    }
 
    if ((err = snd_pcm_hw_params_set_access(h, hw_params, SND_PCM_ACCESS_RW_INTERLEAVED)) < 0)
    {
-      hrmp_log_error("snd_pcm_hw_params_set_access %s/%s", config->devices[device].name, snd_strerror(err));
+      hrmp_log_error("snd_pcm_hw_params_set_access %s/%s",
+                     &config->active_device.name[0], snd_strerror(err));
       goto error;
    }
 
    if ((err = snd_pcm_hw_params_set_rate_near(h, hw_params, &r, 0)) < 0)
    {
-      hrmp_log_error("snd_pcm_hw_params_set_rate_near %s/%s", config->devices[device].name, snd_strerror(err));
+      hrmp_log_error("snd_pcm_hw_params_set_rate_near %s/%s",
+                     &config->active_device.name[0], snd_strerror(err));
       goto error;
    }
 
    if ((err = snd_pcm_hw_params_set_channels(h, hw_params, 2)) < 0)
    {
-      hrmp_log_error("snd_pcm_hw_params_set_channels %s/%s", config->devices[device].name, snd_strerror(err));
+      hrmp_log_error("snd_pcm_hw_params_set_channels %s/%s",
+                     &config->active_device.name[0], snd_strerror(err));
       goto error;
    }
 
@@ -97,7 +107,8 @@ hrmp_alsa_init_handle(int device, struct file_metadata* fm, snd_pcm_t** handle)
    int direction = 0;
    if ((err = snd_pcm_hw_params_set_rate_near(h, hw_params, &rate, &direction)) < 0)
    {
-      hrmp_log_error("snd_pcm_hw_params_set_rate_near %s/%s", config->devices[device].name, snd_strerror(err));
+      hrmp_log_error("snd_pcm_hw_params_set_rate_near %s/%s",
+                     &config->active_device.name[0], snd_strerror(err));
       goto error;
    }
 
@@ -115,7 +126,7 @@ hrmp_alsa_init_handle(int device, struct file_metadata* fm, snd_pcm_t** handle)
       if ((err = snd_pcm_hw_params_set_period_size_near(h, hw_params, &period_size, NULL)) < 0)
       {
          hrmp_log_error("snd_pcm_hw_params_set_period_size_near %s/%s",
-                        config->devices[device].name, snd_strerror(err));
+                        &config->active_device.name[0], snd_strerror(err));
          goto error;
       }
    }
@@ -123,21 +134,21 @@ hrmp_alsa_init_handle(int device, struct file_metadata* fm, snd_pcm_t** handle)
    if ((err = snd_pcm_hw_params_set_buffer_size_near(h, hw_params, &buffer_size)) < 0)
    {
       hrmp_log_error("snd_pcm_hw_params_set_buffer_size_near %s/%s",
-                     config->devices[device].name, snd_strerror(err));
+                     &config->active_device.name[0], snd_strerror(err));
       goto error;
    }
 
    if ((err = snd_pcm_hw_params_set_rate_resample(h, hw_params, 0)) < 0)
    {
       hrmp_log_error("snd_pcm_hw_params_set_rate_resample %s/%s",
-                     config->devices[device].name, snd_strerror(err));
+                     &config->active_device.name[0], snd_strerror(err));
       goto error;
    }
 
    if ((err = snd_pcm_hw_params_set_format(h, hw_params, fmt)) < 0)
    {
       hrmp_log_error("snd_pcm_hw_params_set_format %s/%d/%s",
-                     config->devices[device].name, fmt, snd_strerror(err));
+                     &config->active_device.name[0], fmt, snd_strerror(err));
       goto error;
    }
 
@@ -145,7 +156,8 @@ hrmp_alsa_init_handle(int device, struct file_metadata* fm, snd_pcm_t** handle)
 
    if ((err = snd_pcm_hw_params(h, hw_params)) < 0)
    {
-      hrmp_log_error("snd_pcm_hw_params %s/%s", device, snd_strerror(err));
+      hrmp_log_error("snd_pcm_hw_params %s/%s", &config->active_device.name[0],
+                     snd_strerror(err));
       goto error;
    }
 
@@ -245,7 +257,7 @@ hrmp_alsa_close_handle(snd_pcm_t* handle)
 }
 
 int
-hrmp_alsa_init_volume(int device)
+hrmp_alsa_init_volume(void)
 {
    int current_volume = -1;
    int volume = -1;
@@ -253,12 +265,19 @@ hrmp_alsa_init_volume(int device)
 
    config = (struct configuration*)shmem;
 
-   if (hrmp_alsa_get_volume(device, &current_volume))
+   if (hrmp_alsa_get_volume(&current_volume))
    {
       current_volume = 100;
    }
 
-   volume = config->devices[device].volume;
+   if (strlen(&config->active_device.device[0]) >= 0)
+   {
+      volume = config->active_device.volume;
+   }
+   else
+   {
+      volume = 70;
+   }
 
    if (volume < 0)
    {
@@ -272,7 +291,7 @@ hrmp_alsa_init_volume(int device)
          volume = 100;
       }
 
-      hrmp_alsa_set_volume(device, volume);
+      hrmp_alsa_set_volume(volume);
    }
    else
    {
@@ -286,7 +305,7 @@ hrmp_alsa_init_volume(int device)
 }
 
 int
-hrmp_alsa_get_volume(int device, int* volume)
+hrmp_alsa_get_volume(int* volume)
 {
    int err = 0;
    snd_mixer_t* handle = NULL;
@@ -306,11 +325,11 @@ hrmp_alsa_get_volume(int device, int* volume)
    }
 
    memset(&address[0], 0, sizeof(address));
-   hrmp_snprintf(&address[0], sizeof(address), "hw:%d", config->devices[device].hardware);
+   hrmp_snprintf(&address[0], sizeof(address), "hw:%d", config->active_device.hardware);
 
    if ((err = snd_mixer_attach(handle, &address[0])) < 0)
    {
-      hrmp_log_error("Error: snd_mixer_attach(%s): %s", config->devices[device].name, snd_strerror(err));
+      hrmp_log_error("Error: snd_mixer_attach(%s): %s", &config->active_device.name[0], snd_strerror(err));
       goto error;
    }
 
@@ -326,39 +345,37 @@ hrmp_alsa_get_volume(int device, int* volume)
       goto error;
    }
 
-   snd_mixer_selem_id_malloc(&sid);
-   if (!sid)
+   if (snd_mixer_selem_id_malloc(&sid) < 0 || sid == NULL)
    {
       hrmp_log_error("Error: failed to allocate selem id");
       goto error;
    }
 
    snd_mixer_selem_id_set_index(sid, 0);
-   snd_mixer_selem_id_set_name(sid, config->devices[device].selem);
+   snd_mixer_selem_id_set_name(sid, config->active_device.selem);
 
    elem = snd_mixer_find_selem(handle, sid);
    snd_mixer_selem_id_free(sid);
+   sid = NULL;
 
-   if (!elem)
+   if (elem != NULL)
    {
-      hrmp_log_error("Error: simple element '%s' not found on card '%s'",
-                     config->devices[device].selem, config->devices[device].name);
+      if (snd_mixer_selem_has_playback_volume(elem) == 0)
+      {
+         goto error;
+      }
+
+      if ((err = snd_mixer_selem_get_playback_volume(elem, chn, &vol)) < 0)
+      {
+         goto error;
+      }
+   }
+   else
+   {
       goto error;
    }
 
-   if (snd_mixer_selem_has_playback_volume(elem) == 0)
-   {
-      hrmp_log_error("Error: element '%s' has no playback volume",
-                     config->devices[device].selem);
-      goto error;
-   }
-
-   if ((err = snd_mixer_selem_get_playback_volume(elem, chn, &vol)) < 0)
-   {
-      hrmp_log_error("Error: get playback volume: %s", snd_strerror(err));
-      goto error;
-   }
-
+   config->active_device.has_volume = true;
    *volume = (int)vol;
 
    snd_mixer_close(handle);
@@ -367,16 +384,24 @@ hrmp_alsa_get_volume(int device, int* volume)
 
 error:
 
+   if (sid != NULL)
+   {
+      snd_mixer_selem_id_free(sid);
+   }
+
    if (handle != NULL)
    {
       snd_mixer_close(handle);
    }
 
+   config->active_device.has_volume = false;
+   *volume = 70;
+
    return 1;
 }
 
 int
-hrmp_alsa_set_volume(int device, int volume)
+hrmp_alsa_set_volume(int volume)
 {
    int err = 0;
    snd_mixer_t* handle = NULL;
@@ -408,11 +433,11 @@ hrmp_alsa_set_volume(int device, int volume)
    }
 
    memset(&address[0], 0, sizeof(address));
-   hrmp_snprintf(&address[0], sizeof(address), "hw:%d", config->devices[device].hardware);
+   hrmp_snprintf(&address[0], sizeof(address), "hw:%d", config->active_device.hardware);
 
    if ((err = snd_mixer_attach(handle, &address[0])) < 0)
    {
-      hrmp_log_error("Error: snd_mixer_attach(%s): %s", config->devices[device].name, snd_strerror(err));
+      hrmp_log_error("Error: snd_mixer_attach(%s): %s", &config->active_device.name[0], snd_strerror(err));
       goto error;
    }
 
@@ -428,42 +453,40 @@ hrmp_alsa_set_volume(int device, int volume)
       goto error;
    }
 
-   snd_mixer_selem_id_malloc(&sid);
-   if (!sid)
+   if (snd_mixer_selem_id_malloc(&sid) < 0 || sid == NULL)
    {
       hrmp_log_error("Error: failed to allocate selem id");
       goto error;
    }
 
    snd_mixer_selem_id_set_index(sid, 0);
-   snd_mixer_selem_id_set_name(sid, config->devices[device].selem);
+   snd_mixer_selem_id_set_name(sid, &config->active_device.selem[0]);
 
    elem = snd_mixer_find_selem(handle, sid);
    snd_mixer_selem_id_free(sid);
+   sid = NULL;
 
-   if (!elem)
+   if (elem != NULL)
    {
-      hrmp_log_error("Error: simple element '%s' not found on card '%s'",
-                     config->devices[device].selem, config->devices[device].name);
+      if (snd_mixer_selem_has_playback_volume(elem) == 0)
+      {
+         goto error;
+      }
+
+      snd_mixer_selem_get_playback_volume_range(elem, &minv, &maxv);
+      vol = minv + (volume * (maxv - minv)) / 100;
+
+      if ((err = snd_mixer_selem_set_playback_volume_all(elem, vol)) < 0)
+      {
+         goto error;
+      }
+   }
+   else
+   {
       goto error;
    }
 
-   if (snd_mixer_selem_has_playback_volume(elem) == 0)
-   {
-      hrmp_log_error("Error: element '%s' has no playback volume",
-                     config->devices[device].selem);
-      goto error;
-   }
-
-   snd_mixer_selem_get_playback_volume_range(elem, &minv, &maxv);
-   vol = minv + (volume * (maxv - minv)) / 100;
-
-   if ((err = snd_mixer_selem_set_playback_volume_all(elem, vol)) < 0)
-   {
-      hrmp_log_error("Error: set playback volume: %s", snd_strerror(err));
-      goto error;
-   }
-
+   config->active_device.has_volume = true;
    config->volume = volume;
 
    snd_mixer_close(handle);
@@ -472,16 +495,24 @@ hrmp_alsa_set_volume(int device, int volume)
 
 error:
 
+   if (sid != NULL)
+   {
+      snd_mixer_selem_id_free(sid);
+   }
+
    if (handle != NULL)
    {
       snd_mixer_close(handle);
    }
 
+   config->active_device.has_volume = false;
+   config->volume = 70;
+
    return 1;
 }
 
 static int
-find_best_format(int device, struct file_metadata* fm, snd_pcm_format_t* format)
+find_best_format(struct file_metadata* fm, snd_pcm_format_t* format)
 {
    bool found = false;
    snd_pcm_format_t fmt;
@@ -498,7 +529,7 @@ find_best_format(int device, struct file_metadata* fm, snd_pcm_format_t* format)
 
    if (fm->format == FORMAT_16)
    {
-      if (config->devices[device].capabilities.s16_le)
+      if (config->active_device.capabilities.s16_le)
       {
          fm->container = 16;
          fmt = SND_PCM_FORMAT_S16_LE;
@@ -507,13 +538,13 @@ find_best_format(int device, struct file_metadata* fm, snd_pcm_format_t* format)
    }
    else if (fm->format == FORMAT_24)
    {
-      if (config->devices[device].capabilities.s24_3le)
+      if (config->active_device.capabilities.s24_3le)
       {
          fm->container = 24;
          fmt = SND_PCM_FORMAT_S24_3LE;
          found = true;
       }
-      else if (config->devices[device].capabilities.s32_le)
+      else if (config->active_device.capabilities.s32_le)
       {
          fm->container = 32;
          fmt = SND_PCM_FORMAT_S32_LE;
@@ -522,7 +553,7 @@ find_best_format(int device, struct file_metadata* fm, snd_pcm_format_t* format)
    }
    else if (fm->format == FORMAT_32)
    {
-      if (config->devices[device].capabilities.s32_le)
+      if (config->active_device.capabilities.s32_le)
       {
          fm->container = 32;
          fmt = SND_PCM_FORMAT_S32_LE;
@@ -533,7 +564,7 @@ find_best_format(int device, struct file_metadata* fm, snd_pcm_format_t* format)
    {
       if (!config->dop)
       {
-         if (config->devices[device].capabilities.dsd_u32_be)
+         if (config->active_device.capabilities.dsd_u32_be)
          {
             fm->container = 32;
             fmt = SND_PCM_FORMAT_DSD_U32_BE;
@@ -543,7 +574,7 @@ find_best_format(int device, struct file_metadata* fm, snd_pcm_format_t* format)
 
       if (!found)
       {
-         if (config->devices[device].capabilities.s32_le)
+         if (config->active_device.capabilities.s32_le)
          {
             fm->container = 32;
             fmt = SND_PCM_FORMAT_S32_LE;

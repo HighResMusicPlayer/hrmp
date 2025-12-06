@@ -90,10 +90,11 @@ main(int argc, char** argv)
    bool q = false;
    bool e = false;
    bool d = false;
+   bool f = false;
    bool dop = false;
    int files_index = 1;
    int action = ACTION_NOTHING;
-   int active_device = -1;
+   char* ad = NULL;
    char* filepath = NULL;
    int optind = 0;
    int num_options = 0;
@@ -102,8 +103,7 @@ main(int argc, char** argv)
    struct list* files = NULL;
    struct list_entry* files_entry = NULL;
 
-   cli_option options[] =
-   {
+   cli_option options[] = {
       {"c", "config", true},
       {"D", "device", true},
       {"R", "recursive", false},
@@ -114,6 +114,7 @@ main(int argc, char** argv)
       {"V", "version", false},
       {"", "experimental", false},
       {"", "developer", false},
+      {"", "fallback", false},
       {"?", "help", false}
    };
 
@@ -189,6 +190,11 @@ main(int argc, char** argv)
       else if (!strcmp(optname, "developer"))
       {
          d = true;
+         files_index += 1;
+      }
+      else if (!strcmp(optname, "fallback"))
+      {
+         f = true;
          files_index += 1;
       }
       else if (!strcmp(optname, "?") || !strcmp(optname, "help"))
@@ -269,6 +275,7 @@ main(int argc, char** argv)
    config->quiet = q;
    config->experimental = e;
    config->developer = d;
+   config->fallback = f;
    config->dop = dop;
 
    if (action == ACTION_HELP)
@@ -311,21 +318,44 @@ main(int argc, char** argv)
       {
          if (hrmp_is_device_known(device_name))
          {
-            active_device = hrmp_active_device(device_name);
-         }
-         else
-         {
-            printf("Unknown device '%s'\n", device_name);
+            hrmp_activate_device(device_name);
          }
       }
       else
       {
-         active_device = hrmp_active_device(config->device);
+         hrmp_activate_device(config->device);
       }
 
-      if (active_device >= 0)
+      if (strlen(config->active_device.device) == 0)
       {
-         hrmp_alsa_init_volume(active_device);
+         if (config->fallback)
+         {
+            if (device_name != NULL)
+            {
+               if (config->developer)
+               {
+                  printf("\n");
+                  hrmp_list_fallback_devices();
+               }
+               hrmp_create_active_device(device_name);
+            }
+            else
+            {
+               hrmp_list_fallback_devices();
+               printf("Fallback requires a device name\n");
+            }
+         }
+      }
+
+      if (config->developer)
+      {
+         printf("\nActive device: ");
+         hrmp_print_device(&config->active_device);
+      }
+
+      if (strlen(config->active_device.device) > 0)
+      {
+         hrmp_alsa_init_volume();
 
          if (hrmp_list_create(&files))
          {
@@ -337,7 +367,7 @@ main(int argc, char** argv)
          {
             if (hrmp_is_directory(argv[i]))
             {
-               hrmp_get_files(active_device, argv[i], recursive, files);
+               hrmp_get_files(argv[i], recursive, files);
             }
             else
             {
@@ -384,14 +414,14 @@ main(int argc, char** argv)
          {
             struct file_metadata* fm = NULL;
 
-            if (hrmp_file_metadata(active_device, files_entry->value, &fm))
+            if (hrmp_file_metadata(files_entry->value, &fm))
             {
                printf("Not supported: %s\n", files_entry->value);
                continue;
             }
 
             hrmp_set_proc_title(argc, argv, fm->name);
-            hrmp_playback(active_device, num_files + 1, files->size, fm);
+            hrmp_playback(num_files + 1, files->size, fm);
 
             num_files++;
 
@@ -407,6 +437,7 @@ main(int argc, char** argv)
 
    hrmp_list_destroy(files);
 
+   free(ad);
    free(cp);
 
    return 0;
@@ -418,6 +449,7 @@ error:
 
    hrmp_list_destroy(files);
 
+   free(ad);
    free(cp);
 
    return 1;
