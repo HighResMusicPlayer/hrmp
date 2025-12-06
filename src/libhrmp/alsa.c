@@ -282,11 +282,6 @@ hrmp_alsa_init_volume(int device)
    config->volume = volume;
    config->prev_volume = volume;
 
-   if (config->developer)
-   {
-      printf("Volume: %d\n", volume);
-   }
-
    return 0;
 }
 
