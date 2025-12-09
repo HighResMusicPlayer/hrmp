@@ -47,6 +47,7 @@
 static int playback_init(int number, int total, snd_pcm_t* pcm_handle, struct file_metadata* fm, struct playback** playback);
 static int playback_identifier(struct file_metadata* fm, char** identifer);
 
+static char* format_output(struct playback* pb);
 static char* get_progress(struct playback* pb);
 static void print_progress_done(struct playback* pb);
 
@@ -943,6 +944,169 @@ fmt2(int v, char out[3])
    out[2] = '\0';
 }
 
+static char*
+format_output(struct playback* pb)
+{
+   char* fmt = NULL;
+   char* fname = NULL;
+   char cur_m2[3], cur_s2[3], tot_m2[3], tot_s2[3];
+   double current = 0.0;
+   int current_hour = 0;
+   int current_min = 0;
+   int current_sec = 0;
+   int total_hour = 0;
+   int total_min = 0;
+   int total_sec = 0;
+   int percent = 0;
+   char* out = NULL;
+   struct configuration* config = (struct configuration*)shmem;
+
+   if (config == NULL || pb == NULL || pb->fm == NULL || config->quiet)
+   {
+      return NULL;
+   }
+
+   fmt = (strlen(config->output) > 0) ? config->output : HRMP_DEFAULT_OUTPUT_FORMAT;
+
+   /* Current time from samples and sample_rate */
+   if (pb->fm->sample_rate > 0)
+   {
+      current = (double)pb->current_samples / (double)pb->fm->sample_rate;
+   }
+   else
+   {
+      current = 0.0;
+   }
+
+   int icur = (int)current;
+   current_min = icur / 60;
+   current_sec = icur - (current_min * 60);
+   if (current_min >= 60)
+   {
+      current_hour = current_min / 60;
+      current_min = current_min - (current_hour * 60);
+   }
+
+   /* Total time from fm->duration */
+   double totald = pb->fm->duration;
+   int itot = (int)totald;
+   total_min = itot / 60;
+   total_sec = itot - (total_min * 60);
+   if (total_min >= 60)
+   {
+      total_hour = total_min / 60;
+      total_min = total_min - (total_hour * 60);
+   }
+
+   /* Manual zero-padding */
+   fmt2(current_min, cur_m2);
+   fmt2(current_sec, cur_s2);
+   fmt2(total_min, tot_m2);
+   fmt2(total_sec, tot_s2);
+
+   out = hrmp_append(out, "\r");
+
+   for (const char* p = fmt; p && *p; ++p)
+   {
+      if (*p == '%' && *(p + 1) != '\0')
+      {
+         ++p;
+         switch (*p)
+         {
+            case 'n':
+               out = hrmp_append_int(out, pb->file_number);
+               break;
+            case 'N':
+               out = hrmp_append_int(out, pb->total_number);
+               break;
+            case 'f':
+               fname = strrchr(pb->fm->name, '/');
+               fname = fname ? fname + 1 : pb->fm->name;
+               out = hrmp_append(out, (char*)fname);
+               break;
+            case 'F':
+               out = hrmp_append(out, (char*)pb->fm->name);
+               break;
+            case 'd':
+               out = hrmp_append(out, &config->active_device.name[0]);
+               break;
+            case 'p':
+               if (pb->fm->duration > 0.0)
+               {
+                  percent = (int)((current * 100.0) / pb->fm->duration);
+               }
+               else
+               {
+                  percent = 0;
+               }
+
+               if (percent < 0)
+               {
+                  percent = 0;
+               }
+
+               if (percent > 100)
+               {
+                  percent = 100;
+               }
+
+               out = hrmp_append_int(out, percent);
+               out = hrmp_append_char(out, '%');
+               break;
+            case 't':
+               if (total_hour > 0)
+               {
+                  out = hrmp_append_int(out, current_hour);
+                  out = hrmp_append_char(out, ':');
+                  out = hrmp_append(out, cur_m2);
+                  out = hrmp_append_char(out, ':');
+                  out = hrmp_append(out, cur_s2);
+               }
+               else
+               {
+                  out = hrmp_append(out, cur_m2);
+                  out = hrmp_append_char(out, ':');
+                  out = hrmp_append(out, cur_s2);
+               }
+               break;
+            case 'T':
+               if (total_hour > 0)
+               {
+                  out = hrmp_append_int(out, total_hour);
+                  out = hrmp_append_char(out, ':');
+                  out = hrmp_append(out, tot_m2);
+                  out = hrmp_append_char(out, ':');
+                  out = hrmp_append(out, tot_s2);
+               }
+               else
+               {
+                  out = hrmp_append(out, tot_m2);
+                  out = hrmp_append_char(out, ':');
+                  out = hrmp_append(out, tot_s2);
+               }
+               break;
+            case 'i':
+               out = hrmp_append(out, pb->identifier);
+               break;
+
+            case '%':
+               out = hrmp_append_char(out, '%');
+               break;
+            default:
+               out = hrmp_append_char(out, '%');
+               out = hrmp_append_char(out, *p);
+               break;
+         }
+      }
+      else
+      {
+         out = hrmp_append_char(out, *p);
+      }
+   }
+
+   return out;
+}
+
 static int
 playback_init(int number, int total,
               snd_pcm_t* pcm_handle, struct file_metadata* fm,
@@ -1004,8 +1168,6 @@ playback_identifier(struct file_metadata* fm, char** identifer)
    config = (struct configuration*)shmem;
 
    *identifer = NULL;
-
-   id = hrmp_append_char(id, '[');
 
    if (fm->type == TYPE_WAV)
    {
@@ -1143,8 +1305,6 @@ playback_identifier(struct file_metadata* fm, char** identifer)
          goto error;
    }
 
-   id = hrmp_append_char(id, ']');
-
    *identifer = id;
 
    return 0;
@@ -1163,109 +1323,13 @@ static char*
 get_progress(struct playback* pb)
 {
    char* print = NULL;
-   struct configuration* config = NULL;
+   char* formatted = format_output(pb);
 
-   config = (struct configuration*)shmem;
-
-   if (!config->quiet)
+   if (formatted != NULL)
    {
-      char t[MAX_PATH];
-      char cur_m2[3], cur_s2[3], tot_m2[3], tot_s2[3];
-      double current = 0.0;
-      int current_hour = 0;
-      int current_min = 0;
-      int current_sec = 0;
-      int total_hour = 0;
-      int total_min = 0;
-      int total_sec = 0;
-      int percent = 0;
-
-      memset(&t[0], 0, sizeof(t));
-
-      /* Current time from samples and sample_rate */
-      if (pb->fm->sample_rate > 0)
-      {
-         current = (double)pb->current_samples / (double)pb->fm->sample_rate;
-      }
-      else
-      {
-         current = 0.0;
-      }
-
-      int icur = (int)current;
-      current_min = icur / 60;
-      current_sec = icur - (current_min * 60);
-      if (current_min >= 60)
-      {
-         current_hour = current_min / 60;
-         current_min = current_min - (current_hour * 60);
-      }
-
-      /* Total time from fm->duration */
-      double totald = pb->fm->duration;
-      int itot = (int)totald;
-      total_min = itot / 60;
-      total_sec = itot - (total_min * 60);
-      if (total_min >= 60)
-      {
-         total_hour = total_min / 60;
-         total_min = total_min - (total_hour * 60);
-      }
-
-      /* Percent */
-      if (pb->fm->duration > 0.0)
-      {
-         percent = (int)((current * 100.0) / pb->fm->duration);
-      }
-      else
-      {
-         percent = 0;
-      }
-      if (percent < 0)
-      {
-         percent = 0;
-      }
-      if (percent > 100)
-      {
-         percent = 100;
-      }
-
-      /* Manual zero-padding */
-      fmt2(current_min, cur_m2);
-      fmt2(current_sec, cur_s2);
-      fmt2(total_min, tot_m2);
-      fmt2(total_sec, tot_s2);
-
-      if (total_hour > 0)
-      {
-         /* H:MM:SS/H:MM:SS */
-         hrmp_snprintf(&t[0], sizeof(t), "%d:%s:%s/%d:%s:%s",
-                       current_hour, cur_m2, cur_s2,
-                       total_hour, tot_m2, tot_s2);
-      }
-      else
-      {
-         /* M:SS/M:SS */
-         hrmp_snprintf(&t[0], sizeof(t), "%d:%s/%d:%s",
-                       current_min, cur_s2,
-                       total_min, tot_s2);
-      }
-
-      print = hrmp_append(print, "\r[");
-      print = hrmp_append_int(print, pb->file_number);
-      print = hrmp_append_char(print, '/');
-      print = hrmp_append_int(print, pb->total_number);
-      print = hrmp_append(print, "] ");
-      print = hrmp_append(print, &config->active_device.name[0]);
-      print = hrmp_append(print, ": ");
-      print = hrmp_append(print, pb->fm->name);
-      print = hrmp_append_char(print, ' ');
-      print = hrmp_append(print, pb->identifier);
-      print = hrmp_append(print, " (");
-      print = hrmp_append(print, &t[0]);
-      print = hrmp_append(print, ") (");
-      print = hrmp_append_int(print, percent);
-      print = hrmp_append(print, "%)");
+      print = hrmp_append(print, formatted);
+      free(formatted);
+      formatted = NULL;
    }
 
    return print;
@@ -1274,48 +1338,23 @@ get_progress(struct playback* pb)
 static void
 print_progress_done(struct playback* pb)
 {
-   struct configuration* config = NULL;
+   char* print = NULL;
+   char* formatted = NULL;
 
-   config = (struct configuration*)shmem;
+   /* Change playback */
+   pb->current_samples = pb->fm->total_samples;
 
-   if (!config->quiet)
+   formatted = format_output(pb);
+
+   if (formatted != NULL)
    {
-      char t[MAX_PATH];
-      char tot_m2[3], tot_s2[3];
-      int total_hour = 0;
-      int total_min = 0;
-      int total_sec = 0;
+      print = hrmp_append(print, "\x1b[2K");
+      print = hrmp_append(print, formatted);
 
-      memset(&t[0], 0, sizeof(t));
+      printf("%s\n", print);
 
-      double totald = pb->fm->duration;
-      int itot = (int)totald;
-      total_min = itot / 60;
-      total_sec = itot - (total_min * 60);
-      if (total_min >= 60)
-      {
-         total_hour = total_min / 60;
-         total_min = total_min - (total_hour * 60);
-      }
-
-      fmt2(total_min, tot_m2);
-      fmt2(total_sec, tot_s2);
-
-      if (total_hour > 0)
-      {
-         hrmp_snprintf(&t[0], sizeof(t), "%d:%s:%s/%d:%s:%s",
-                       total_hour, tot_m2, tot_s2,
-                       total_hour, tot_m2, tot_s2);
-      }
-      else
-      {
-         hrmp_snprintf(&t[0], sizeof(t), "%d:%s/%d:%s",
-                       total_min, tot_s2, total_min, tot_s2);
-      }
-
-      printf("\x1b[2K\r[%d/%d] %s: %s %s (%s) (100%%)\n", pb->file_number,
-             pb->total_number, &config->active_device.name[0], pb->fm->name,
-             pb->identifier, &t[0]);
+      free(formatted);
+      free(print);
 
       fflush(stdout);
    }

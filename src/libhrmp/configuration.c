@@ -102,6 +102,9 @@ hrmp_init_configuration(void* shm)
 
    config->update_process_title = UPDATE_PROCESS_TITLE_VERBOSE;
 
+   memset(config->output, 0, sizeof(config->output));
+   hrmp_snprintf(config->output, sizeof(config->output), "%s", HRMP_DEFAULT_OUTPUT_FORMAT);
+
    for (int i = 0; i < NUMBER_OF_DEVICES; i++)
    {
       hrmp_init_device(&config->devices[i]);
@@ -211,6 +214,16 @@ hrmp_read_configuration(void* shm, char* filename, bool emitWarnings)
                      max = MISC_LENGTH - 1;
                   }
                   memcpy(config->device, value, max);
+               }
+               else if (key_in_section("output", section, key, true, &unknown))
+               {
+                  max = strlen(value);
+                  if (max > MISC_LENGTH - 1)
+                  {
+                     max = MISC_LENGTH - 1;
+                  }
+                  memset(config->output, 0, sizeof(config->output));
+                  memcpy(config->output, value, max);
                }
                else if (key_in_section("device", section, key, false, &unknown))
                {
@@ -1079,6 +1092,10 @@ hrmp_write_config_value(char* buffer, char* config_key, size_t buffer_size)
       else if (!strncmp(key, "log_path", MISC_LENGTH))
       {
          return to_string(buffer, config->log_path, buffer_size);
+      }
+      else if (!strncmp(key, "output", MISC_LENGTH))
+      {
+         return to_string(buffer, config->output, buffer_size);
       }
       else if (!strncmp(key, "update_process_title", MISC_LENGTH))
       {

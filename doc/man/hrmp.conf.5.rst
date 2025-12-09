@@ -28,6 +28,9 @@ OPTIONS
 device
   The default device
 
+output
+   Defines the console output. Valid expansions are: %n (current track number), %N (total number of tracks), %d (device name), %f (file name), %F (full path of file), %i (file information), %t (current time), %T (total time), %p (percentage). Default is [%n/%N] %d: %f [%i] (%t/%T) (%p)
+
 volume
   The volume in percent. -1 means use current volume
 

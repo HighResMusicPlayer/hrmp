@@ -60,6 +60,8 @@ extern "C" {
 #define MISC_LENGTH  512
 #define MAX_PATH    1024
 
+#define HRMP_DEFAULT_OUTPUT_FORMAT "[%n/%N] %d: %f [%i] (%t/%T) (%p)"
+
 /**
  * The shared memory segment
  */
@@ -177,6 +179,7 @@ struct configuration
    char configuration_path[MAX_PATH];       /**< The configuration path */
 
    char device[MISC_LENGTH];                 /**< The name of the default device */
+   char output[MISC_LENGTH];                 /**< The output format */
 
    struct device active_device;              /**< The active device */
 
