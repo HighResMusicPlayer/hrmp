@@ -1045,7 +1045,8 @@ format_output(struct playback* pb)
                   percent = 0;
                }
 
-               if (percent > 100)
+               if (percent > 100 ||
+                   (pb->current_samples == pb->fm->total_samples))
                {
                   percent = 100;
                }
