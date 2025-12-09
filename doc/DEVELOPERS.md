@@ -114,6 +114,7 @@ The following command line options are for developers only, and hence isn't docu
 | Command line option | Description |
 | :------------------ | :---------- |
 | `--developer`       | Enable information for developers about DAC setup and audio files |
+| `--experimental`    | Enable experimental features. Use at own RISK |
 | `--fallback`        | Enable on-board DAC for minimum playback of non-DSD files |
 
 ## Audio formats
