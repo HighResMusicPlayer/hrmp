@@ -1006,12 +1006,16 @@ format_output(struct playback* pb)
 
    out = hrmp_append(out, "\r");
 
-   for (const char* p = fmt; p && *p; ++p)
+   size_t len = strlen(fmt);
+
+   for (size_t i = 0; i < len; ++i)
    {
-      if (*p == '%' && *(p + 1) != '\0')
+      char c = fmt[i];
+
+      if (c == '%' && (i + 1) < len)
       {
-         ++p;
-         switch (*p)
+         ++i;
+         switch (fmt[i])
          {
             case 'n':
                out = hrmp_append_int(out, pb->file_number);
@@ -1095,13 +1099,62 @@ format_output(struct playback* pb)
                break;
             default:
                out = hrmp_append_char(out, '%');
-               out = hrmp_append_char(out, *p);
+               out = hrmp_append_char(out, fmt[i]);
                break;
+         }
+      }
+      else if (c == '\\' && (i + 1) < len)
+      {
+         char n = fmt[i + 1];
+
+         if (n == '0' && (i + 3) < len && fmt[i + 2] == '3' && fmt[i + 3] == '3')
+         {
+            /* Octal escape for ESC: \033 */
+            out = hrmp_append_char(out, '\x1b');
+            i += 3;
+         }
+         else if ((n == 'x' || n == 'X') &&
+                  (i + 3) < len && (fmt[i + 2] == '1' && (fmt[i + 3] == 'b' || fmt[i + 3] == 'B')))
+         {
+            /* Hex escape for ESC: \x1b or \x1B */
+            out = hrmp_append_char(out, '\x1b');
+            i += 3;
+         }
+         else if (n == 'e' || n == 'E')
+         {
+            /* GNU-style \e escape for ESC */
+            out = hrmp_append_char(out, '\x1b');
+            ++i;
+         }
+         else if (n == 'n')
+         {
+            out = hrmp_append_char(out, '\n');
+            ++i;
+         }
+         else if (n == 'r')
+         {
+            out = hrmp_append_char(out, '\r');
+            ++i;
+         }
+         else if (n == 't')
+         {
+            out = hrmp_append_char(out, '\t');
+            ++i;
+         }
+         else if (n == '\\')
+         {
+            out = hrmp_append_char(out, '\\');
+            ++i;
+         }
+         else
+         {
+            /* Unknown escape, keep the backslash literal */
+            out = hrmp_append_char(out, c);
          }
       }
       else
       {
-         out = hrmp_append_char(out, *p);
+         out = hrmp_append_char(out, c);
       }
    }
 

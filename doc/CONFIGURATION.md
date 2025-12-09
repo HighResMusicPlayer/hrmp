@@ -36,3 +36,53 @@ The `Bool` data type supports the following values: `on`, `1`, `true`, `off`, `0
 | device | | String | Yes | The device address |
 | description | | String | No | The description of the device |
 | volume   | -1 | Int | No | The volume in percent. -1 means use current volume |
+
+## Console output
+
+The default console output format is
+
+```
+[%n/%N] %d: %f [%i] (%t/%T) (%p)
+```
+
+The expansions supported are
+
+| Expansion | Description |
+| :-------- | :---------- |
+| `%n`      | Current track number |
+| `%N`      | Total number of tracks |
+| `%d`      | Device name |
+| `%f`      | File name |
+| `%F`      | Full path of the file |
+| `%i`      | File information |
+| `%t`      | Current time |
+| `%T`      | Total time |
+| `%p`      | Percentage |
+
+The console also supports color using the ANSI color codes
+
+| Code      | Description |
+| :-------- | :---------- |
+| `\e[0m`   | No Color |
+| `\e[0;30m`| Black |
+| `\e[1;30m`| Gray |
+| `\e[0;31m`| Red |
+| `\e[1;31m`| Light red |
+| `\e[0;32m`| Green |
+| `\e[1;32m`| Light green |
+| `\e[0;33m`| Brown |
+| `\e[1;33m`| Yellow |
+| `\e[0;34m`| Blue |
+| `\e[1;34m`| Light blue |
+| `\e[0;35m`| Purple |
+| `\e[1;35m`| Light purple |
+| `\e[0;36m`| Cyan |
+| `\e[1;36m`| Light cyan |
+| `\e[0;37m`| Light gray |
+| `\e[1;37m`| White |
+
+An example
+
+```
+output=[\e[1;32m%t\e[0m/\e[0;32m%T\e[0m] \e[1;37m%f\e[0m
+```
