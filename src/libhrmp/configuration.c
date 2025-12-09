@@ -93,6 +93,8 @@ hrmp_init_configuration(void* shm)
    config->prev_volume = -1;
    config->is_muted = false;
 
+   config->metadata = false;
+
    config->dop = false;
 
    config->log_type = HRMP_LOGGING_TYPE_CONSOLE;

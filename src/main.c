@@ -66,6 +66,7 @@ usage(void)
    printf("  -D, --device               Set the device name\n");
    printf("  -R, --recursive            Add files recursive of the directory\n");
    printf("  -I, --sample-configuration Generate a sample configuration\n");
+   printf("  -m, --metadata             Display metadata of the files\n");
    printf("  -s, --status               Status of the devices\n");
    printf("      --dop                  Use DSD over PCM\n");
    printf("  -q, --quiet                Quiet the player\n");
@@ -91,6 +92,7 @@ main(int argc, char** argv)
    bool e = false;
    bool d = false;
    bool f = false;
+   bool m = false;
    bool dop = false;
    int files_index = 1;
    int action = ACTION_NOTHING;
@@ -108,6 +110,7 @@ main(int argc, char** argv)
       {"D", "device", true},
       {"R", "recursive", false},
       {"I", "sample-configuration", false},
+      {"m", "metadata", false},
       {"s", "status", false},
       {"", "dop", false},
       {"q", "quiet", false},
@@ -160,6 +163,11 @@ main(int argc, char** argv)
       else if (!strcmp(optname, "I") || !strcmp(optname, "sample-configuration"))
       {
          action = ACTION_SAMPLE_CONFIG;
+         files_index += 1;
+      }
+      else if (!strcmp(optname, "m") || !strcmp(optname, "metadata"))
+      {
+         m = true;
          files_index += 1;
       }
       else if (!strcmp(optname, "s") || !strcmp(optname, "status"))
@@ -273,6 +281,7 @@ main(int argc, char** argv)
    }
 
    config->quiet = q;
+   config->metadata = m;
    config->experimental = e;
    config->developer = d;
    config->fallback = f;

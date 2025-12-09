@@ -33,6 +33,9 @@ OPTIONS
 -I, --sample-configuration
   Generate a sample configuration
 
+-m, --metadata
+  Display metadata of the files
+
 -s, --status
   Status of the devices
 

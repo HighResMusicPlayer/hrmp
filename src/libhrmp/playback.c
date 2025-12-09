@@ -244,7 +244,7 @@ hrmp_playback(int number, int total, struct file_metadata* fm)
       goto error;
    }
 
-   if (config->developer)
+   if (config->metadata || config->developer)
    {
       hrmp_print_file_metadata(fm);
    }

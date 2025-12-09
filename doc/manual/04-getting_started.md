@@ -18,6 +18,7 @@ Options:
   -D, --device               Set the device name
   -R, --recursive            Add files recursive of the directory
   -I, --sample-configuration Generate a sample configuration
+  -m, --metadata             Display metadata of the files
   -s, --status               Status of the devices
       --dop                  Use DSD over PCM
   -q, --quiet                Quiet the player

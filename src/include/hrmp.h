@@ -189,6 +189,8 @@ struct configuration
    int prev_volume;                          /**< The previous volume */
    bool is_muted;                            /**< Is muted */
 
+   bool metadata;                            /**< Display metadata about files */
+
    bool experimental;                        /**< Allow experimental features */
    bool developer;                           /**< Enable developer features */
    bool fallback;                            /**< Enable fallback features */
