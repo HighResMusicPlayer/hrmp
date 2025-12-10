@@ -45,6 +45,12 @@ What is the version of faad2 ?
 
 Please, use `rpm -qa | grep  | sort` or similar
 
+**gtk3**
+
+What is the version of gtk3 ?
+
+Please, use `rpm -qa | grep  | sort` or similar
+
 **OS**
 
 Which Operating System (OS) is used ?

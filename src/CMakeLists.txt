@@ -147,3 +147,34 @@ endif()
 target_link_libraries(hrmp-bin hrmp)
 
 install(TARGETS hrmp-bin DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+#
+# GTK-based UI for hrmp
+#
+pkg_check_modules(GTK3 REQUIRED gtk+-3.0)
+
+set(HRMP_UI_RESOURCE_XML ${CMAKE_CURRENT_SOURCE_DIR}/hrmp-ui.gresource.xml)
+
+add_custom_command(
+  OUTPUT hrmp-ui-resources.c
+  COMMAND glib-compile-resources
+          --target=hrmp-ui-resources.c
+          --generate-source
+          --sourcedir=${CMAKE_SOURCE_DIR}
+          ${HRMP_UI_RESOURCE_XML}
+  DEPENDS ${HRMP_UI_RESOURCE_XML} ${CMAKE_SOURCE_DIR}/LICENSE
+)
+
+add_executable(hrmp-ui
+  ui.c
+  hrmp-ui-resources.c
+)
+
+set_source_files_properties(hrmp-ui-resources.c PROPERTIES GENERATED TRUE)
+
+target_include_directories(hrmp-ui PRIVATE ${GTK3_INCLUDE_DIRS})
+target_link_libraries(hrmp-ui PRIVATE ${GTK3_LIBRARIES})
+target_compile_options(hrmp-ui PRIVATE ${GTK3_CFLAGS_OTHER})
+target_compile_definitions(hrmp-ui PRIVATE HRMP_GTK_VERSION_STRING="${VERSION_STRING}")
+
+install(TARGETS hrmp-ui RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

@@ -6,8 +6,8 @@ License:       GPL
 URL:           https://github.com/HighResMusicPlayer/hrmp
 Source0:       https://github.com/HighResMusicPlayer/hrmp/releases/download/%{version}/hrmp-%{version}.tar.gz
 
-BuildRequires: gcc cmake make python3-docutils alsa-lib alsa-lib-devel libsndfile libsndfile-devel opus-devel faad2-devel
-Requires:      alsa-lib libsndfile opus faad2
+BuildRequires: gcc cmake make python3-docutils alsa-lib alsa-lib-devel libsndfile libsndfile-devel opus-devel faad2-devel gtk3-devel
+Requires:      alsa-lib libsndfile opus faad2 gtk3
 
 %description
 hrmp is a high resolution music player.
@@ -43,9 +43,11 @@ cmake -DCMAKE_BUILD_TYPE=Release ..
 %{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/RPM.md %{buildroot}%{_docdir}/%{name}/RPM.md
 
 %{__install} -m 644 %{_builddir}/%{name}-%{version}/build/doc/hrmp.1 %{buildroot}%{_mandir}/man1/hrmp.1
+%{__install} -m 644 %{_builddir}/%{name}-%{version}/build/doc/hrmp-ui.1 %{buildroot}%{_mandir}/man1/hrmp-ui.1
 %{__install} -m 644 %{_builddir}/%{name}-%{version}/build/doc/hrmp.conf.5 %{buildroot}%{_mandir}/man5/hrmp.conf.5
 
 %{__install} -m 755 %{_builddir}/%{name}-%{version}/build/src/hrmp %{buildroot}%{_bindir}/hrmp
+%{__install} -m 755 %{_builddir}/%{name}-%{version}/build/src/hrmp-ui %{buildroot}%{_bindir}/hrmp-ui
 
 %{__install} -m 755 %{_builddir}/%{name}-%{version}/build/src/libhrmp.so.%{version} %{buildroot}%{_libdir}/libhrmp.so.%{version}
 
@@ -67,7 +69,10 @@ cd %{buildroot}%{_libdir}/
 %{_docdir}/%{name}/README.md
 %{_docdir}/%{name}/RPM.md
 %{_mandir}/man1/hrmp.1*
+%{_mandir}/man1/hrmp-ui.1*
+%{_mandir}/man5/hrmp.conf.5*
 %{_bindir}/hrmp
+%{_bindir}/hrmp-ui
 %{_libdir}/libhrmp.so
 %{_libdir}/libhrmp.so.0
 %{_libdir}/libhrmp.so.%{version}

@@ -5,6 +5,8 @@ if (RST2MAN_FOUND)
   # man page definitions
   set(HRMP_SRC_FILE "${CMAKE_CURRENT_SOURCE_DIR}/man/hrmp.1.rst")
   set(HRMP_DST_FILE "${CMAKE_CURRENT_BINARY_DIR}/hrmp.1")
+  set(HRMP_UI_SRC_FILE "${CMAKE_CURRENT_SOURCE_DIR}/man/hrmp-ui.1.rst")
+  set(HRMP_UI_DST_FILE "${CMAKE_CURRENT_BINARY_DIR}/hrmp-ui.1")
   set(HRMP_CONF_SRC_FILE "${CMAKE_CURRENT_SOURCE_DIR}/man/hrmp.conf.5.rst")
   set(HRMP_CONF_DST_FILE "${CMAKE_CURRENT_BINARY_DIR}/hrmp.conf.5")
 
@@ -14,6 +16,14 @@ if (RST2MAN_FOUND)
     COMMAND ${RST2MAN_EXECUTABLE} ${HRMP_SRC_FILE} ${HRMP_DST_FILE}
     DEPENDS ${HRMP_SRC_FILE}
     COMMENT "Generating man page: hrmp.1"
+  )
+
+  # hrmp-ui.1
+  add_custom_command(
+    OUTPUT ${HRMP_UI_DST_FILE}
+    COMMAND ${RST2MAN_EXECUTABLE} ${HRMP_UI_SRC_FILE} ${HRMP_UI_DST_FILE}
+    DEPENDS ${HRMP_UI_SRC_FILE}
+    COMMENT "Generating man page: hrmp-ui.1"
   )
 
   # hrmp.conf.5
@@ -26,7 +36,7 @@ if (RST2MAN_FOUND)
 
   # Group man page outputs into a target
   add_custom_target(manpages ALL
-    DEPENDS ${HRMP_DST_FILE} ${HRMP_CONF_DST_FILE}
+    DEPENDS ${HRMP_DST_FILE} ${HRMP_UI_DST_FILE} ${HRMP_CONF_DST_FILE}
   )
 
   # Make 'man' depend on 'manpages'
@@ -38,6 +48,7 @@ if (RST2MAN_FOUND)
   install(DIRECTORY . DESTINATION share/doc/hrmp FILES_MATCHING PATTERN "*.md" PATTERN "etc" EXCLUDE PATTERN "man" EXCLUDE PATTERN "manual" EXCLUDE)
 
   install(FILES ${HRMP_DST_FILE} DESTINATION share/man/man1)
+  install(FILES ${HRMP_UI_DST_FILE} DESTINATION share/man/man1)
   install(FILES ${HRMP_CONF_DST_FILE} DESTINATION share/man/man5)
 endif()
 
@@ -55,14 +66,14 @@ if (DOCS)
 
   add_custom_command(
     OUTPUT ${MANUAL_OUTPUT_DIR}/hrmp-en.pdf
-    COMMAND ${PANDOC_EXECUTABLE} -o ${MANUAL_OUTPUT_DIR}/hrmp-en.pdf --from markdown --template eisvogel --listings -N --toc ${MAN_EN}
+    COMMAND ${PANDOC_EXECUTABLE} -o ${MANUAL_OUTPUT_DIR}/hrmp-en.pdf --from markdown --template eisvogel --listings -N --toc --resource-path=${CMAKE_CURRENT_SOURCE_DIR}/manual ${MAN_EN}
     DEPENDS ${MAN_EN}
     COMMENT "Generating English PDF documentation"
   )
 
   add_custom_command(
     OUTPUT ${MANUAL_OUTPUT_DIR}/hrmp-en.html
-    COMMAND ${PANDOC_EXECUTABLE} -o ${MANUAL_OUTPUT_DIR}/hrmp-en.html -s -f markdown-smart -N --toc -t html5 ${MAN_EN}
+    COMMAND ${PANDOC_EXECUTABLE} -o ${MANUAL_OUTPUT_DIR}/hrmp-en.html -s -f markdown-smart -N --toc -t html5 --resource-path=${CMAKE_CURRENT_SOURCE_DIR}/manual ${MAN_EN}
     DEPENDS ${MAN_EN}
     COMMENT "Generating English HTML documentation"
   )
@@ -74,6 +85,7 @@ if (DOCS)
 
   install(FILES ${MANUAL_OUTPUT_DIR}/hrmp-en.pdf DESTINATION share/doc/hrmp/manual)
   install(FILES ${MANUAL_OUTPUT_DIR}/hrmp-en.html DESTINATION share/doc/hrmp/manual)
+  install(DIRECTORY manual/images DESTINATION share/doc/hrmp/manual)
 
   #
   # Generate API docs

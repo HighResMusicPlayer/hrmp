@@ -13,6 +13,7 @@
 * [libsndfile](https://libsndfile.github.io/libsndfile/)
 * [opus](https://github.com/xiph/opus)
 * [faad2](https://github.com/knik0/faad2)
+* [GTK](https://www.gtk.org/)
 * [rst2man](https://docutils.sourceforge.io/)
 * [pandoc](https://pandoc.org/)
 * [texlive](https://www.tug.org/texlive/)
@@ -23,7 +24,8 @@ dnf install git gcc clang clang-analyzer cmake make \
     alsa-lib alsa-lib-devel \
     libsndfile libsndfile-devel \
     opus opus-devel \
-    faad2 faad2-devel
+    faad2 faad2-devel \
+    gtk3 gtk3-devel
 ```
 
 ### Generate the guide

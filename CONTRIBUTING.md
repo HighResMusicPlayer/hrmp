@@ -34,7 +34,7 @@ Don't forget to indicate your hrmp version.
 For Red Hat RPM based distributions use the following command:
 
 ```
-dnf install git gcc clang clang-analyzer cmake make python3-docutils libasan libasan-static alsa-lib alsa-lib-devel libsndfile libsndfile-devel opus opus-devel faad2-libs faad2-devel
+dnf install git gcc clang clang-analyzer cmake make python3-docutils libasan libasan-static alsa-lib alsa-lib-devel libsndfile libsndfile-devel opus opus-devel faad2-libs faad2-devel gtk3 gtk3-devel
 ```
 
 in order to get the necessary dependencies.

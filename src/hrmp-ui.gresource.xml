@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gresources>
+  <gresource prefix="/org/hrmp/hrmp-ui">
+    <file alias="gpl-3.0.txt">LICENSE</file>
+    <file alias="AUTHORS">AUTHORS</file>
+  </gresource>
+</gresources>

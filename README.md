@@ -35,11 +35,12 @@ See [Configuration](./doc/CONFIGURATION.md) on how to configure `hrmp`.
 * [libsndfile](https://libsndfile.github.io/libsndfile/)
 * [opus](https://github.com/xiph/opus)
 * [faad2](https://github.com/knik0/faad2)
+* [GTK](https://www.gtk.org/)
 * [rst2man](https://docutils.sourceforge.io/)
 
 
 ```sh
-dnf install git gcc clang clang-analyzer cmake make python3-docutils libasan libasan-static alsa-lib alsa-lib-devel libsndfile libsndfile-devel opus opus-devel faad2-libs faad2-devel
+dnf install git gcc clang clang-analyzer cmake make python3-docutils libasan libasan-static alsa-lib alsa-lib-devel libsndfile libsndfile-devel opus opus-devel faad2-libs faad2-devel gtk3 gtk3-devel
 ```
 
 Optionally dependencies
