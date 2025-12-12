@@ -30,10 +30,13 @@ extern "C" {
 /** @struct list_entry
  * Node of a singly linked list of strings
  */
+struct list;
+
 struct list_entry
 {
    char value[MAX_PATH];        /**< Stored string value (NUL-terminated) */
    struct list_entry* next;     /**< Pointer to the next entry */
+   struct list* list;           /**< Owning list */
 };
 
 /** @struct list
@@ -110,6 +113,15 @@ hrmp_list_head(struct list* list);
  */
 struct list_entry*
 hrmp_list_next(struct list_entry* entry);
+
+/**
+ * Get the previous entry in the list.
+ * If the given entry is the first in the list, the head is returned.
+ * @param entry The current entry
+ * @return The previous entry, or NULL if entry is NULL or not found
+ */
+struct list_entry*
+hrmp_list_prev(struct list_entry* entry);
 
 #ifdef __cplusplus
 }

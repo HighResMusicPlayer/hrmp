@@ -417,10 +417,10 @@ main(int argc, char** argv)
          }
 
          num_files = 0;
-         for (files_entry = hrmp_list_head(files);
-              files_entry != NULL;
-              files_entry = hrmp_list_next(files_entry))
+         files_entry = hrmp_list_head(files);
+         while (files_entry != NULL)
          {
+            bool next;
             struct file_metadata* fm = NULL;
 
             if (hrmp_file_metadata(files_entry->value, &fm))
@@ -430,9 +430,22 @@ main(int argc, char** argv)
             }
 
             hrmp_set_proc_title(argc, argv, fm->name);
-            hrmp_playback(num_files + 1, files->size, fm);
+            hrmp_playback(num_files + 1, files->size, fm, &next);
 
-            num_files++;
+            if (next)
+            {
+               files_entry = hrmp_list_next(files_entry);
+               num_files++;
+            }
+            else
+            {
+               files_entry = hrmp_list_prev(files_entry);
+               num_files--;
+               if (num_files < 0)
+               {
+                  num_files = 0;
+               }
+            }
 
             free(fm);
          }

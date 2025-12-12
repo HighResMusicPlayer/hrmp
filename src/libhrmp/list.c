@@ -114,6 +114,7 @@ hrmp_list_insert_node(struct list* list, const char* value, bool at_head)
    node->value[MAX_PATH - 1] = '\0';
 
    node->next = NULL;
+   node->list = list;
 
    if (hrmp_list_empty(list))
    {
@@ -168,4 +169,46 @@ hrmp_list_next(struct list_entry* entry)
    }
 
    return entry->next;
+}
+
+struct list_entry*
+hrmp_list_prev(struct list_entry* entry)
+{
+   struct list* list;
+   struct list_entry* current;
+   struct list_entry* prev;
+
+   if (entry == NULL)
+   {
+      return NULL;
+   }
+
+   list = entry->list;
+   if (list == NULL)
+   {
+      return NULL;
+   }
+
+   /* If entry is the head or list has fewer than 2 elements, return head */
+   if (list->head == NULL || list->head == entry || list->head->next == NULL)
+   {
+      return list->head;
+   }
+
+   prev = list->head;
+   current = list->head->next;
+
+   while (current != NULL && current != entry)
+   {
+      prev = current;
+      current = current->next;
+   }
+
+   if (current == NULL)
+   {
+      /* entry not found in list */
+      return NULL;
+   }
+
+   return prev;
 }

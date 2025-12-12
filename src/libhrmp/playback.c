@@ -56,13 +56,13 @@ static int read_exact(FILE* f, void* buf, size_t n);
 static uint8_t bitrev8(uint8_t x);
 
 static int playback_sndfile(snd_pcm_t* pcm_handle, struct playback* pb,
-                            int number, int total);
+                            int number, int total, bool* next);
 static int playback_dsf(snd_pcm_t* pcm_handle, struct playback* pb,
-                        int number, int total);
+                        int number, int total, bool* next);
 static int playback_dff(snd_pcm_t* pcm_handle, struct playback* pb,
-                        int number, int total);
+                        int number, int total, bool* next);
 static int playback_mkv(snd_pcm_t* pcm_handle, struct playback* pb,
-                        int number, int total); /* MKV path with PTS-based time */
+                        int number, int total, bool* next);
 
 static void writei_all(snd_pcm_t* h, void* buf, snd_pcm_uframes_t frames, size_t bytes_per_frame);
 static unsigned frames_from_ms(struct playback* pb, unsigned ms);
@@ -70,9 +70,13 @@ static unsigned frames_from_ms(struct playback* pb, unsigned ms);
 static void write_dsd_center_pad(struct playback* pb, unsigned frames, uint8_t* marker);
 static void write_dsd_fadeout(struct playback* pb, unsigned ms, uint8_t* marker);
 static int dsd_play_dop_s32le(FILE* f, struct playback* pb,
-                              uint32_t in_channels, uint32_t stride_per_ch_hint, uint64_t bytes_left);
+                              uint32_t in_channels, uint32_t stride_per_ch_hint,
+                              uint64_t bytes_left, bool* next);
 static int dsd_play_native_u32_be(FILE* f, struct playback* pb,
-                                  uint32_t in_channels, uint32_t stride_per_ch_hint, uint64_t bytes_left);
+                                  uint32_t in_channels,
+                                  uint32_t stride_per_ch_hint,
+                                  uint64_t bytes_left,
+                                  bool* next);
 
 static int do_keyboard(FILE* f, SNDFILE* sndf, struct playback* pb, char** k);
 
@@ -218,7 +222,7 @@ write_dsd_fadeout(struct playback* pb, unsigned ms, uint8_t* marker)
 }
 
 int
-hrmp_playback(int number, int total, struct file_metadata* fm)
+hrmp_playback(int number, int total, struct file_metadata* fm, bool* next)
 {
    int ret = 1;
    snd_pcm_t* pcm_handle = NULL;
@@ -226,6 +230,8 @@ hrmp_playback(int number, int total, struct file_metadata* fm)
    struct configuration* config = NULL;
 
    config = (struct configuration*)shmem;
+
+   *next = true;
 
    normalize_pcm_rate(config, fm);
 
@@ -251,19 +257,19 @@ hrmp_playback(int number, int total, struct file_metadata* fm)
 
    if (fm->type == TYPE_WAV || fm->type == TYPE_FLAC || fm->type == TYPE_MP3)
    {
-      ret = playback_sndfile(pcm_handle, pb, number, total);
+      ret = playback_sndfile(pcm_handle, pb, number, total, next);
    }
    else if (fm->type == TYPE_DSF)
    {
-      ret = playback_dsf(pcm_handle, pb, number, total);
+      ret = playback_dsf(pcm_handle, pb, number, total, next);
    }
    else if (fm->type == TYPE_DFF)
    {
-      ret = playback_dff(pcm_handle, pb, number, total);
+      ret = playback_dff(pcm_handle, pb, number, total, next);
    }
    else if (fm->type == TYPE_MKV)
    {
-      ret = playback_mkv(pcm_handle, pb, number, total);
+      ret = playback_mkv(pcm_handle, pb, number, total, next);
    }
    else
    {
@@ -287,7 +293,7 @@ error:
 }
 
 static int
-playback_sndfile(snd_pcm_t* pcm_handle, struct playback* pb, int number, int total)
+playback_sndfile(snd_pcm_t* pcm_handle, struct playback* pb, int number, int total, bool* next)
 {
    int err;
    SNDFILE* f = NULL;
@@ -303,6 +309,8 @@ playback_sndfile(snd_pcm_t* pcm_handle, struct playback* pb, int number, int tot
    int32_t* input_buffer = NULL;
    size_t output_buffer_size = 0;
    unsigned char* output_buffer = NULL;
+
+   *next = true;
 
    info = (SF_INFO*)malloc(sizeof(SF_INFO));
    if (info == NULL)
@@ -471,8 +479,13 @@ playback_sndfile(snd_pcm_t* pcm_handle, struct playback* pb, int number, int tot
 
       kb = do_keyboard(NULL, f, pb, &k);
 
-      if (kb == 1)
+      if (kb == 1 || kb == 2)
       {
+         if (kb == 2)
+         {
+            *next = false;
+         }
+
          free(p);
          p = NULL;
          break;
@@ -551,12 +564,14 @@ read_exact(FILE* f, void* buf, size_t n)
 }
 
 static int
-playback_dsf(snd_pcm_t* pcm_handle, struct playback* pb, int number, int total)
+playback_dsf(snd_pcm_t* pcm_handle, struct playback* pb, int number, int total, bool* next)
 {
    FILE* f = NULL;
    struct configuration* config = NULL;
 
    config = (struct configuration*)shmem;
+
+   *next = true;
 
    f = fopen(pb->fm->name, "rb");
    if (f == NULL)
@@ -578,11 +593,11 @@ playback_dsf(snd_pcm_t* pcm_handle, struct playback* pb, int number, int total)
    if (config->dop && (pb->fm->alsa_snd == SND_PCM_FORMAT_S32 ||
                        pb->fm->alsa_snd == SND_PCM_FORMAT_S32_LE))
    {
-      dsd_play_dop_s32le(f, pb, ch_in, stride, left);
+      dsd_play_dop_s32le(f, pb, ch_in, stride, left, next);
    }
    else
    {
-      dsd_play_native_u32_be(f, pb, ch_in, stride, left);
+      dsd_play_native_u32_be(f, pb, ch_in, stride, left, next);
    }
 
    fclose(f);
@@ -600,13 +615,15 @@ error:
 }
 
 static int
-playback_dff(snd_pcm_t* pcm_handle, struct playback* pb, int number, int total)
+playback_dff(snd_pcm_t* pcm_handle, struct playback* pb, int number, int total, bool* next)
 {
    FILE* f = NULL;
    char id4[5] = {0};
    struct configuration* config = NULL;
 
    config = (struct configuration*)shmem;
+
+   *next = true;
 
    f = fopen(pb->fm->name, "rb");
    if (f == NULL)
@@ -642,11 +659,11 @@ playback_dff(snd_pcm_t* pcm_handle, struct playback* pb, int number, int total)
          if (config->dop && (pb->fm->alsa_snd == SND_PCM_FORMAT_S32 ||
                              pb->fm->alsa_snd == SND_PCM_FORMAT_S32_LE))
          {
-            dsd_play_dop_s32le(f, pb, ch_in, stride, chunk_size);
+            dsd_play_dop_s32le(f, pb, ch_in, stride, chunk_size, next);
          }
          else
          {
-            dsd_play_native_u32_be(f, pb, ch_in, stride, chunk_size);
+            dsd_play_native_u32_be(f, pb, ch_in, stride, chunk_size, next);
          }
          goto done;
       }
@@ -681,10 +698,12 @@ error:
 }
 
 static int
-playback_mkv(snd_pcm_t* pcm_handle, struct playback* pb, int number, int total)
+playback_mkv(snd_pcm_t* pcm_handle, struct playback* pb, int number, int total, bool* next)
 {
    MkvDemuxer* demux = NULL;
    MkvAudioInfo ai;
+
+   *next = true;
 
    if (hrmp_mkv_open_path(pb->fm->name, &demux) < 0 || !demux)
    {
@@ -718,11 +737,11 @@ playback_mkv(snd_pcm_t* pcm_handle, struct playback* pb, int number, int total)
       char* k = NULL;
 
       kb = do_keyboard(NULL, NULL, pb, &k);
-      if (kb == 1)
+      if (kb == 1 || kb == 2)
       {
          break;
       }
-      else if (kb == 2)
+      else if (kb == 3)
       {
          uint64_t target_samples = (uint64_t)pb->current_samples;
          uint64_t target_ns = (sr > 0) ? (target_samples * 1000000000ULL) / (uint64_t)sr : 0ULL;
@@ -1416,7 +1435,7 @@ print_progress_done(struct playback* pb)
 
 static int
 dsd_play_dop_s32le(FILE* f, struct playback* pb,
-                   uint32_t in_channels, uint32_t stride_per_ch_hint, uint64_t bytes_left)
+                   uint32_t in_channels, uint32_t stride_per_ch_hint, uint64_t bytes_left, bool* next)
 {
    uint32_t ch_out = 2;
    size_t bytes_per_frame = (size_t)ch_out * 4u;
@@ -1430,6 +1449,9 @@ dsd_play_dop_s32le(FILE* f, struct playback* pb,
    unsigned pre = (pb->fm->sample_rate >= 11289600u) ? 4096 : 2048;
    size_t pre_bytes = (size_t)pre * bytes_per_frame;
    uint8_t* pr = (uint8_t*)malloc(pre_bytes);
+
+   *next = true;
+
    if (pr)
    {
       uint8_t m = DOP_MARKER_8LSB;
@@ -1581,8 +1603,12 @@ dsd_play_dop_s32le(FILE* f, struct playback* pb,
 
          kb = do_keyboard(f, NULL, pb, &k);
 
-         if (kb == 1)
+         if (kb == 1 || kb == 2)
          {
+            if (kb == 2)
+            {
+               *next = false;
+            }
             free(k);
             goto done;
          }
@@ -1631,7 +1657,7 @@ done:
 
 static int
 dsd_play_native_u32_be(FILE* f, struct playback* pb,
-                       uint32_t in_channels, uint32_t stride_per_ch_hint, uint64_t bytes_left)
+                       uint32_t in_channels, uint32_t stride_per_ch_hint, uint64_t bytes_left, bool* next)
 {
    uint32_t ch_out = 2;
    size_t bytes_per_frame = (size_t)ch_out * 4u;
@@ -1804,8 +1830,12 @@ dsd_play_native_u32_be(FILE* f, struct playback* pb,
 
          kb = do_keyboard(f, NULL, pb, &k);
 
-         if (kb == 1)
+         if (kb == 1 || kb == 2)
          {
+            if (kb == 2)
+            {
+               *next = false;
+            }
             free(p);
             p = NULL;
             goto done;
@@ -1880,6 +1910,11 @@ keyboard:
    {
       free(k);
       return 1;
+   }
+   else if (keyboard_action == KEYBOARD_BACKSLASH)
+   {
+      free(k);
+      return 2;
    }
    else if (keyboard_action == KEYBOARD_SPACE)
    {
@@ -2005,7 +2040,7 @@ keyboard:
          }
          pb->current_samples = (unsigned long)new_pos_samples;
          free(k);
-         return 2;
+         return 3;
       }
    }
    else if (keyboard_action == KEYBOARD_COMMA)

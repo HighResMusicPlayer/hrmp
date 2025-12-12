@@ -107,6 +107,9 @@ hrmp_keyboard_get(char** keyboard_code)
          case 47:
             ret = KEYBOARD_SLASH;
             break;
+         case 92:
+            ret = KEYBOARD_BACKSLASH;
+            break;
          default:
             break;
       }

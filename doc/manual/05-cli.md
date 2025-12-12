@@ -115,7 +115,8 @@ hrmp -V
 | :-------------- | :------------------- |
 | `<SPACEBAR>`    | Pause current file   |
 | `q`             | Quit                 |
-| `<ENTER>`       | Quit current file    |
+| `<ENTER>`       | Next song / Quit     |
+| `<BACKSLASH>`   | Previous song        |
 | `<ARROW_UP>`    | Forward 1 minute     |
 | `<ARROW_DOWN>`  | Rewind 1 minute      |
 | `<ARROW_LEFT>`  | Forward 15 seconds   |

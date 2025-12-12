@@ -49,10 +49,11 @@ struct playback
  * @param number The file number
  * @param total The total number of files
  * @param fm The file metadata
+ * @param next Are going forward or backward
  * @return 0 upon success, otherwise 1
  */
 int
-hrmp_playback(int number, int total, struct file_metadata* fm);
+hrmp_playback(int number, int total, struct file_metadata* fm, bool* next);
 
 #ifdef __cplusplus
 }
