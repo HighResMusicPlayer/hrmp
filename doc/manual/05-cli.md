@@ -15,6 +15,7 @@ Options:
   -c, --config CONFIG_FILE   Set the path to the hrmp.conf file
                              Default: $HOME/.hrmp/hrmp.conf
   -D, --device               Set the device name
+  -p, --playlist PLAYLIST    Load files/directories from a playlist file (.hrmp)
   -R, --recursive            Add files recursive of the directory
   -I, --sample-configuration Generate a sample configuration
   -m, --metadata             Display metadata of the files
@@ -43,6 +44,21 @@ Select a non-default device for output
 
 ```sh
 hrmp -D "MyDAC" .
+```
+
+## -p
+
+Load files from a playlist file. The playlist is a plain text file (typically ending in `.hrmp`) with one entry per line:
+
+* Relative file/directory path (relative to the playlist file directory)
+* Absolute file/directory path
+* `*` = all files in the playlist file directory
+* `**/*` = recursively add all files in the playlist file directory
+
+If both a playlist and files are provided on the command line, the playlist entries are queued first.
+
+```sh
+hrmp -p everlast.hrmp
 ```
 
 ## -R

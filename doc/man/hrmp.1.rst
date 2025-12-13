@@ -27,6 +27,9 @@ OPTIONS
 -D, --device
   Set the device name
 
+-p, --playlist PLAYLIST
+  Load files/directories from a playlist file (.hrmp)
+
 -R, --recursive
   Add files recursive of the directory
 

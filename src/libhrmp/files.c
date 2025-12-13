@@ -312,6 +312,24 @@ done:
    }
 }
 
+bool
+hrmp_file_is_supported(char* filename)
+{
+   if (filename == NULL)
+   {
+      return false;
+   }
+
+   return hrmp_ends_with(filename, ".wav") ||
+          hrmp_ends_with(filename, ".flac") ||
+          hrmp_ends_with(filename, ".mp3") ||
+          hrmp_ends_with(filename, ".dsf") ||
+          hrmp_ends_with(filename, ".dff") ||
+          hrmp_ends_with(filename, ".mkv") ||
+          hrmp_ends_with(filename, ".mka") ||
+          hrmp_ends_with(filename, ".webm");
+}
+
 int
 hrmp_file_metadata(char* f, struct file_metadata** fm)
 {

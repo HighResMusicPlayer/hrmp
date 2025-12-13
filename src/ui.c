@@ -20,6 +20,15 @@
 #include <glib/gprintf.h>
 #include <gio/gio.h>
 
+#ifdef MAX
+#undef MAX
+#endif
+#ifdef MIN
+#undef MIN
+#endif
+#include <files.h>
+#include <playlist.h>
+
 #include <errno.h>
 #include <signal.h>
 #include <stdbool.h>
@@ -29,7 +38,6 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-
 
 #define HRMP_DEFAULT_PATH "/usr/bin/hrmp"
 
@@ -88,12 +96,15 @@ struct App
 
 static void start_hrmp(struct App* app);
 static void stop_hrmp(struct App* app);
+static void send_key(struct App* app, gchar c);
 static void hrmp_gtk_update_status(struct App* app);
 static void hrmp_gtk_update_song_from_output(struct App* app);
 
 static gboolean on_debug_window_delete(GtkWidget* widget, GdkEvent* event, gpointer user_data);
 static void hrmp_gtk_show_debug_window(struct App* app);
 static void on_menu_debug(GtkWidget* widget, gpointer user_data);
+static void on_menu_load(GtkWidget* widget, gpointer user_data);
+static void on_menu_save(GtkWidget* widget, gpointer user_data);
 static void on_debug_clear_clicked(GtkWidget* widget, gpointer user_data);
 static void on_debug_close_clicked(GtkWidget* widget, gpointer user_data);
 
@@ -192,6 +203,158 @@ on_debug_close_clicked(GtkWidget* widget, gpointer user_data)
    {
       gtk_widget_hide(app->debug_window);
    }
+}
+
+static void
+on_menu_load(GtkWidget* widget, gpointer user_data)
+{
+   (void)widget;
+   struct App* app = user_data;
+
+   GtkWidget* dialog = gtk_file_chooser_dialog_new("Load playlist",
+                                                   GTK_WINDOW(app->window),
+                                                   GTK_FILE_CHOOSER_ACTION_OPEN,
+                                                   "_Cancel",
+                                                   GTK_RESPONSE_CANCEL,
+                                                   "_Open",
+                                                   GTK_RESPONSE_ACCEPT,
+                                                   NULL);
+
+   GtkFileFilter* filter = gtk_file_filter_new();
+   gtk_file_filter_set_name(filter, "Playlists (*.hrmp)");
+   gtk_file_filter_add_pattern(filter, "*.hrmp");
+   gtk_file_filter_add_pattern(filter, "*.HRMP");
+   gtk_file_chooser_add_filter(GTK_FILE_CHOOSER(dialog), filter);
+   gtk_file_chooser_set_filter(GTK_FILE_CHOOSER(dialog), filter);
+
+   if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT)
+   {
+      gchar* playlist_path = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog));
+
+      if (app->hrmp_running)
+      {
+         send_key(app, 'q');
+         stop_hrmp(app);
+      }
+
+      gtk_list_store_clear(app->list_store);
+
+      struct list* files = NULL;
+      if (hrmp_list_create(&files) == 0)
+      {
+         if (hrmp_playlist_load(playlist_path, files, true) == 0)
+         {
+            for (struct list_entry* e = hrmp_list_head(files); e != NULL; e = hrmp_list_next(e))
+            {
+               const char* filename = e->value;
+
+               if (!hrmp_file_is_supported((char*)filename))
+               {
+                  continue;
+               }
+
+               GtkTreeIter iter;
+               gtk_list_store_append(app->list_store, &iter);
+
+               if (app->files_mode == HRMP_FILES_MODE_SHORT)
+               {
+                  gchar* base = g_path_get_basename(filename);
+                  gtk_list_store_set(app->list_store, &iter, 0, filename, 1, base, -1);
+                  g_free(base);
+               }
+               else
+               {
+                  gtk_list_store_set(app->list_store, &iter, 0, filename, 1, filename, -1);
+               }
+            }
+         }
+
+         hrmp_list_destroy(files);
+      }
+
+      g_free(playlist_path);
+   }
+
+   gtk_widget_destroy(dialog);
+}
+
+static void
+on_menu_save(GtkWidget* widget, gpointer user_data)
+{
+   (void)widget;
+   struct App* app = user_data;
+
+   GtkWidget* dialog = gtk_file_chooser_dialog_new("Save playlist",
+                                                   GTK_WINDOW(app->window),
+                                                   GTK_FILE_CHOOSER_ACTION_SAVE,
+                                                   "_Cancel",
+                                                   GTK_RESPONSE_CANCEL,
+                                                   "_Save",
+                                                   GTK_RESPONSE_ACCEPT,
+                                                   NULL);
+
+   gtk_file_chooser_set_do_overwrite_confirmation(GTK_FILE_CHOOSER(dialog), TRUE);
+   gtk_file_chooser_set_current_name(GTK_FILE_CHOOSER(dialog), "playlist.hrmp");
+
+   GtkFileFilter* filter = gtk_file_filter_new();
+   gtk_file_filter_set_name(filter, "Playlists (*.hrmp)");
+   gtk_file_filter_add_pattern(filter, "*.hrmp");
+   gtk_file_filter_add_pattern(filter, "*.HRMP");
+   gtk_file_chooser_add_filter(GTK_FILE_CHOOSER(dialog), filter);
+   gtk_file_chooser_set_filter(GTK_FILE_CHOOSER(dialog), filter);
+
+   if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT)
+   {
+      gchar* chosen = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog));
+      gchar* out_path = chosen;
+
+      if (!g_str_has_suffix(out_path, ".hrmp") && !g_str_has_suffix(out_path, ".HRMP"))
+      {
+         out_path = g_strconcat(chosen, ".hrmp", NULL);
+      }
+
+      FILE* f = fopen(out_path, "w");
+      if (f == NULL)
+      {
+         gchar* msg = g_strdup_printf("Failed to save playlist: %s", strerror(errno));
+         GtkWidget* md = gtk_message_dialog_new(GTK_WINDOW(app->window),
+                                                GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
+                                                GTK_MESSAGE_ERROR,
+                                                GTK_BUTTONS_OK,
+                                                "%s",
+                                                msg);
+         g_free(msg);
+         gtk_dialog_run(GTK_DIALOG(md));
+         gtk_widget_destroy(md);
+      }
+      else
+      {
+         GtkTreeModel* model = GTK_TREE_MODEL(app->list_store);
+         GtkTreeIter iter;
+         gboolean valid = gtk_tree_model_get_iter_first(model, &iter);
+         while (valid)
+         {
+            gchar* filename = NULL;
+            gtk_tree_model_get(model, &iter, 0, &filename, -1);
+            if (filename != NULL)
+            {
+               fprintf(f, "%s\n", filename);
+               g_free(filename);
+            }
+            valid = gtk_tree_model_iter_next(model, &iter);
+         }
+
+         fclose(f);
+      }
+
+      if (out_path != chosen)
+      {
+         g_free(out_path);
+      }
+      g_free(chosen);
+   }
+
+   gtk_widget_destroy(dialog);
 }
 
 static void hrmp_gtk_ensure_devices(struct App* app);
@@ -1730,6 +1893,30 @@ on_button_add_clicked(GtkWidget* button, gpointer user_data)
                                                    GTK_RESPONSE_ACCEPT,
                                                    NULL);
 
+   GtkFileFilter* audio_filter = gtk_file_filter_new();
+   gtk_file_filter_set_name(audio_filter, "Supported audio files");
+
+   /* Keep in sync with hrmp_file_is_supported() */
+   gtk_file_filter_add_pattern(audio_filter, "*.wav");
+   gtk_file_filter_add_pattern(audio_filter, "*.WAV");
+   gtk_file_filter_add_pattern(audio_filter, "*.flac");
+   gtk_file_filter_add_pattern(audio_filter, "*.FLAC");
+   gtk_file_filter_add_pattern(audio_filter, "*.mp3");
+   gtk_file_filter_add_pattern(audio_filter, "*.MP3");
+   gtk_file_filter_add_pattern(audio_filter, "*.dsf");
+   gtk_file_filter_add_pattern(audio_filter, "*.DSF");
+   gtk_file_filter_add_pattern(audio_filter, "*.dff");
+   gtk_file_filter_add_pattern(audio_filter, "*.DFF");
+   gtk_file_filter_add_pattern(audio_filter, "*.mkv");
+   gtk_file_filter_add_pattern(audio_filter, "*.MKV");
+   gtk_file_filter_add_pattern(audio_filter, "*.mka");
+   gtk_file_filter_add_pattern(audio_filter, "*.MKA");
+   gtk_file_filter_add_pattern(audio_filter, "*.webm");
+   gtk_file_filter_add_pattern(audio_filter, "*.WEBM");
+
+   gtk_file_chooser_add_filter(GTK_FILE_CHOOSER(dialog), audio_filter);
+   gtk_file_chooser_set_filter(GTK_FILE_CHOOSER(dialog), audio_filter);
+
    gtk_file_chooser_set_select_multiple(GTK_FILE_CHOOSER(dialog), TRUE);
 
    if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT)
@@ -1738,6 +1925,13 @@ on_button_add_clicked(GtkWidget* button, gpointer user_data)
       for (GSList* l = files; l != NULL; l = l->next)
       {
          const gchar* filename = l->data;
+
+         if (!hrmp_file_is_supported((char*)filename))
+         {
+            g_free(l->data);
+            continue;
+         }
+
          GtkTreeIter iter;
 
          gtk_list_store_append(app->list_store, &iter);
@@ -1771,6 +1965,111 @@ on_button_add_clicked(GtkWidget* button, gpointer user_data)
    }
 
    gtk_widget_destroy(dialog);
+}
+
+static void
+on_button_move_up_clicked(GtkWidget* button, gpointer user_data)
+{
+   (void)button;
+   struct App* app = user_data;
+
+   GtkTreeSelection* selection = gtk_tree_view_get_selection(GTK_TREE_VIEW(app->list_view));
+   GtkTreeModel* model = GTK_TREE_MODEL(app->list_store);
+   GtkTreeIter iter;
+
+   if (!gtk_tree_selection_get_selected(selection, NULL, &iter))
+   {
+      return;
+   }
+
+   GtkTreePath* path = gtk_tree_model_get_path(model, &iter);
+   if (path == NULL)
+   {
+      return;
+   }
+
+   gint* indices = gtk_tree_path_get_indices(path);
+   if (indices == NULL || indices[0] <= 0)
+   {
+      gtk_tree_path_free(path);
+      return;
+   }
+
+   GtkTreePath* prev_path = gtk_tree_path_copy(path);
+   if (prev_path == NULL || !gtk_tree_path_prev(prev_path))
+   {
+      gtk_tree_path_free(path);
+      if (prev_path != NULL)
+      {
+         gtk_tree_path_free(prev_path);
+      }
+      return;
+   }
+
+   GtkTreeIter prev_iter;
+   if (!gtk_tree_model_get_iter(model, &prev_iter, prev_path))
+   {
+      gtk_tree_path_free(path);
+      gtk_tree_path_free(prev_path);
+      return;
+   }
+
+   gtk_list_store_swap(app->list_store, &iter, &prev_iter);
+
+   gtk_tree_selection_unselect_all(selection);
+   gtk_tree_selection_select_iter(selection, &prev_iter);
+   gtk_tree_view_scroll_to_cell(GTK_TREE_VIEW(app->list_view), prev_path, NULL, FALSE, 0.0, 0.0);
+
+   gtk_tree_path_free(path);
+   gtk_tree_path_free(prev_path);
+}
+
+static void
+on_button_move_down_clicked(GtkWidget* button, gpointer user_data)
+{
+   (void)button;
+   struct App* app = user_data;
+
+   GtkTreeSelection* selection = gtk_tree_view_get_selection(GTK_TREE_VIEW(app->list_view));
+   GtkTreeModel* model = GTK_TREE_MODEL(app->list_store);
+   GtkTreeIter iter;
+
+   if (!gtk_tree_selection_get_selected(selection, NULL, &iter))
+   {
+      return;
+   }
+
+   GtkTreePath* path = gtk_tree_model_get_path(model, &iter);
+   if (path == NULL)
+   {
+      return;
+   }
+
+   GtkTreePath* next_path = gtk_tree_path_copy(path);
+   if (next_path == NULL)
+   {
+      gtk_tree_path_free(path);
+      return;
+   }
+
+   gtk_tree_path_next(next_path);
+
+   GtkTreeIter next_iter;
+   if (!gtk_tree_model_get_iter(model, &next_iter, next_path))
+   {
+      gtk_tree_path_free(path);
+      gtk_tree_path_free(next_path);
+      return;
+   }
+
+   gtk_list_store_swap(app->list_store, &iter, &next_iter);
+
+   gtk_tree_selection_unselect_all(selection);
+   gtk_tree_selection_select_iter(selection, &next_iter);
+   gtk_tree_view_scroll_to_cell(GTK_TREE_VIEW(app->list_view), next_path, NULL, FALSE, 0.0, 0.0);
+
+   gtk_tree_path_free(path);
+   gtk_tree_path_free(next_path);
 }
 
 static void
@@ -2487,6 +2786,8 @@ create_main_window(struct App* app)
    GtkAccelGroup* accel_group;
    GtkWidget* file_item;
    GtkWidget* file_menu;
+   GtkWidget* menu_load;
+   GtkWidget* menu_save;
    GtkWidget* menu_quit;
    GtkWidget* edit_item;
    GtkWidget* edit_menu;
@@ -2501,6 +2802,8 @@ create_main_window(struct App* app)
    GtkWidget* hbox;
    GtkWidget* toolbar_spacer;
    GtkWidget* add_button;
+   GtkWidget* move_up_button;
+   GtkWidget* move_down_button;
    GtkWidget* clear_button;
    GtkWidget* scrolled_window;
    GtkCellRenderer* renderer;
@@ -2521,8 +2824,13 @@ create_main_window(struct App* app)
 
    file_item = gtk_menu_item_new_with_mnemonic("_File");
    file_menu = gtk_menu_new();
+   menu_load = gtk_menu_item_new_with_mnemonic("_Load");
+   menu_save = gtk_menu_item_new_with_mnemonic("_Save");
    menu_quit = gtk_menu_item_new_with_mnemonic("_Quit");
 
+   gtk_menu_shell_append(GTK_MENU_SHELL(file_menu), menu_load);
+   gtk_menu_shell_append(GTK_MENU_SHELL(file_menu), menu_save);
+   gtk_menu_shell_append(GTK_MENU_SHELL(file_menu), gtk_separator_menu_item_new());
    gtk_menu_shell_append(GTK_MENU_SHELL(file_menu), menu_quit);
    gtk_menu_item_set_submenu(GTK_MENU_ITEM(file_item), file_menu);
    gtk_menu_shell_append(GTK_MENU_SHELL(menubar), file_item);
@@ -2568,6 +2876,8 @@ create_main_window(struct App* app)
    GtkWidget* image_skip_back = gtk_image_new_from_icon_name("media-seek-backward", GTK_ICON_SIZE_BUTTON);
    GtkWidget* image_skip_ahead = gtk_image_new_from_icon_name("media-seek-forward", GTK_ICON_SIZE_BUTTON);
    GtkWidget* image_add = gtk_image_new_from_icon_name("list-add", GTK_ICON_SIZE_BUTTON);
+   GtkWidget* image_up = gtk_image_new_from_icon_name("go-up", GTK_ICON_SIZE_BUTTON);
+   GtkWidget* image_down = gtk_image_new_from_icon_name("go-down", GTK_ICON_SIZE_BUTTON);
    GtkWidget* image_clear = gtk_image_new_from_icon_name("edit-clear", GTK_ICON_SIZE_BUTTON);
 
    app->prev_button = gtk_button_new();
@@ -2610,6 +2920,14 @@ create_main_window(struct App* app)
    gtk_button_set_image(GTK_BUTTON(add_button), image_add);
    gtk_button_set_relief(GTK_BUTTON(add_button), GTK_RELIEF_NONE);
 
+   move_up_button = gtk_button_new();
+   gtk_button_set_image(GTK_BUTTON(move_up_button), image_up);
+   gtk_button_set_relief(GTK_BUTTON(move_up_button), GTK_RELIEF_NONE);
+
+   move_down_button = gtk_button_new();
+   gtk_button_set_image(GTK_BUTTON(move_down_button), image_down);
+   gtk_button_set_relief(GTK_BUTTON(move_down_button), GTK_RELIEF_NONE);
+
    clear_button = gtk_button_new();
    gtk_button_set_image(GTK_BUTTON(clear_button), image_clear);
    gtk_button_set_relief(GTK_BUTTON(clear_button), GTK_RELIEF_NONE);
@@ -2624,6 +2942,8 @@ create_main_window(struct App* app)
    gtk_widget_set_tooltip_text(app->volume_up_button, "Volume up (Ctrl++)");
    gtk_widget_set_tooltip_text(app->mode_button, "Mode (Ctrl+M)");
    gtk_widget_set_tooltip_text(add_button, "Add (Ctrl+A)");
+   gtk_widget_set_tooltip_text(move_up_button, "Move up (Alt+Up)");
+   gtk_widget_set_tooltip_text(move_down_button, "Move down (Alt+Down)");
    gtk_widget_set_tooltip_text(clear_button, "Clear (Ctrl+L)");
 
    /* Toolbar mnemonics (accelerators) */
@@ -2687,6 +3007,18 @@ create_main_window(struct App* app)
                               GDK_KEY_A,
                               GDK_CONTROL_MASK,
                               GTK_ACCEL_VISIBLE);
+   gtk_widget_add_accelerator(move_up_button,
+                              "clicked",
+                              accel_group,
+                              GDK_KEY_Up,
+                              GDK_MOD1_MASK,
+                              GTK_ACCEL_VISIBLE);
+   gtk_widget_add_accelerator(move_down_button,
+                              "clicked",
+                              accel_group,
+                              GDK_KEY_Down,
+                              GDK_MOD1_MASK,
+                              GTK_ACCEL_VISIBLE);
    gtk_widget_add_accelerator(clear_button,
                               "clicked",
                               accel_group,
@@ -2709,6 +3041,8 @@ create_main_window(struct App* app)
    gtk_box_pack_start(GTK_BOX(hbox), toolbar_spacer, TRUE, TRUE, 0);
 
    gtk_box_pack_start(GTK_BOX(hbox), add_button, FALSE, FALSE, 2);
+   gtk_box_pack_start(GTK_BOX(hbox), move_up_button, FALSE, FALSE, 2);
+   gtk_box_pack_start(GTK_BOX(hbox), move_down_button, FALSE, FALSE, 2);
    gtk_box_pack_start(GTK_BOX(hbox), clear_button, FALSE, FALSE, 2);
 
    /* Playlist */
@@ -2756,6 +3090,8 @@ create_main_window(struct App* app)
    /* Signals */
    g_signal_connect(window, "destroy", G_CALLBACK(on_window_destroy), app);
 
+   g_signal_connect(menu_load, "activate", G_CALLBACK(on_menu_load), app);
+   g_signal_connect(menu_save, "activate", G_CALLBACK(on_menu_save), app);
    g_signal_connect(menu_quit, "activate", G_CALLBACK(on_window_destroy), app);
    g_signal_connect(menu_preferences, "activate", G_CALLBACK(on_menu_preferences), app);
    g_signal_connect(menu_list_devices, "activate", G_CALLBACK(on_menu_list_devices), app);
@@ -2764,6 +3100,8 @@ create_main_window(struct App* app)
    g_signal_connect(menu_debug, "activate", G_CALLBACK(on_menu_debug), app);
 
    g_signal_connect(add_button, "clicked", G_CALLBACK(on_button_add_clicked), app);
+   g_signal_connect(move_up_button, "clicked", G_CALLBACK(on_button_move_up_clicked), app);
+   g_signal_connect(move_down_button, "clicked", G_CALLBACK(on_button_move_down_clicked), app);
    g_signal_connect(clear_button, "clicked", G_CALLBACK(on_button_clear_clicked), app);
 
    g_signal_connect(app->prev_button, "clicked", G_CALLBACK(on_button_prev_clicked), app);

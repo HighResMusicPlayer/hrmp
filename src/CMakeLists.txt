@@ -1,8 +1,8 @@
 #
 # Add files for hrmp
 #
-FILE(GLOB SOURCE_FILES "libhrmp/*.c")
-FILE(GLOB HEADER_FILES "include/*.h")
+FILE(GLOB SOURCE_FILES CONFIGURE_DEPENDS "libhrmp/*.c")
+FILE(GLOB HEADER_FILES CONFIGURE_DEPENDS "include/*.h")
 
 set(SOURCES ${SOURCE_FILES} ${HEADER_FILES})
 
@@ -173,7 +173,7 @@ add_executable(hrmp-ui
 set_source_files_properties(hrmp-ui-resources.c PROPERTIES GENERATED TRUE)
 
 target_include_directories(hrmp-ui PRIVATE ${GTK3_INCLUDE_DIRS})
-target_link_libraries(hrmp-ui PRIVATE ${GTK3_LIBRARIES})
+target_link_libraries(hrmp-ui PRIVATE hrmp ${GTK3_LIBRARIES})
 target_compile_options(hrmp-ui PRIVATE ${GTK3_CFLAGS_OTHER})
 target_compile_definitions(hrmp-ui PRIVATE HRMP_GTK_VERSION_STRING="${VERSION_STRING}")
 

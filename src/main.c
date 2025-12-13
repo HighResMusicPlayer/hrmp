@@ -26,6 +26,7 @@
 #include <list.h>
 #include <logging.h>
 #include <playback.h>
+#include <playlist.h>
 #include <shmem.h>
 #include <utils.h>
 
@@ -64,6 +65,7 @@ usage(void)
    printf("  -c, --config CONFIG_FILE   Set the path to the hrmp.conf file\n");
    printf("                             Default: $HOME/.hrmp/hrmp.conf\n");
    printf("  -D, --device               Set the device name\n");
+   printf("  -p, --playlist PLAYLIST    Load a playlist (.hrmp)\n");
    printf("  -R, --recursive            Add files recursive of the directory\n");
    printf("  -I, --sample-configuration Generate a sample configuration\n");
    printf("  -m, --metadata             Display metadata of the files\n");
@@ -82,6 +84,7 @@ main(int argc, char** argv)
 {
    char* configuration_path = NULL;
    char* device_name = NULL;
+   char* playlist_path = NULL;
    char* cp = NULL;
    size_t shmem_size;
    struct configuration* config = NULL;
@@ -108,6 +111,7 @@ main(int argc, char** argv)
    cli_option options[] = {
       {"c", "config", true},
       {"D", "device", true},
+      {"p", "playlist", true},
       {"R", "recursive", false},
       {"I", "sample-configuration", false},
       {"m", "metadata", false},
@@ -153,6 +157,11 @@ main(int argc, char** argv)
       else if (!strcmp(optname, "D") || !strcmp(optname, "device"))
       {
          device_name = optarg;
+         files_index += 2;
+      }
+      else if (!strcmp(optname, "p") || !strcmp(optname, "playlist"))
+      {
+         playlist_path = optarg;
          files_index += 2;
       }
       else if (!strcmp(optname, "R") || !strcmp(optname, "recursive"))
@@ -372,6 +381,15 @@ main(int argc, char** argv)
             goto error;
          }
 
+         if (playlist_path != NULL)
+         {
+            if (hrmp_playlist_load(playlist_path, files, config->quiet))
+            {
+               printf("Error reading playlist '%s'\n", playlist_path);
+               goto error;
+            }
+         }
+
          for (int i = files_index; i < argc; i++)
          {
             if (hrmp_is_directory(argv[i]))
@@ -414,6 +432,8 @@ main(int argc, char** argv)
             {
                printf("Queued: %s\n", files_entry->value);
             }
+
+            printf("Number of files: %ld\n", hrmp_list_size(files));
          }
 
          num_files = 0;

@@ -89,6 +89,16 @@ hrmp_file_metadata(char* f, struct file_metadata** fm);
 int
 hrmp_print_file_metadata(struct file_metadata* fm);
 
+/**
+ * Check if a file extension is supported by hrmp.
+ * This only checks the filename extension.
+ *
+ * @param filename The filename
+ * @return true if supported, otherwise false
+ */
+bool
+hrmp_file_is_supported(char* filename);
+
 #ifdef __cplusplus
 }
 #endif
