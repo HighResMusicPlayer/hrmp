@@ -501,7 +501,6 @@ playback_sndfile(snd_pcm_t* pcm_handle, struct playback* pb, int number, int tot
          free(p);
          p = NULL;
       }
-
       if (k != NULL)
       {
          p = hrmp_append(p, "\n");
@@ -990,6 +989,11 @@ format_output(struct playback* pb)
    /* Current time from samples and sample_rate */
    if (pb->fm->sample_rate > 0)
    {
+      if (pb->current_samples >= pb->fm->total_samples)
+      {
+         pb->current_samples = pb->fm->total_samples;
+      }
+
       current = (double)pb->current_samples / (double)pb->fm->sample_rate;
    }
    else
@@ -1069,7 +1073,7 @@ format_output(struct playback* pb)
                }
 
                if (percent > 100 ||
-                   (pb->current_samples == pb->fm->total_samples))
+                   (pb->current_samples >= pb->fm->total_samples))
                {
                   percent = 100;
                }
@@ -2000,6 +2004,10 @@ keyboard:
             }
             fseek(f, 92L + (long)aligned_bytes, SEEK_SET);
             pb->current_samples = (unsigned long)((aligned_bytes / (uint64_t)pb->fm->channels) * 8ULL);
+            if (pb->current_samples >= pb->fm->total_samples)
+            {
+               pb->current_samples = pb->fm->total_samples;
+            }
          }
          hrmp_alsa_reset_handle(pb->pcm_handle);
       }
@@ -2024,6 +2032,10 @@ keyboard:
          {
             sf_seek(sndf, (sf_count_t)new_pos_samples, SEEK_CUR);
             pb->current_samples = (unsigned long)new_pos_samples;
+            if (pb->current_samples >= pb->fm->total_samples)
+            {
+               pb->current_samples = pb->fm->total_samples;
+            }
          }
 
          hrmp_alsa_reset_handle(pb->pcm_handle);
@@ -2039,6 +2051,10 @@ keyboard:
             new_pos_samples = (int64_t)pb->fm->total_samples;
          }
          pb->current_samples = (unsigned long)new_pos_samples;
+         if (pb->current_samples >= pb->fm->total_samples)
+         {
+            pb->current_samples = pb->fm->total_samples;
+         }
          free(k);
          return 3;
       }
