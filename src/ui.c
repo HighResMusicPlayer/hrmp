@@ -30,6 +30,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
+
 #define HRMP_DEFAULT_PATH "/usr/bin/hrmp"
 
 typedef enum
@@ -81,6 +82,8 @@ struct App
    HrmpFilesMode files_mode;
 
    GPtrArray* devices; /* array of HrmpDevice* */
+
+   guint status_refresh_attempt;
 };
 
 static void start_hrmp(struct App* app);
@@ -192,6 +195,7 @@ on_debug_close_clicked(GtkWidget* widget, gpointer user_data)
 }
 
 static void hrmp_gtk_ensure_devices(struct App* app);
+static gboolean hrmp_gtk_delayed_status_refresh(gpointer user_data);
 
 static gchar*
 hrmp_gtk_get_config_path(void)
@@ -725,6 +729,36 @@ hrmp_gtk_parse_devices(struct App* app, const gchar* text)
    g_strfreev(lines);
 
    hrmp_gtk_update_status(app);
+}
+
+static gboolean
+hrmp_gtk_delayed_status_refresh(gpointer user_data)
+{
+   struct App* app = user_data;
+
+   app->status_refresh_attempt++;
+
+   hrmp_gtk_free_devices(app);
+   hrmp_gtk_ensure_devices(app);
+   hrmp_gtk_update_status(app);
+
+   const gchar* status_text = gtk_label_get_text(GTK_LABEL(app->status_label));
+
+   if (status_text != NULL &&
+       (strstr(status_text, "/16bit") != NULL ||
+        strstr(status_text, "/24bit") != NULL ||
+        strstr(status_text, "/32bit") != NULL ||
+        strstr(status_text, "/DSD") != NULL))
+   {
+      return G_SOURCE_REMOVE;
+   }
+
+   if (app->status_refresh_attempt >= 20)
+   {
+      return G_SOURCE_REMOVE;
+   }
+
+   return G_SOURCE_CONTINUE;
 }
 
 static void
@@ -2755,23 +2789,11 @@ main(int argc, char** argv)
    gtk_init(&argc, &argv);
 
    hrmp_gtk_load_preferences(&app);
-   hrmp_gtk_ensure_devices(&app);
 
    app.window = create_main_window(&app);
    app.output_buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(app.output_view));
    hrmp_gtk_update_status(&app);
    update_mode_button_icon(&app);
-
-   /* If the default device is still reported as "Unknown" after the first
-    * query, wait a short time and try once more. This handles setups where
-    * the first hrmp -s call races with device initialisation. */
-   const gchar* status_text = gtk_label_get_text(GTK_LABEL(app.status_label));
-   if (status_text != NULL && g_strcmp0(status_text, "Unknown") == 0)
-   {
-      g_usleep(500 * 1000);
-      hrmp_gtk_ensure_devices(&app);
-      hrmp_gtk_update_status(&app);
-   }
 
    g_signal_connect(app.list_view,
                     "row-activated",
@@ -2783,6 +2805,11 @@ main(int argc, char** argv)
                     &app);
 
    gtk_widget_show_all(app.window);
+
+   /* Retry hrmp -s a few times after showing the UI to avoid races with ALSA
+    * / device initialisation. */
+   app.status_refresh_attempt = 0;
+   g_timeout_add(500, hrmp_gtk_delayed_status_refresh, &app);
 
    gtk_main();
 

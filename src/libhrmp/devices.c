@@ -632,6 +632,14 @@ is_device_active(char* device)
    char** n;
    char* name;
    bool found = false;
+   struct configuration* config = NULL;
+
+   config = (struct configuration*)shmem;
+
+   if (config->developer)
+   {
+      printf("Searching for: %s\n", device);
+   }
 
    err = snd_device_name_hint(-1, "pcm", (void***)&hints);
    if (err != 0)
@@ -645,8 +653,17 @@ is_device_active(char* device)
    {
       name = snd_device_name_get_hint(*n, "NAME");
 
-      if (!strcmp(name, device))
+      if (config->developer)
       {
+         printf("Device name: %s\n", name);
+      }
+
+      if (strcmp(device, name) == 0)
+      {
+         if (config->developer)
+         {
+            printf("'%s' found\n", device);
+         }
          found = true;
       }
 
@@ -658,6 +675,10 @@ is_device_active(char* device)
 
    if (!found)
    {
+      if (config->developer)
+      {
+         printf("'%s' not found\n", device);
+      }
       goto error;
    }
 
