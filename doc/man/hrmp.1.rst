@@ -33,6 +33,9 @@ OPTIONS
 -R, --recursive
   Add files recursive of the directory
 
+-M, --mode MODE
+  Playback mode: once, repeat, shuffle
+
 -I, --sample-configuration
   Generate a sample configuration
 

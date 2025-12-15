@@ -18,6 +18,7 @@ Options:
   -D, --device               Set the device name
   -p, --playlist PLAYLIST    Load files/directories from a playlist file (.hrmp)
   -R, --recursive            Add files recursive of the directory
+  -M, --mode MODE            Playback mode: once, repeat, shuffle
   -I, --sample-configuration Generate a sample configuration
   -m, --metadata             Display metadata of the files
   -s, --status               Status of the devices

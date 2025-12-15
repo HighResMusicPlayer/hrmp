@@ -36,6 +36,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 #define ACTION_NOTHING       0
@@ -44,6 +45,65 @@
 #define ACTION_SAMPLE_CONFIG 3
 #define ACTION_STATUS        4
 #define ACTION_PLAY          5
+
+typedef enum
+{
+   HRMP_PLAYBACK_MODE_ONCE,
+   HRMP_PLAYBACK_MODE_REPEAT,
+   HRMP_PLAYBACK_MODE_SHUFFLE
+} playback_mode;
+
+static void
+shuffle_files(struct list** files)
+{
+   if (files == NULL || *files == NULL)
+   {
+      return;
+   }
+
+   size_t n = hrmp_list_size(*files);
+   if (n < 2)
+   {
+      return;
+   }
+
+   char** a = malloc(n * sizeof(char*));
+   if (a == NULL)
+   {
+      return;
+   }
+
+   size_t i = 0;
+   for (struct list_entry* e = hrmp_list_head(*files); e != NULL; e = hrmp_list_next(e))
+   {
+      a[i++] = e->value;
+   }
+
+   for (i = n - 1; i > 0; i--)
+   {
+      size_t j = (size_t)(rand() % (i + 1));
+      char* tmp = a[i];
+      a[i] = a[j];
+      a[j] = tmp;
+   }
+
+   struct list* shuffled = NULL;
+   if (hrmp_list_create(&shuffled))
+   {
+      free(a);
+      return;
+   }
+
+   for (i = 0; i < n; i++)
+   {
+      hrmp_list_append(shuffled, a[i]);
+   }
+
+   hrmp_list_destroy(*files);
+   *files = shuffled;
+
+   free(a);
+}
 
 static void
 version(void)
@@ -67,6 +127,7 @@ usage(void)
    printf("  -D, --device               Set the device name\n");
    printf("  -p, --playlist PLAYLIST    Load a playlist (.hrmp)\n");
    printf("  -R, --recursive            Add files recursive of the directory\n");
+   printf("  -M, --mode MODE            Playback mode: once, repeat, shuffle\n");
    printf("  -I, --sample-configuration Generate a sample configuration\n");
    printf("  -m, --metadata             Display metadata of the files\n");
    printf("  -s, --status               Status of the devices\n");
@@ -97,6 +158,7 @@ main(int argc, char** argv)
    bool f = false;
    bool m = false;
    bool dop = false;
+   playback_mode mode = HRMP_PLAYBACK_MODE_ONCE;
    int files_index = 1;
    int action = ACTION_NOTHING;
    char* ad = NULL;
@@ -113,6 +175,7 @@ main(int argc, char** argv)
       {"D", "device", true},
       {"p", "playlist", true},
       {"R", "recursive", false},
+      {"M", "mode", true},
       {"I", "sample-configuration", false},
       {"m", "metadata", false},
       {"s", "status", false},
@@ -168,6 +231,29 @@ main(int argc, char** argv)
       {
          recursive = true;
          files_index += 1;
+      }
+      else if (!strcmp(optname, "M") || !strcmp(optname, "mode"))
+      {
+         if (!strcmp(optarg, "once"))
+         {
+            mode = HRMP_PLAYBACK_MODE_ONCE;
+         }
+         else if (!strcmp(optarg, "repeat"))
+         {
+            mode = HRMP_PLAYBACK_MODE_REPEAT;
+         }
+         else if (!strcmp(optarg, "shuffle"))
+         {
+            mode = HRMP_PLAYBACK_MODE_SHUFFLE;
+         }
+         else
+         {
+            printf("Invalid --mode '%s'\n", optarg);
+            usage();
+            exit(1);
+         }
+
+         files_index += 2;
       }
       else if (!strcmp(optname, "I") || !strcmp(optname, "sample-configuration"))
       {
@@ -437,7 +523,6 @@ main(int argc, char** argv)
 
             if (hrmp_file_metadata(files_entry->value, &fm))
             {
-               printf("Not supported: %s\n", files_entry->value);
                continue;
             }
 
@@ -454,6 +539,12 @@ main(int argc, char** argv)
 
          hrmp_list_destroy(files);
          files = supported_files;
+
+         if (mode == HRMP_PLAYBACK_MODE_SHUFFLE)
+         {
+            srand((unsigned)time(NULL));
+            shuffle_files(&files);
+         }
 
          /* Keyboard */
          hrmp_keyboard_mode(true);
@@ -479,7 +570,6 @@ main(int argc, char** argv)
 
             if (hrmp_file_metadata(files_entry->value, &fm))
             {
-               printf("Not supported: %s\n", files_entry->value);
                files_entry = hrmp_list_next(files_entry);
                continue;
             }
@@ -491,6 +581,12 @@ main(int argc, char** argv)
             {
                files_entry = hrmp_list_next(files_entry);
                num_files++;
+
+               if (mode == HRMP_PLAYBACK_MODE_REPEAT && files_entry == NULL && !hrmp_list_empty(files))
+               {
+                  files_entry = hrmp_list_head(files);
+                  num_files = 0;
+               }
             }
             else
             {
