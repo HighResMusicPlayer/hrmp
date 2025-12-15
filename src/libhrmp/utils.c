@@ -484,6 +484,8 @@ hrmp_get_files(char* base, bool recursive, struct list* files)
 {
    DIR* dir = NULL;
    struct dirent* entry;
+   char** names = NULL;
+   size_t names_size = 0;
 
    if (base == NULL || files == NULL)
    {
@@ -498,19 +500,39 @@ hrmp_get_files(char* base, bool recursive, struct list* files)
 
    while ((entry = readdir(dir)) != NULL)
    {
-      char* d = NULL;
-
       if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
       {
          continue;
       }
+
+      char** tmp = realloc(names, (names_size + 1) * sizeof(char*));
+      if (tmp == NULL)
+      {
+         goto error;
+      }
+
+      names = tmp;
+      names[names_size] = strdup(entry->d_name);
+      if (names[names_size] == NULL)
+      {
+         goto error;
+      }
+
+      names_size++;
+   }
+
+   hrmp_sort(names_size, names);
+
+   for (size_t i = 0; i < names_size; i++)
+   {
+      char* d = NULL;
 
       d = hrmp_append(d, base);
       if (!hrmp_ends_with(d, "/"))
       {
          d = hrmp_append_char(d, '/');
       }
-      d = hrmp_append(d, entry->d_name);
+      d = hrmp_append(d, names[i]);
 
       if (hrmp_is_file(d))
       {
@@ -522,7 +544,10 @@ hrmp_get_files(char* base, bool recursive, struct list* files)
       }
 
       free(d);
+      free(names[i]);
    }
+
+   free(names);
 
    closedir(dir);
 
@@ -533,6 +558,15 @@ error:
    if (dir != NULL)
    {
       closedir(dir);
+   }
+
+   if (names != NULL)
+   {
+      for (size_t i = 0; i < names_size; i++)
+      {
+         free(names[i]);
+      }
+      free(names);
    }
 
    return 1;

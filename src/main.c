@@ -421,6 +421,40 @@ main(int argc, char** argv)
             }
          }
 
+         /* Filter unsupported files: display them, but don't keep them in the list. */
+         struct list* supported_files = NULL;
+         if (hrmp_list_create(&supported_files))
+         {
+            printf("Error creating files list\n");
+            goto error;
+         }
+
+         for (files_entry = hrmp_list_head(files);
+              files_entry != NULL;
+              files_entry = hrmp_list_next(files_entry))
+         {
+            struct file_metadata* fm = NULL;
+
+            if (hrmp_file_metadata(files_entry->value, &fm))
+            {
+               printf("Not supported: %s\n", files_entry->value);
+               continue;
+            }
+
+            if (hrmp_list_append(supported_files, files_entry->value))
+            {
+               free(fm);
+               hrmp_list_destroy(supported_files);
+               printf("Error creating files list\n");
+               goto error;
+            }
+
+            free(fm);
+         }
+
+         hrmp_list_destroy(files);
+         files = supported_files;
+
          /* Keyboard */
          hrmp_keyboard_mode(true);
 
@@ -446,6 +480,7 @@ main(int argc, char** argv)
             if (hrmp_file_metadata(files_entry->value, &fm))
             {
                printf("Not supported: %s\n", files_entry->value);
+               files_entry = hrmp_list_next(files_entry);
                continue;
             }
 
