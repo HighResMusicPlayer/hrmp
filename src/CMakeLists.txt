@@ -162,7 +162,7 @@ add_custom_command(
           --generate-source
           --sourcedir=${CMAKE_SOURCE_DIR}
           ${HRMP_UI_RESOURCE_XML}
-  DEPENDS ${HRMP_UI_RESOURCE_XML} ${CMAKE_SOURCE_DIR}/LICENSE
+  DEPENDS ${HRMP_UI_RESOURCE_XML} ${CMAKE_SOURCE_DIR}/LICENSE ${CMAKE_SOURCE_DIR}/AUTHORS ${CMAKE_SOURCE_DIR}/doc/images/logo-transparent-256.png ${CMAKE_SOURCE_DIR}/doc/images/logo-transparent-16.png
 )
 
 add_executable(hrmp-ui
@@ -178,3 +178,10 @@ target_compile_options(hrmp-ui PRIVATE ${GTK3_CFLAGS_OTHER})
 target_compile_definitions(hrmp-ui PRIVATE HRMP_GTK_VERSION_STRING="${VERSION_STRING}")
 
 install(TARGETS hrmp-ui RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/hrmp-ui.desktop DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/applications)
+
+foreach(size 16 24 32 48 64 96 128 256 512)
+  install(FILES ${CMAKE_SOURCE_DIR}/doc/images/logo-transparent-${size}.png
+          DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/${size}x${size}/apps
+          RENAME hrmp-ui.png)
+endforeach()

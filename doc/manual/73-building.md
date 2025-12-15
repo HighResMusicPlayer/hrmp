@@ -55,7 +55,7 @@ dnf install pandoc texlive-scheme-basic \
             'tex(mdframed.sty)' 'tex(sourcesanspro.sty)' \
             'tex(ly1enc.def)' 'tex(sourcecodepro.sty)' \
             'tex(titling.sty)' 'tex(csquotes.sty)' \
-            'tex(zref-abspage.sty)' 'tex(needspace.sty)'
+            'tex(zref-abspage.sty)' 'tex(needspace.sty)' 'tex(adjustbox.sty)'
 ```
 
 You will need the `Eisvogel` template as well which you can install through

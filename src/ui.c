@@ -2161,6 +2161,13 @@ on_menu_about(GtkWidget* widget, gpointer user_data)
                                    "%s",
                                    message);
 
+   GtkWidget* image = gtk_image_new_from_resource("/org/hrmp/hrmp-ui/logo.png");
+   if (image != NULL)
+   {
+      gtk_message_dialog_set_image(GTK_MESSAGE_DIALOG(dialog), image);
+      gtk_widget_show(image);
+   }
+
    gtk_message_dialog_format_secondary_text(GTK_MESSAGE_DIALOG(dialog), "%s", authors);
 
    g_free(authors);
@@ -2812,6 +2819,22 @@ create_main_window(struct App* app)
    window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
    gtk_window_set_title(GTK_WINDOW(window), "hrmp-ui");
    gtk_window_set_default_size(GTK_WINDOW(window), 800, 600);
+   gtk_window_set_wmclass(GTK_WINDOW(window), "hrmp-ui", "hrmp-ui");
+
+   {
+      GError* error = NULL;
+      GdkPixbuf* icon = gdk_pixbuf_new_from_resource("/org/hrmp/hrmp-ui/app-icon.png", &error);
+      if (icon != NULL)
+      {
+         gtk_window_set_icon(GTK_WINDOW(window), icon);
+         g_object_unref(icon);
+      }
+      else if (error != NULL)
+      {
+         g_warning("Failed to load app icon: %s", error->message);
+         g_error_free(error);
+      }
+   }
 
    vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
    gtk_container_add(GTK_CONTAINER(window), vbox);
@@ -3123,6 +3146,9 @@ main(int argc, char** argv)
    struct App app;
 
    memset(&app, 0, sizeof(app));
+
+   g_set_prgname("hrmp-ui");
+   g_set_application_name("hrmp-ui");
 
    gtk_init(&argc, &argv);
 

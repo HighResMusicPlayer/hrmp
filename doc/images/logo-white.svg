@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="HighResMusicPlayer logo (platinum on white)">
+  <defs>
+    <linearGradient id="platinum" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#F6F8FB"/>
+      <stop offset="0.45" stop-color="#C9D1D9"/>
+      <stop offset="1" stop-color="#8B949E"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="512" height="512" fill="#FFFFFF"/>
+
+  <path d="M256 52 L460 256 L256 460 L52 256 Z"
+        fill="#0B0F14"
+        stroke="url(#platinum)"
+        stroke-width="22"
+        stroke-linejoin="miter"/>
+
+  <path d="M256 118 L394 256 L256 394 L118 256 Z"
+        fill="none"
+        stroke="#C9D1D9"
+        stroke-width="10"
+        stroke-linejoin="miter"
+        opacity="0.55"/>
+
+  <path d="M176 256
+           C212 196, 240 196, 256 256
+           S300 316, 336 256"
+        fill="none"
+        stroke="#E6EDF3"
+        stroke-width="20"
+        stroke-linecap="square"
+        stroke-linejoin="miter"/>
+</svg>

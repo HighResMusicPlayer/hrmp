@@ -59,22 +59,34 @@ if (DOCS)
 
   # Files
   FILE(GLOB MAN_EN "manual/??-*.md")
+  FILE(GLOB MAN_IMAGES "manual/images/*")
 
   # Manuals definitions
   set(MANUAL_OUTPUT_DIR "${CMAKE_BINARY_DIR}/doc")
+  set(MANUAL_BUILD_IMAGES_DIR "${MANUAL_OUTPUT_DIR}/manual/images")
   get_filename_component(PARENT_DIR ${CMAKE_BINARY_DIR} DIRECTORY)
+
+  set(MANUAL_TITLE_LOGO_PNG "${MANUAL_BUILD_IMAGES_DIR}/logo-transparent-512.png")
+
+  add_custom_command(
+    OUTPUT ${MANUAL_TITLE_LOGO_PNG}
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${MANUAL_BUILD_IMAGES_DIR}
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/doc/images/logo-transparent-512.png ${MANUAL_TITLE_LOGO_PNG}
+    DEPENDS ${CMAKE_SOURCE_DIR}/doc/images/logo-transparent-512.png
+    COMMENT "Copying manual logo"
+  )
 
   add_custom_command(
     OUTPUT ${MANUAL_OUTPUT_DIR}/hrmp-en.pdf
-    COMMAND ${PANDOC_EXECUTABLE} -o ${MANUAL_OUTPUT_DIR}/hrmp-en.pdf --from markdown --template eisvogel --listings -N --toc --resource-path=${CMAKE_CURRENT_SOURCE_DIR}/manual ${MAN_EN}
-    DEPENDS ${MAN_EN}
+    COMMAND ${PANDOC_EXECUTABLE} -o ${MANUAL_OUTPUT_DIR}/hrmp-en.pdf --from markdown --template eisvogel --listings -N --toc --resource-path=${CMAKE_CURRENT_SOURCE_DIR}/manual -V titlepage-logo=${MANUAL_TITLE_LOGO_PNG} -V logo-width=120mm ${MAN_EN}
+    DEPENDS ${MAN_EN} ${MAN_IMAGES} ${MANUAL_TITLE_LOGO_PNG}
     COMMENT "Generating English PDF documentation"
   )
 
   add_custom_command(
     OUTPUT ${MANUAL_OUTPUT_DIR}/hrmp-en.html
     COMMAND ${PANDOC_EXECUTABLE} -o ${MANUAL_OUTPUT_DIR}/hrmp-en.html -s -f markdown-smart -N --toc -t html5 --resource-path=${CMAKE_CURRENT_SOURCE_DIR}/manual ${MAN_EN}
-    DEPENDS ${MAN_EN}
+    DEPENDS ${MAN_EN} ${MAN_IMAGES}
     COMMENT "Generating English HTML documentation"
   )
 
@@ -85,7 +97,7 @@ if (DOCS)
 
   install(FILES ${MANUAL_OUTPUT_DIR}/hrmp-en.pdf DESTINATION share/doc/hrmp/manual)
   install(FILES ${MANUAL_OUTPUT_DIR}/hrmp-en.html DESTINATION share/doc/hrmp/manual)
-  install(DIRECTORY manual/images DESTINATION share/doc/hrmp/manual)
+  install(DIRECTORY ${MANUAL_BUILD_IMAGES_DIR} DESTINATION share/doc/hrmp/manual)
 
   #
   # Generate API docs

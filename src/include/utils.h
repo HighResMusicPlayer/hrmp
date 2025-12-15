@@ -88,10 +88,10 @@ uint32_t
 hrmp_read_le_u32_buffer(uint8_t* buffer);
 
 /**
- * snprintf-like formatter that builds the result using hrmp_append helpers.
+ * printf-style formatter that builds the result using hrmp_append helpers.
  * The output is clamped to the smaller of (HRMP_SNPRINTF_MAX_LENGTH) and (n-1).
  * Returns the number of characters that would have been written (excluding the
- * NUL byte), similar to snprintf. If buf is not NULL and n > 0, the output is
+ * NUL byte), similar to the C library formatter. If buf is not NULL and n > 0, the output is
  * NUL-terminated.
  *
  * Supported format specifiers: %% %s %c %d %i %u %ld %lu %lld %llu %zu %zd %x

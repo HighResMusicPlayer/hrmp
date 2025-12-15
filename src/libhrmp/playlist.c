@@ -267,21 +267,21 @@ get_playlist_dir(const char* playlist_path, char* out, size_t out_size)
 
    if (playlist_path == NULL)
    {
-      strncpy(out, ".", out_size - 1);
+      hrmp_snprintf(out, out_size, "%s", ".");
       return;
    }
 
    slash = strrchr(playlist_path, '/');
    if (slash == NULL)
    {
-      strncpy(out, ".", out_size - 1);
+      hrmp_snprintf(out, out_size, "%s", ".");
       return;
    }
 
    size_t len = (size_t)(slash - playlist_path);
    if (len == 0)
    {
-      strncpy(out, "/", out_size - 1);
+      hrmp_snprintf(out, out_size, "%s", "/");
       return;
    }
 
@@ -306,11 +306,11 @@ join_path(const char* dir, const char* rel, char* out, size_t out_size)
 
    if (dir == NULL || dir[0] == '\0' || strcmp(dir, ".") == 0)
    {
-      strncpy(out, rel != NULL ? rel : "", out_size - 1);
+      hrmp_snprintf(out, out_size, "%s", rel != NULL ? rel : "");
       return;
    }
 
-   snprintf(out, out_size, "%s/%s", dir, rel != NULL ? rel : "");
+   hrmp_snprintf(out, out_size, "%s/%s", dir, rel != NULL ? rel : "");
 }
 
 int
@@ -383,30 +383,37 @@ hrmp_playlist_load(const char* playlist_path, struct list* files, bool quiet)
          memcpy(dir_part, line, dir_len);
          dir_part[dir_len] = '\0';
 
-         char resolved[MAX_PATH];
-         memset(resolved, 0, sizeof(resolved));
+         char* resolved = NULL;
+         char joined[MAX_PATH];
+         memset(joined, 0, sizeof(joined));
 
          if (dir_part[0] != '/')
          {
-            join_path(base_dir, dir_part, resolved, sizeof(resolved));
-            if (!hrmp_exists(resolved))
+            join_path(base_dir, dir_part, joined, sizeof(joined));
+            if (hrmp_exists(joined))
             {
-               strncpy(resolved, dir_part, sizeof(resolved) - 1);
+               resolved = hrmp_append(resolved, joined);
+            }
+            else
+            {
+               resolved = hrmp_append(resolved, dir_part);
             }
          }
          else
          {
-            strncpy(resolved, dir_part, sizeof(resolved) - 1);
+            resolved = hrmp_append(resolved, dir_part);
          }
 
-         if (hrmp_is_directory(resolved))
+         if (resolved != NULL && hrmp_is_directory(resolved))
          {
             append_sorted_files(resolved, true, files);
          }
          else if (!quiet)
          {
-            printf("Directory not found '%s'\n", resolved);
+            printf("Directory not found '%s'\n", resolved != NULL ? resolved : "");
          }
+
+         free(resolved);
          continue;
       }
 
@@ -435,68 +442,82 @@ hrmp_playlist_load(const char* playlist_path, struct list* files, bool quiet)
             prefix_len--;
          }
 
-         char resolved[MAX_PATH];
-         memset(resolved, 0, sizeof(resolved));
+         char* resolved = NULL;
+         char joined[MAX_PATH];
+         memset(joined, 0, sizeof(joined));
 
          if (prefix_part[0] == '\0')
          {
-            strncpy(resolved, base_dir, sizeof(resolved) - 1);
+            resolved = hrmp_append(resolved, base_dir);
          }
          else if (prefix_part[0] != '/')
          {
-            join_path(base_dir, prefix_part, resolved, sizeof(resolved));
-            if (!hrmp_exists(resolved))
+            join_path(base_dir, prefix_part, joined, sizeof(joined));
+            if (hrmp_exists(joined))
             {
-               strncpy(resolved, prefix_part, sizeof(resolved) - 1);
+               resolved = hrmp_append(resolved, joined);
+            }
+            else
+            {
+               resolved = hrmp_append(resolved, prefix_part);
             }
          }
          else
          {
-            strncpy(resolved, prefix_part, sizeof(resolved) - 1);
+            resolved = hrmp_append(resolved, prefix_part);
          }
 
-         if (hrmp_is_directory(resolved))
+         if (resolved != NULL && hrmp_is_directory(resolved))
          {
             append_recursive_glob(resolved, pat, files);
          }
          else if (!quiet)
          {
-            printf("Directory not found '%s'\n", resolved);
+            printf("Directory not found '%s'\n", resolved != NULL ? resolved : "");
          }
+
+         free(resolved);
          continue;
       }
 
-      char path[MAX_PATH];
-      memset(path, 0, sizeof(path));
+      char* path = NULL;
+      char joined[MAX_PATH];
+      memset(joined, 0, sizeof(joined));
 
       if (line[0] != '/')
       {
-         join_path(base_dir, line, path, sizeof(path));
-         if (!hrmp_exists(path))
+         join_path(base_dir, line, joined, sizeof(joined));
+         if (hrmp_exists(joined))
          {
-            strncpy(path, line, sizeof(path) - 1);
+            path = hrmp_append(path, joined);
+         }
+         else
+         {
+            path = hrmp_append(path, line);
          }
       }
       else
       {
-         strncpy(path, line, sizeof(path) - 1);
+         path = hrmp_append(path, line);
       }
 
-      if (hrmp_is_directory(path))
+      if (path != NULL && hrmp_is_directory(path))
       {
          hrmp_get_files(path, false, files);
       }
       else
       {
-         if (hrmp_exists(path))
+         if (path != NULL && hrmp_exists(path))
          {
             hrmp_list_append(files, path);
          }
          else if (!quiet)
          {
-            printf("File not found '%s'\n", path);
+            printf("File not found '%s'\n", path != NULL ? path : "");
          }
       }
+
+      free(path);
    }
 
    fclose(f);

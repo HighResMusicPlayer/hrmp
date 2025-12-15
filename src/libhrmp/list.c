@@ -18,6 +18,7 @@
 /* hrmp */
 #include <hrmp.h>
 #include <list.h>
+#include <utils.h>
 
 /* system */
 #include <stdlib.h>
@@ -109,9 +110,7 @@ hrmp_list_insert_node(struct list* list, const char* value, bool at_head)
    }
 
    memset(node->value, 0, sizeof(node->value));
-   /* Ensure NUL-termination */
-   strncpy(node->value, value, MAX_PATH - 1);
-   node->value[MAX_PATH - 1] = '\0';
+   hrmp_snprintf(node->value, sizeof(node->value), "%s", value);
 
    node->next = NULL;
    node->list = list;

@@ -163,28 +163,23 @@ id3_assign_text_frame(struct file_metadata* fm, const char id[4], const unsigned
 
    if (strcmp(id, "TIT2") == 0)
    {
-      strncpy(fm->title, buf, sizeof(fm->title) - 1);
-      fm->title[sizeof(fm->title) - 1] = '\0';
+      hrmp_snprintf(fm->title, sizeof(fm->title), "%s", buf);
    }
    else if (strcmp(id, "TPE1") == 0)
    {
-      strncpy(fm->artist, buf, sizeof(fm->artist) - 1);
-      fm->artist[sizeof(fm->artist) - 1] = '\0';
+      hrmp_snprintf(fm->artist, sizeof(fm->artist), "%s", buf);
    }
    else if (strcmp(id, "TALB") == 0)
    {
-      strncpy(fm->album, buf, sizeof(fm->album) - 1);
-      fm->album[sizeof(fm->album) - 1] = '\0';
+      hrmp_snprintf(fm->album, sizeof(fm->album), "%s", buf);
    }
    else if (strcmp(id, "TCON") == 0)
    {
-      strncpy(fm->genre, buf, sizeof(fm->genre) - 1);
-      fm->genre[sizeof(fm->genre) - 1] = '\0';
+      hrmp_snprintf(fm->genre, sizeof(fm->genre), "%s", buf);
    }
    else if (strcmp(id, "TYER") == 0 || strcmp(id, "TDRC") == 0)
    {
-      strncpy(fm->date, buf, sizeof(fm->date) - 1);
-      fm->date[sizeof(fm->date) - 1] = '\0';
+      hrmp_snprintf(fm->date, sizeof(fm->date), "%s", buf);
    }
    else if (strcmp(id, "TRCK") == 0)
    {

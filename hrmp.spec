@@ -29,6 +29,8 @@ cmake -DCMAKE_BUILD_TYPE=Release ..
 %{__mkdir} -p %{buildroot}%{_libdir}
 %{__mkdir} -p %{buildroot}%{_mandir}/man1
 %{__mkdir} -p %{buildroot}%{_mandir}/man5
+%{__mkdir} -p %{buildroot}%{_datadir}/applications
+%{__mkdir} -p %{buildroot}%{_datadir}/icons/hicolor
 %{__mkdir} -p %{buildroot}%{_sysconfdir}/hrmp
 
 %{__install} -m 644 %{_builddir}/%{name}-%{version}/LICENSE %{buildroot}%{_docdir}/%{name}/LICENSE
@@ -48,6 +50,13 @@ cmake -DCMAKE_BUILD_TYPE=Release ..
 
 %{__install} -m 755 %{_builddir}/%{name}-%{version}/build/src/hrmp %{buildroot}%{_bindir}/hrmp
 %{__install} -m 755 %{_builddir}/%{name}-%{version}/build/src/hrmp-ui %{buildroot}%{_bindir}/hrmp-ui
+
+%{__install} -m 644 %{_builddir}/%{name}-%{version}/src/hrmp-ui.desktop %{buildroot}%{_datadir}/applications/hrmp-ui.desktop
+
+for size in 16 24 32 48 64 96 128 256 512; do \
+  %{__mkdir} -p %{buildroot}%{_datadir}/icons/hicolor/${size}x${size}/apps; \
+  %{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/images/logo-transparent-${size}.png %{buildroot}%{_datadir}/icons/hicolor/${size}x${size}/apps/hrmp-ui.png; \
+done
 
 %{__install} -m 755 %{_builddir}/%{name}-%{version}/build/src/libhrmp.so.%{version} %{buildroot}%{_libdir}/libhrmp.so.%{version}
 
@@ -73,6 +82,8 @@ cd %{buildroot}%{_libdir}/
 %{_mandir}/man5/hrmp.conf.5*
 %{_bindir}/hrmp
 %{_bindir}/hrmp-ui
+%{_datadir}/applications/hrmp-ui.desktop
+%{_datadir}/icons/hicolor/*/apps/hrmp-ui.png
 %{_libdir}/libhrmp.so
 %{_libdir}/libhrmp.so.0
 %{_libdir}/libhrmp.so.%{version}

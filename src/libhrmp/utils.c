@@ -174,6 +174,113 @@ append_char_bounded(char** out, char c, size_t current_len, size_t cap)
    }
 }
 
+static void
+ull_to_dec(char* buf, size_t n, unsigned long long v)
+{
+   char tmp[32];
+   size_t pos = 0;
+   size_t out = 0;
+
+   if (buf == NULL || n == 0)
+   {
+      return;
+   }
+
+   do
+   {
+      tmp[pos++] = (char)('0' + (v % 10));
+      v /= 10;
+   }
+   while (v != 0 && pos < sizeof(tmp));
+
+   while (pos > 0 && out + 1 < n)
+   {
+      buf[out++] = tmp[--pos];
+   }
+
+   buf[out] = '\0';
+}
+
+static void
+ll_to_dec(char* buf, size_t n, long long v)
+{
+   if (buf == NULL || n == 0)
+   {
+      return;
+   }
+
+   if (v < 0)
+   {
+      buf[0] = '-';
+      unsigned long long uv = (unsigned long long)(-(v + 1)) + 1;
+      ull_to_dec(buf + 1, (n > 0) ? (n - 1) : 0, uv);
+   }
+   else
+   {
+      ull_to_dec(buf, n, (unsigned long long)v);
+   }
+}
+
+static void
+ull_to_hex(char* buf, size_t n, unsigned long long v, bool upper)
+{
+   const char* digits = upper ? "0123456789ABCDEF" : "0123456789abcdef";
+   char tmp[32];
+   size_t pos = 0;
+   size_t out = 0;
+
+   if (buf == NULL || n == 0)
+   {
+      return;
+   }
+
+   do
+   {
+      tmp[pos++] = digits[v & 0xF];
+      v >>= 4;
+   }
+   while (v != 0 && pos < sizeof(tmp));
+
+   while (pos > 0 && out + 1 < n)
+   {
+      buf[out++] = tmp[--pos];
+   }
+
+   buf[out] = '\0';
+}
+
+static void
+ptr_to_hex(char* buf, size_t n, void* ptr)
+{
+   if (buf == NULL || n == 0)
+   {
+      return;
+   }
+
+   if (n < 3)
+   {
+      buf[0] = '\0';
+      return;
+   }
+
+   buf[0] = '0';
+   buf[1] = 'x';
+   ull_to_hex(buf + 2, n - 2, (unsigned long long)(uintptr_t)ptr, false);
+}
+
+static void
+dbl_to_str(char* buf, size_t n, double v)
+{
+   if (buf == NULL || n == 0)
+   {
+      return;
+   }
+
+   /* gcvt has no size parameter; ensure we only call it with a large buffer. */
+   (void)gcvt(v, 17, buf);
+   buf[n - 1] = '\0';
+}
+
 static int
 hvsnprintf(char* buf, size_t n, const char* fmt, va_list ap)
 {
@@ -275,7 +382,7 @@ hvsnprintf(char* buf, size_t n, const char* fmt, va_list ap)
             {
                v = va_arg(ap, int);
             }
-            (void)snprintf(scratch, sizeof(scratch), "%lld", v);
+            ll_to_dec(scratch, sizeof(scratch), v);
             size_t cur = (out != NULL) ? strlen(out) : 0;
             append_bounded(&out, scratch, cur, cap);
             break;
@@ -299,7 +406,7 @@ hvsnprintf(char* buf, size_t n, const char* fmt, va_list ap)
             {
                v = va_arg(ap, unsigned int);
             }
-            (void)snprintf(scratch, sizeof(scratch), "%llu", v);
+            ull_to_dec(scratch, sizeof(scratch), v);
             size_t cur = (out != NULL) ? strlen(out) : 0;
             append_bounded(&out, scratch, cur, cap);
             break;
@@ -324,7 +431,7 @@ hvsnprintf(char* buf, size_t n, const char* fmt, va_list ap)
             {
                v = va_arg(ap, unsigned int);
             }
-            (void)snprintf(scratch, sizeof(scratch), (conv == 'x') ? "%llx" : "%llX", v);
+            ull_to_hex(scratch, sizeof(scratch), v, conv == 'X');
             size_t cur = (out != NULL) ? strlen(out) : 0;
             append_bounded(&out, scratch, cur, cap);
             break;
@@ -332,7 +439,7 @@ hvsnprintf(char* buf, size_t n, const char* fmt, va_list ap)
          case 'p':
          {
             void* ptr = va_arg(ap, void*);
-            (void)snprintf(scratch, sizeof(scratch), "%p", ptr);
+            ptr_to_hex(scratch, sizeof(scratch), ptr);
             size_t cur = (out != NULL) ? strlen(out) : 0;
             append_bounded(&out, scratch, cur, cap);
             break;
@@ -345,7 +452,7 @@ hvsnprintf(char* buf, size_t n, const char* fmt, va_list ap)
          case 'E':
          {
             double dv = va_arg(ap, double);
-            (void)snprintf(scratch, sizeof(scratch), "%g", dv);
+            dbl_to_str(scratch, sizeof(scratch), dv);
             size_t cur = (out != NULL) ? strlen(out) : 0;
             append_bounded(&out, scratch, cur, cap);
             break;
@@ -727,10 +834,10 @@ hrmp_append(char* orig, char* s)
 char*
 hrmp_append_char(char* orig, char c)
 {
-   char str[2];
+   char str[2] = {0};
 
-   memset(&str[0], 0, sizeof(str));
-   snprintf(&str[0], 2, "%c", c);
+   str[0] = c;
+   str[1] = '\0';
    orig = hrmp_append(orig, str);
 
    return orig;
@@ -742,7 +849,7 @@ hrmp_append_int(char* orig, int i)
    char number[12];
 
    memset(&number[0], 0, sizeof(number));
-   snprintf(&number[0], 11, "%d", i);
+   hrmp_snprintf(&number[0], sizeof(number), "%d", i);
    orig = hrmp_append(orig, number);
 
    return orig;
@@ -1007,7 +1114,7 @@ hrmp_set_proc_title(int argc, char** argv, char* s)
 
    // compose the new title
    memset(&title, 0, sizeof(title));
-   snprintf(title, sizeof(title) - 1, "hrmp: %s", s != NULL ? s : "");
+   hrmp_snprintf(title, sizeof(title), "hrmp: %s", s != NULL ? s : "");
 
    // nuke the command line info
    memset(*argv, 0, max_process_title_size);
@@ -1087,7 +1194,7 @@ hrmp_backtrace_string(char** s)
          continue;
       }
 
-      snprintf(cmd, sizeof(cmd), "addr2line -e %s -fC 0x%lx", filepath, offset);
+      hrmp_snprintf(cmd, sizeof(cmd), "addr2line -e %s -fC 0x%lx", filepath, offset);
       free(filepath);
       filepath = NULL;
 
@@ -1109,7 +1216,7 @@ hrmp_backtrace_string(char** s)
       {
          found_main = true;
       }
-      snprintf(log_buffer, sizeof(log_buffer), "#%zu  0x%lx in ", i - 1, addr);
+      hrmp_snprintf(log_buffer, sizeof(log_buffer), "#%zu  0x%lx in ", i - 1, addr);
       log_str = hrmp_append(log_str, log_buffer);
       log_str = hrmp_append(log_str, buffer);
       log_str = hrmp_append(log_str, "\n");

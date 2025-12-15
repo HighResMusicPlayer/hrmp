@@ -3,5 +3,7 @@
   <gresource prefix="/org/hrmp/hrmp-ui">
     <file alias="gpl-3.0.txt">LICENSE</file>
     <file alias="AUTHORS">AUTHORS</file>
+    <file alias="logo.png">doc/images/logo-transparent-256.png</file>
+    <file alias="app-icon.png">doc/images/logo-transparent-16.png</file>
   </gresource>
 </gresources>

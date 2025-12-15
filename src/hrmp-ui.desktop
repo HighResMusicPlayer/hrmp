@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=HighResMusicPlayer
+Comment=High resolution music player
+Exec=hrmp-ui
+Icon=hrmp-ui
+Terminal=false
+Categories=Audio;Player;
+StartupWMClass=hrmp-ui

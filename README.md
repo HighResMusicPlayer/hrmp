@@ -1,5 +1,9 @@
 # HighResMusicPlayer
 
+<p align="center">
+  <img src="doc/images/logo-transparent.svg" alt="HighResMusicPlayer logo" width="256" />
+</p>
+
 `hrmp` is a command line music player for Linux (ALSA) based systems. `hrmp` focuses on
 high-resolution loss-less files (44.1kHz+/16bit+).
 

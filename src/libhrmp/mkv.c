@@ -18,6 +18,7 @@
 /* hrmp */
 #include <hrmp.h>
 #include <mkv.h>
+#include <utils.h>
 
 /* system */
 #include <neaacdec.h>
@@ -1765,7 +1766,7 @@ parse_tracks(MkvDemuxer* m, uint64_t elem_end)
          m->track_number = track_number;
          m->ainfo.track_number = track_number;
          m->ainfo.codec = codec_from_id(codec_id);
-         snprintf(m->ainfo.codec_id_str, sizeof(m->ainfo.codec_id_str), "%s", codec_id);
+         hrmp_snprintf(m->ainfo.codec_id_str, sizeof(m->ainfo.codec_id_str), "%s", codec_id);
          m->ainfo.codec_private = codec_priv;
          m->ainfo.codec_private_size = codec_priv_sz;
 
