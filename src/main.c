@@ -480,7 +480,10 @@ main(int argc, char** argv)
          {
             if (hrmp_is_directory(argv[i]))
             {
-               hrmp_get_files(argv[i], recursive, files);
+               if (recursive)
+               {
+                  hrmp_get_files(argv[i], recursive, files);
+               }
             }
             else
             {
