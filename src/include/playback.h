@@ -24,6 +24,7 @@ extern "C" {
 
 #include <hrmp.h>
 #include <files.h>
+#include <ringbuffer.h>
 
 #include <sndfile.h>
 #include <stdio.h>
@@ -42,6 +43,8 @@ struct playback
    unsigned long current_samples; /**< The total number of samples */
    snd_pcm_t* pcm_handle;         /**< The PCM handle */
    struct file_metadata* fm;      /**< The file metadata */
+   struct ringbuffer* rb;          /**< Optional ringbuffer for file-backed reads */
+   uint64_t bytes_left;            /**< Bytes left in current file segment (if known) */
 };
 
 /**

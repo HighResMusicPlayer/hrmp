@@ -24,6 +24,7 @@
 #include <logging.h>
 #include <mkv.h>
 #include <playback.h>
+#include <ringbuffer.h>
 #include <utils.h>
 
 /* system */
@@ -51,7 +52,7 @@ static char* format_output(struct playback* pb);
 static char* get_progress(struct playback* pb);
 static void print_progress_done(struct playback* pb);
 
-static int read_exact(FILE* f, void* buf, size_t n);
+static int read_exact(FILE* f, struct ringbuffer* rb, void* buf, size_t n);
 
 static uint8_t bitrev8(uint8_t x);
 
@@ -277,7 +278,11 @@ hrmp_playback(int number, int total, struct file_metadata* fm, bool* next)
    }
 
    hrmp_alsa_close_handle(pcm_handle);
-   free(pb);
+   if (pb != NULL)
+   {
+      hrmp_ringbuffer_destroy(pb->rb);
+      free(pb);
+   }
 
    return ret;
 
@@ -287,15 +292,265 @@ error:
    {
       hrmp_alsa_close_handle(pcm_handle);
    }
-   free(pb);
+   if (pb != NULL)
+   {
+      hrmp_ringbuffer_destroy(pb->rb);
+      free(pb);
+   }
 
    return 1;
+}
+
+struct sndfile_vio_state
+{
+   FILE* fp;
+   struct ringbuffer* rb;
+   uint64_t pos;
+   uint64_t file_size;
+   struct playback* pb;
+};
+
+static size_t
+ringbuffer_target_capacity(size_t file_size)
+{
+   if (file_size == 0)
+   {
+      return HRMP_RINGBUFFER_MIN_BYTES;
+   }
+
+   size_t target = MIN(HRMP_RINGBUFFER_MAX_BYTES, file_size);
+   if (target < HRMP_RINGBUFFER_MIN_BYTES)
+   {
+      target = HRMP_RINGBUFFER_MIN_BYTES;
+   }
+
+   return target;
+}
+
+static size_t
+ringbuffer_target_max(size_t file_size)
+{
+   if (file_size > 0 && file_size < HRMP_RINGBUFFER_MAX_BYTES)
+   {
+      return file_size < HRMP_RINGBUFFER_MIN_BYTES ? HRMP_RINGBUFFER_MIN_BYTES : file_size;
+   }
+
+   return HRMP_RINGBUFFER_MAX_BYTES;
+}
+
+static void
+ensure_ringbuffer_target(struct ringbuffer* rb, size_t file_size)
+{
+   if (rb == NULL)
+   {
+      return;
+   }
+
+   size_t target = ringbuffer_target_capacity(file_size);
+   size_t cur = hrmp_ringbuffer_size(rb);
+   if (target <= cur)
+   {
+      return;
+   }
+
+   /* Ensure capacity >= target (need free space == target - cur) */
+   (void)hrmp_ringbuffer_ensure_write(rb, target - cur);
+}
+
+static void
+prefill_ringbuffer(FILE* f, struct ringbuffer* rb, size_t file_size)
+{
+   if (f == NULL || rb == NULL)
+   {
+      return;
+   }
+
+   ensure_ringbuffer_target(rb, file_size);
+
+   while (hrmp_ringbuffer_size(rb) < hrmp_ringbuffer_capacity(rb))
+   {
+      if (hrmp_ringbuffer_ensure_write(rb, 1))
+      {
+         break;
+      }
+
+      void* wp = NULL;
+      size_t span = hrmp_ringbuffer_get_write_span(rb, &wp);
+      if (span == 0)
+      {
+         break;
+      }
+
+      size_t got = fread(wp, 1, span, f);
+      if (got == 0)
+      {
+         break;
+      }
+
+      if (hrmp_ringbuffer_produce(rb, got))
+      {
+         break;
+      }
+   }
+}
+
+static size_t
+read_some(FILE* f, struct ringbuffer* rb, void* buf, size_t n)
+{
+   if (rb == NULL)
+   {
+      return fread(buf, 1, n, f);
+   }
+
+   uint8_t* out = (uint8_t*)buf;
+   size_t off = 0;
+
+   while (off < n)
+   {
+      void* rp = NULL;
+      size_t have = hrmp_ringbuffer_peek(rb, &rp);
+      if (have > 0)
+      {
+         size_t take = (n - off) < have ? (n - off) : have;
+         memcpy(out + off, rp, take);
+         hrmp_ringbuffer_consume(rb, take);
+         off += take;
+         continue;
+      }
+
+      if (hrmp_ringbuffer_ensure_write(rb, 1))
+      {
+         break;
+      }
+
+      void* wp = NULL;
+      size_t span = hrmp_ringbuffer_get_write_span(rb, &wp);
+      if (span == 0)
+      {
+         if (hrmp_ringbuffer_ensure_write(rb, hrmp_ringbuffer_capacity(rb) / 2u))
+         {
+            break;
+         }
+         continue;
+      }
+
+      size_t got = fread(wp, 1, span, f);
+      if (got == 0)
+      {
+         break;
+      }
+
+      if (hrmp_ringbuffer_produce(rb, got))
+      {
+         break;
+      }
+   }
+
+   return off;
+}
+
+static sf_count_t
+sndfile_vio_get_filelen(void* user_data)
+{
+   struct sndfile_vio_state* st = (struct sndfile_vio_state*)user_data;
+   return st ? (sf_count_t)st->file_size : 0;
+}
+
+static sf_count_t
+sndfile_vio_seek(sf_count_t offset, int whence, void* user_data)
+{
+   struct sndfile_vio_state* st = (struct sndfile_vio_state*)user_data;
+   if (!st)
+   {
+      return -1;
+   }
+
+   int64_t base = 0;
+   if (whence == SEEK_SET)
+   {
+      base = 0;
+   }
+   else if (whence == SEEK_CUR)
+   {
+      base = (int64_t)st->pos;
+   }
+   else if (whence == SEEK_END)
+   {
+      base = (int64_t)st->file_size;
+   }
+   else
+   {
+      return -1;
+   }
+
+   int64_t newpos = base + (int64_t)offset;
+   if (newpos < 0)
+   {
+      newpos = 0;
+   }
+   if ((uint64_t)newpos > st->file_size)
+   {
+      newpos = (int64_t)st->file_size;
+   }
+
+   if (fseeko(st->fp, (off_t)newpos, SEEK_SET) != 0)
+   {
+      return -1;
+   }
+   if (st->rb != NULL)
+   {
+      hrmp_ringbuffer_reset(st->rb);
+      prefill_ringbuffer(st->fp, st->rb, st->file_size);
+   }
+
+   st->pos = (uint64_t)newpos;
+   if (st->pb != NULL)
+   {
+      st->pb->bytes_left = st->file_size - st->pos;
+   }
+
+   return (sf_count_t)st->pos;
+}
+
+static sf_count_t
+sndfile_vio_read(void* ptr, sf_count_t count, void* user_data)
+{
+   struct sndfile_vio_state* st = (struct sndfile_vio_state*)user_data;
+   if (!st || count <= 0)
+   {
+      return 0;
+   }
+
+   size_t got = read_some(st->fp, st->rb, ptr, (size_t)count);
+   st->pos += (uint64_t)got;
+   if (st->pb != NULL)
+   {
+      st->pb->bytes_left = (st->pos <= st->file_size) ? (st->file_size - st->pos) : 0;
+   }
+   return (sf_count_t)got;
+}
+
+static sf_count_t
+sndfile_vio_write(const void* ptr, sf_count_t count, void* user_data)
+{
+   (void)ptr;
+   (void)count;
+   (void)user_data;
+   return 0;
+}
+
+static sf_count_t
+sndfile_vio_tell(void* user_data)
+{
+   struct sndfile_vio_state* st = (struct sndfile_vio_state*)user_data;
+   return st ? (sf_count_t)st->pos : 0;
 }
 
 static int
 playback_sndfile(snd_pcm_t* pcm_handle, struct playback* pb, int number, int total, bool* next)
 {
    int err;
+   FILE* fp = NULL;
    SNDFILE* f = NULL;
    SF_INFO* info = NULL;
    int bytes_per_sample = 2;
@@ -319,9 +574,38 @@ playback_sndfile(snd_pcm_t* pcm_handle, struct playback* pb, int number, int tot
    }
    memset(info, 0, sizeof(SF_INFO));
 
-   f = sf_open(pb->fm->name, SFM_READ, info);
+   fp = fopen(pb->fm->name, "rb");
+   if (fp == NULL)
+   {
+      goto error;
+   }
+
+   if (pb->rb != NULL)
+   {
+      hrmp_ringbuffer_reset(pb->rb);
+   }
+   pb->bytes_left = pb->file_size;
+
+   struct sndfile_vio_state vio_state;
+   memset(&vio_state, 0, sizeof(vio_state));
+   vio_state.fp = fp;
+   vio_state.rb = pb->rb;
+   vio_state.pos = 0;
+   vio_state.file_size = pb->file_size;
+   vio_state.pb = pb;
+
+   SF_VIRTUAL_IO vio;
+   memset(&vio, 0, sizeof(vio));
+   vio.get_filelen = sndfile_vio_get_filelen;
+   vio.seek = sndfile_vio_seek;
+   vio.read = sndfile_vio_read;
+   vio.write = sndfile_vio_write;
+   vio.tell = sndfile_vio_tell;
+
+   f = sf_open_virtual(&vio, SFM_READ, info, &vio_state);
    if (f == NULL)
    {
+      fclose(fp);
       goto error;
    }
 
@@ -514,6 +798,13 @@ playback_sndfile(snd_pcm_t* pcm_handle, struct playback* pb, int number, int tot
       }
    }
 
+   snd_pcm_drain(pcm_handle);
+
+   pb->bytes_left = 0;
+   if (pb->rb != NULL)
+   {
+      hrmp_ringbuffer_reset(pb->rb);
+   }
    print_progress_done(pb);
 
    free(input_buffer);
@@ -521,6 +812,7 @@ playback_sndfile(snd_pcm_t* pcm_handle, struct playback* pb, int number, int tot
    free(info);
 
    sf_close(f);
+   fclose(fp);
 
    return 0;
 
@@ -542,6 +834,10 @@ error:
    {
       sf_close(f);
    }
+   if (fp)
+   {
+      fclose(fp);
+   }
 
    return 1;
 }
@@ -557,9 +853,64 @@ bitrev8(uint8_t x)
 }
 
 static int
-read_exact(FILE* f, void* buf, size_t n)
+read_exact(FILE* f, struct ringbuffer* rb, void* buf, size_t n)
 {
-   return fread(buf, 1, n, f) == n ? 0 : -1;
+   if (rb == NULL)
+   {
+      return fread(buf, 1, n, f) == n ? 0 : -1;
+   }
+
+   uint8_t* out = (uint8_t*)buf;
+   size_t off = 0;
+
+   while (off < n)
+   {
+      size_t remaining = n - off;
+
+      while (hrmp_ringbuffer_size(rb) < remaining)
+      {
+         if (hrmp_ringbuffer_ensure_write(rb, 1))
+         {
+            return -1;
+         }
+
+         void* wp = NULL;
+         size_t span = hrmp_ringbuffer_get_write_span(rb, &wp);
+         if (span == 0)
+         {
+            if (hrmp_ringbuffer_ensure_write(rb, hrmp_ringbuffer_capacity(rb) / 2u))
+            {
+               return -1;
+            }
+            continue;
+         }
+
+         size_t got = fread(wp, 1, span, f);
+         if (got == 0)
+         {
+            return -1;
+         }
+
+         if (hrmp_ringbuffer_produce(rb, got))
+         {
+            return -1;
+         }
+      }
+
+      void* rp = NULL;
+      size_t have = hrmp_ringbuffer_peek(rb, &rp);
+      if (have == 0)
+      {
+         continue;
+      }
+
+      size_t take = remaining < have ? remaining : have;
+      memcpy(out + off, rp, take);
+      hrmp_ringbuffer_consume(rb, take);
+      off += take;
+   }
+
+   return 0;
 }
 
 static int
@@ -578,6 +929,11 @@ playback_dsf(snd_pcm_t* pcm_handle, struct playback* pb, int number, int total, 
       goto error;
    }
 
+   if (pb->rb != NULL)
+   {
+      hrmp_ringbuffer_reset(pb->rb);
+   }
+
    /* Seek to the data segment */
    if (fseek(f, 92, SEEK_SET) != 0)
    {
@@ -585,9 +941,16 @@ playback_dsf(snd_pcm_t* pcm_handle, struct playback* pb, int number, int total, 
       goto error;
    }
 
+   if (pb->rb != NULL)
+   {
+      hrmp_ringbuffer_reset(pb->rb);
+      prefill_ringbuffer(f, pb->rb, pb->file_size);
+   }
+
    uint32_t ch_in = pb->fm->channels > 0 ? pb->fm->channels : 2;
    uint32_t stride = pb->fm->block_size > 0 ? pb->fm->block_size : 4096;
    uint64_t left = pb->fm->data_size;
+   pb->bytes_left = left;
 
    if (config->dop && (pb->fm->alsa_snd == SND_PCM_FORMAT_S32 ||
                        pb->fm->alsa_snd == SND_PCM_FORMAT_S32_LE))
@@ -599,6 +962,7 @@ playback_dsf(snd_pcm_t* pcm_handle, struct playback* pb, int number, int total, 
       dsd_play_native_u32_be(f, pb, ch_in, stride, left, next);
    }
 
+   pb->bytes_left = 0;
    fclose(f);
 
    return 0;
@@ -630,6 +994,11 @@ playback_dff(snd_pcm_t* pcm_handle, struct playback* pb, int number, int total, 
       goto error;
    }
 
+   if (pb->rb != NULL)
+   {
+      hrmp_ringbuffer_reset(pb->rb);
+   }
+
    if (fread(id4, 1, 4, f) != 4 || strncmp(id4, "FRM8", 4) != 0)
    {
       hrmp_log_error("Not a DFF file for playback");
@@ -653,15 +1022,23 @@ playback_dff(snd_pcm_t* pcm_handle, struct playback* pb, int number, int total, 
       uint64_t chunk_size = hrmp_read_be_u64(f);
       if (strncmp(id4, "DSD ", 4) == 0)
       {
+         if (pb->rb != NULL)
+         {
+            hrmp_ringbuffer_reset(pb->rb);
+            prefill_ringbuffer(f, pb->rb, pb->file_size);
+         }
+
          uint32_t ch_in = pb->fm->channels > 0 ? pb->fm->channels : 2;
          uint32_t stride = 4096;
          if (config->dop && (pb->fm->alsa_snd == SND_PCM_FORMAT_S32 ||
                              pb->fm->alsa_snd == SND_PCM_FORMAT_S32_LE))
          {
+            pb->bytes_left = chunk_size;
             dsd_play_dop_s32le(f, pb, ch_in, stride, chunk_size, next);
          }
          else
          {
+            pb->bytes_left = chunk_size;
             dsd_play_native_u32_be(f, pb, ch_in, stride, chunk_size, next);
          }
          goto done;
@@ -682,6 +1059,7 @@ playback_dff(snd_pcm_t* pcm_handle, struct playback* pb, int number, int total, 
 
 done:
 
+   pb->bytes_left = 0;
    fclose(f);
 
    return 0;
@@ -704,7 +1082,13 @@ playback_mkv(snd_pcm_t* pcm_handle, struct playback* pb, int number, int total, 
 
    *next = true;
 
-   if (hrmp_mkv_open_path(pb->fm->name, &demux) < 0 || !demux)
+   pb->bytes_left = pb->file_size;
+   if (pb->rb != NULL)
+   {
+      hrmp_ringbuffer_reset(pb->rb);
+   }
+
+   if (hrmp_mkv_open_path_rb(pb->fm->name, pb->rb, pb->file_size, &pb->bytes_left, &demux) < 0 || !demux)
    {
       hrmp_log_error("MKV: open failed: %s", pb->fm->name);
       return 1;
@@ -746,7 +1130,12 @@ playback_mkv(snd_pcm_t* pcm_handle, struct playback* pb, int number, int total, 
          uint64_t target_ns = (sr > 0) ? (target_samples * 1000000000ULL) / (uint64_t)sr : 0ULL;
 
          hrmp_mkv_close(demux);
-         if (hrmp_mkv_open_path(pb->fm->name, &demux) < 0 || !demux)
+         pb->bytes_left = pb->file_size;
+         if (pb->rb != NULL)
+         {
+            hrmp_ringbuffer_reset(pb->rb);
+         }
+         if (hrmp_mkv_open_path_rb(pb->fm->name, pb->rb, pb->file_size, &pb->bytes_left, &demux) < 0 || !demux)
          {
             hrmp_log_error("MKV: reopen failed for seek");
             goto error;
@@ -938,6 +1327,13 @@ playback_mkv(snd_pcm_t* pcm_handle, struct playback* pb, int number, int total, 
       }
    }
 
+   snd_pcm_drain(pcm_handle);
+
+   pb->bytes_left = 0;
+   if (pb->rb != NULL)
+   {
+      hrmp_ringbuffer_reset(pb->rb);
+   }
    print_progress_done(pb);
    hrmp_mkv_close(demux);
    return 0;
@@ -1117,6 +1513,27 @@ format_output(struct playback* pb)
                out = hrmp_append(out, pb->identifier);
                break;
 
+            case 'b':
+            {
+               uint64_t bytes = (pb->rb != NULL) ? (uint64_t)hrmp_ringbuffer_size(pb->rb) : 0;
+               uint64_t denom = 1024u * 1024u;
+               uint64_t tenths = (bytes * 10u + denom / 2u) / denom;
+               out = hrmp_append_int(out, (int)(tenths / 10u));
+               out = hrmp_append_char(out, '.');
+               out = hrmp_append_char(out, (char)('0' + (int)(tenths % 10u)));
+               break;
+            }
+            case 'B':
+            {
+               uint64_t bytes = (uint64_t)ringbuffer_target_max(pb->file_size);
+               uint64_t denom = 1024u * 1024u;
+               uint64_t tenths = (bytes * 10u + denom / 2u) / denom;
+               out = hrmp_append_int(out, (int)(tenths / 10u));
+               out = hrmp_append_char(out, '.');
+               out = hrmp_append_char(out, (char)('0' + (int)(tenths % 10u)));
+               break;
+            }
+
             case '%':
                out = hrmp_append_char(out, '%');
                break;
@@ -1208,13 +1625,31 @@ playback_init(int number, int total,
       goto error;
    }
 
-   pb->file_size = hrmp_get_file_size(fm->name);
+   pb->file_size = fm->file_size ? fm->file_size : hrmp_get_file_size(fm->name);
+   pb->bytes_left = pb->file_size;
    pb->file_number = number;
    pb->total_number = total;
    memcpy(&pb->identifier, desc, strlen(desc));
    pb->current_samples = 0;
    pb->pcm_handle = pcm_handle;
    pb->fm = fm;
+
+   size_t cap = ringbuffer_target_capacity(pb->file_size);
+
+   /* If file < 256MiB, allow max up to file size (but never below the 4MiB minimum). */
+   size_t max_size = (pb->file_size > 0 && pb->file_size < HRMP_RINGBUFFER_MAX_BYTES) ? pb->file_size : HRMP_RINGBUFFER_MAX_BYTES;
+   if (max_size < HRMP_RINGBUFFER_MIN_BYTES)
+   {
+      max_size = HRMP_RINGBUFFER_MIN_BYTES;
+   }
+
+   /* Minimum must always be 4MiB so the buffer can shrink over time. */
+   size_t min_size = HRMP_RINGBUFFER_MIN_BYTES;
+
+   if (hrmp_ringbuffer_create(min_size, cap, max_size, &pb->rb))
+   {
+      goto error;
+   }
 
    *playback = pb;
 
@@ -1230,6 +1665,7 @@ error:
    }
    if (pb)
    {
+      hrmp_ringbuffer_destroy(pb->rb);
       free(pb);
    }
 
@@ -1505,6 +1941,8 @@ dsd_play_dop_s32le(FILE* f, struct playback* pb,
       return 1;
    }
 
+   pb->bytes_left = bytes_left;
+
    while (bytes_left > 0)
    {
       uint64_t per_ch_avail = bytes_left / (uint64_t)in_channels;
@@ -1520,11 +1958,12 @@ dsd_play_dop_s32le(FILE* f, struct playback* pb,
       }
 
       size_t to_read = (size_t)in_channels * (size_t)per_ch;
-      if (read_exact(f, blk, to_read) < 0)
+      if (read_exact(f, pb->rb, blk, to_read) < 0)
       {
          break;
       }
       bytes_left -= (uint64_t)to_read;
+      pb->bytes_left = bytes_left;
 
       size_t frames = (size_t)per_ch / 2u;
       size_t need = frames * bytes_per_frame;
@@ -1652,6 +2091,13 @@ done:
    unsigned post_frames = frames_from_ms(pb, HRMP_DSD_POSTROLL_MS);
    write_dsd_center_pad(pb, post_frames, &marker);
 
+   snd_pcm_drain(pb->pcm_handle);
+
+   pb->bytes_left = 0;
+   if (pb->rb != NULL)
+   {
+      hrmp_ringbuffer_reset(pb->rb);
+   }
    print_progress_done(pb);
 
    free(out);
@@ -1695,6 +2141,8 @@ dsd_play_native_u32_be(FILE* f, struct playback* pb,
    bool need_bit_reverse = (pb->fm->type == TYPE_DSF);
    bool interleaved = (pb->fm->type == TYPE_DFF);
 
+   pb->bytes_left = bytes_left;
+
    while (bytes_left > 0)
    {
       uint64_t per_ch_avail = bytes_left / (uint64_t)in_channels;
@@ -1710,11 +2158,12 @@ dsd_play_native_u32_be(FILE* f, struct playback* pb,
       }
 
       size_t to_read = (size_t)in_channels * (size_t)per_ch;
-      if (read_exact(f, blk, to_read) < 0)
+      if (read_exact(f, pb->rb, blk, to_read) < 0)
       {
          break;
       }
       bytes_left -= (uint64_t)to_read;
+      pb->bytes_left = bytes_left;
 
       size_t frames = to_read / ((size_t)in_channels * 4u);
       size_t need = frames * bytes_per_frame;
@@ -1880,6 +2329,13 @@ done:
       write_dsd_center_pad(pb, post_frames, &m_ignored);
    }
 
+   snd_pcm_drain(pb->pcm_handle);
+
+   pb->bytes_left = 0;
+   if (pb->rb != NULL)
+   {
+      hrmp_ringbuffer_reset(pb->rb);
+   }
    print_progress_done(pb);
 
    free(out);
@@ -1984,6 +2440,8 @@ keyboard:
 
       if (pb->fm->type == TYPE_DSF)
       {
+         uint64_t aligned_bytes = 0;
+
          if (new_pos_samples <= 0)
          {
             fseek(f, 92L, SEEK_SET);
@@ -1997,7 +2455,7 @@ keyboard:
                bytes_group = (uint64_t)pb->fm->channels * 4096ULL;
             }
             uint64_t approx_target_bytes = (uint64_t)(new_pos_samples / 8) * (uint64_t)pb->fm->channels;
-            uint64_t aligned_bytes = bytes_group ? (approx_target_bytes / bytes_group) * bytes_group : approx_target_bytes;
+            aligned_bytes = bytes_group ? (approx_target_bytes / bytes_group) * bytes_group : approx_target_bytes;
             if (aligned_bytes > pb->fm->data_size)
             {
                aligned_bytes = (pb->fm->data_size / bytes_group) * bytes_group;
@@ -2008,6 +2466,14 @@ keyboard:
             {
                pb->current_samples = pb->fm->total_samples;
             }
+         }
+
+         pb->bytes_left = pb->fm->data_size - aligned_bytes;
+
+         if (pb->rb != NULL)
+         {
+            hrmp_ringbuffer_reset(pb->rb);
+            prefill_ringbuffer(f, pb->rb, pb->file_size);
          }
          hrmp_alsa_reset_handle(pb->pcm_handle);
       }

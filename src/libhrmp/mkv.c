@@ -18,6 +18,7 @@
 /* hrmp */
 #include <hrmp.h>
 #include <mkv.h>
+#include <ringbuffer.h>
 #include <utils.h>
 
 /* system */
@@ -34,22 +35,34 @@
 typedef struct
 {
    FILE* fp;
+   struct ringbuffer* rb;
+   uint64_t pos;
+   uint64_t file_size;
+   uint64_t* bytes_left;
 } EbmlReader;
 
 static void
-ebml_reader_init(EbmlReader* r, FILE* fp)
+ebml_reader_init(EbmlReader* r, FILE* fp, struct ringbuffer* rb, uint64_t file_size, uint64_t* bytes_left)
 {
    r->fp = fp;
+   r->rb = rb;
+#if defined(_WIN32) || defined(_WIN64)
+   r->pos = (uint64_t)_ftelli64(fp);
+#else
+   r->pos = (uint64_t)ftello(fp);
+#endif
+   r->file_size = file_size;
+   r->bytes_left = bytes_left;
+   if (r->bytes_left != NULL && r->file_size > 0)
+   {
+      *r->bytes_left = (r->pos <= r->file_size) ? (r->file_size - r->pos) : 0;
+   }
 }
 
 static uint64_t
 ebml_tell(EbmlReader* r)
 {
-#if defined(_WIN32) || defined(_WIN64)
-   return (uint64_t)_ftelli64(r->fp);
-#else
-   return (uint64_t)ftello(r->fp);
-#endif
+   return r->pos;
 }
 
 static int
@@ -66,6 +79,17 @@ ebml_seek(EbmlReader* r, uint64_t pos)
       return -1;
    }
 #endif
+
+   r->pos = pos;
+   if (r->rb != NULL)
+   {
+      hrmp_ringbuffer_reset(r->rb);
+   }
+   if (r->bytes_left != NULL && r->file_size > 0)
+   {
+      *r->bytes_left = (r->pos <= r->file_size) ? (r->file_size - r->pos) : 0;
+   }
+
    return 0;
 }
 
@@ -76,16 +100,72 @@ ebml_read(EbmlReader* r, void* dst, size_t size)
    {
       return 0;
    }
-   size_t n = fread(dst, 1, size, r->fp);
-   if (n == size)
+
+   size_t n = 0;
+
+   if (r->rb == NULL)
    {
-      return (long)n;
+      n = fread(dst, 1, size, r->fp);
+      if (n != size && ferror(r->fp))
+      {
+         return -1;
+      }
    }
-   if (ferror(r->fp))
+   else
    {
-      return -1;
+      uint8_t* out = (uint8_t*)dst;
+      while (n < size)
+      {
+         void* rp = NULL;
+         size_t have = hrmp_ringbuffer_peek(r->rb, &rp);
+         if (have > 0)
+         {
+            size_t take = (size - n) < have ? (size - n) : have;
+            memcpy(out + n, rp, take);
+            hrmp_ringbuffer_consume(r->rb, take);
+            n += take;
+            continue;
+         }
+
+         if (hrmp_ringbuffer_ensure_write(r->rb, 1))
+         {
+            return -1;
+         }
+
+         void* wp = NULL;
+         size_t span = hrmp_ringbuffer_get_write_span(r->rb, &wp);
+         if (span == 0)
+         {
+            if (hrmp_ringbuffer_ensure_write(r->rb, hrmp_ringbuffer_capacity(r->rb) / 2u))
+            {
+               return -1;
+            }
+            continue;
+         }
+
+         size_t got = fread(wp, 1, span, r->fp);
+         if (got == 0)
+         {
+            if (ferror(r->fp))
+            {
+               return -1;
+            }
+            break;
+         }
+         if (hrmp_ringbuffer_produce(r->rb, got))
+         {
+            return -1;
+         }
+      }
    }
-   return (long)n;  /* EOF partial read */
+
+   r->pos += (uint64_t)n;
+   if (r->bytes_left != NULL && r->file_size > 0)
+   {
+      *r->bytes_left = (r->pos <= r->file_size) ? (r->file_size - r->pos) : 0;
+   }
+
+   return (long)n;
 }
 
 static int
@@ -866,7 +946,7 @@ hrmp_mkv_open(FILE* fp, MkvDemuxer** out)
    {
       return -1;
    }
-   ebml_reader_init(&m->r, fp);
+   ebml_reader_init(&m->r, fp, NULL, 0, NULL);
    m->timecode_scale_ns = 1000000ULL;
    pq_init(&m->q);
    m->own_fp = 1;
@@ -902,9 +982,53 @@ hrmp_mkv_open_path(const char* path, MkvDemuxer** out)
    int rc = hrmp_mkv_open(fp, out);
    if (rc < 0)
    {
-      fclose(fp);
       return rc;
    }
+   return 0;
+}
+
+int
+hrmp_mkv_open_path_rb(const char* path, struct ringbuffer* rb, uint64_t file_size, uint64_t* bytes_left, MkvDemuxer** out)
+{
+   if (!path || !out)
+   {
+      return -1;
+   }
+   FILE* fp = fopen(path, "rb");
+   if (!fp)
+   {
+      return -1;
+   }
+   if (rb != NULL)
+   {
+      hrmp_ringbuffer_reset(rb);
+   }
+
+   MkvDemuxer* m = (MkvDemuxer*)calloc(1, sizeof(*m));
+   if (!m)
+   {
+      fclose(fp);
+      return -1;
+   }
+
+   ebml_reader_init(&m->r, fp, rb, file_size, bytes_left);
+   m->timecode_scale_ns = 1000000ULL;
+   pq_init(&m->q);
+   m->own_fp = 1;
+
+   if (parse_header_and_segment(m) < 0 || m->track_number == 0)
+   {
+      pq_free(&m->q);
+      if (m->own_fp && m->r.fp)
+      {
+         fclose(m->r.fp);
+      }
+      free(m);
+      return -1;
+   }
+
+   m->opened = 1;
+   *out = m;
    return 0;
 }
 

@@ -19,6 +19,7 @@
 #define HRMP_MKV_H
 
 #include <hrmp.h>
+#include <ringbuffer.h>
 
 #include <stdint.h>
 #include <stddef.h>
@@ -90,6 +91,9 @@ hrmp_mkv_open(FILE* fp, MkvDemuxer** out);
  */
 int
 hrmp_mkv_open_path(const char* path, MkvDemuxer** out);
+
+int
+hrmp_mkv_open_path_rb(const char* path, struct ringbuffer* rb, uint64_t file_size, uint64_t* bytes_left, MkvDemuxer** out);
 
 /**
  * Close a MKV file
