@@ -1,5 +1,5 @@
 Name:          hrmp
-Version:       0.12.0
+Version:       0.12.1
 Release:       1%{dist}
 Summary:       High-Resolution Music Player
 License:       GPL
