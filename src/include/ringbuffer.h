@@ -30,13 +30,13 @@ extern "C" {
 
 struct ringbuffer
 {
-  uint8_t* buf; /**< The buffer */
-  size_t cap;   /**< The capacity */
-  size_t min;   /**< The minimum size */
-  size_t max;   /**< The maximum size */
-  size_t r;     /**< The read position */
-  size_t w;     /**< The write position */
-  size_t size;  /**< The size */
+   uint8_t *buf; /**< The buffer */
+   size_t cap;   /**< The capacity */
+   size_t min;   /**< The minimum size */
+   size_t max;   /**< The maximum size */
+   size_t r;     /**< The read position */
+   size_t w;     /**< The write position */
+   size_t size;  /**< The size */
 };
 
 /**

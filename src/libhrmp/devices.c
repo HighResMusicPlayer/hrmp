@@ -94,7 +94,6 @@ hrmp_is_device_known(char* name)
 int
 hrmp_init_device(struct device* device)
 {
-
    memset(&device->name[0], 0, MISC_LENGTH);
    memset(&device->device[0], 0, MISC_LENGTH);
    memset(&device->description[0], 0, MISC_LENGTH);

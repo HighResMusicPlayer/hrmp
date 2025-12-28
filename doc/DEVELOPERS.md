@@ -7,7 +7,7 @@
 #### Basic dependencies
 
 ``` sh
-dnf install git gcc clang clang-analyzer cmake make python3-docutils libasan libasan-static alsa-lib alsa-lib-devel flac-libs flac-libs-devel
+dnf install git gcc clang clang-analyzer clang-tools-extra cmake make python3-docutils libasan libasan-static alsa-lib alsa-lib-devel flac-libs flac-libs-devel
 ```
 
 #### Generate user and developer guide

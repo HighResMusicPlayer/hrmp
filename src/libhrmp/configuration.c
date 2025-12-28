@@ -74,9 +74,9 @@ static int to_log_type(char* where, int value);
  */
 struct config_section
 {
-   char name[LINE_LENGTH];  /**< The name of the section */
-   unsigned int lineno;     /**< The line number for this section */
-   bool main;               /**< Is this the main configuration section or a server one? */
+   char name[LINE_LENGTH]; /**< The name of the section */
+   unsigned int lineno;    /**< The line number for this section */
+   bool main;              /**< Is this the main configuration section or a server one? */
 };
 
 /**
@@ -385,7 +385,7 @@ hrmp_read_configuration(void* shm, char* filename, bool emitWarnings)
                   sections[i].lineno,
                   sections[j].lineno,
                   filename);
-            return_value++;    // this is an error condition!
+            return_value++; // this is an error condition!
          }
       }
    }
@@ -949,7 +949,6 @@ section_line(char* line, char* section)
    }
 
    return false;
-
 }
 
 /**
@@ -999,7 +998,6 @@ as_update_process_title(char* str, unsigned int* policy, unsigned int default_po
       *policy = default_policy;
       return 1;
    }
-
 }
 
 int
@@ -1044,7 +1042,6 @@ hrmp_write_config_value(char* buffer, char* config_key, size_t buffer_size)
             begin = end = -1;
             continue;
          }
-
       }
 
       if (begin < 0)
@@ -1053,7 +1050,6 @@ hrmp_write_config_value(char* buffer, char* config_key, size_t buffer_size)
       }
 
       end = i;
-
    }
 
    // if the key has not been found, since there is no ending dot,
@@ -1066,8 +1062,7 @@ hrmp_write_config_value(char* buffer, char* config_key, size_t buffer_size)
 
    // force the main section, i.e., global parameters, if and only if
    // there is no section or section is 'hrmp' without any subsection
-   main_section = (!strlen(section) || !strncmp(section, "hrmp", MISC_LENGTH))
-                  && !strlen(context);
+   main_section = (!strlen(section) || !strncmp(section, "hrmp", MISC_LENGTH)) && !strlen(context);
 
    if (!strncmp(section, "device", MISC_LENGTH))
    {
@@ -1118,7 +1113,6 @@ hrmp_write_config_value(char* buffer, char* config_key, size_t buffer_size)
 error:
    hrmp_log_debug("Unknown configuration key <%s>", config_key);
    return 1;
-
 }
 
 /**
@@ -1207,7 +1201,6 @@ to_string(char* where, char* value, size_t max_length)
       {
          has_single_quotes = true;
       }
-
    }
 
    needs_quotes = needs_quotes || has_double_quotes || has_single_quotes;
@@ -1228,7 +1221,6 @@ to_string(char* where, char* value, size_t max_length)
       {
          quoting_char = '"';
       }
-
    }
 
    // if here, the size of the string is appropriate,
@@ -1308,7 +1300,6 @@ to_log_level(char* where, int value)
 
    switch (value)
    {
-
       case HRMP_LOGGING_LEVEL_DEBUG2:
          hrmp_snprintf(where, MISC_LENGTH, "%s", "debug2");
          break;
@@ -1327,7 +1318,6 @@ to_log_level(char* where, int value)
       case HRMP_LOGGING_LEVEL_FATAL:
          hrmp_snprintf(where, MISC_LENGTH, "%s", "fatal");
          break;
-
    }
 
    return 0;
@@ -1351,7 +1341,6 @@ to_log_mode(char* where, int value)
 
    switch (value)
    {
-
       case HRMP_LOGGING_MODE_CREATE:
          hrmp_snprintf(where, MISC_LENGTH, "%s", "create");
          break;
@@ -1390,7 +1379,6 @@ to_log_type(char* where, int value)
       case HRMP_LOGGING_TYPE_SYSLOG:
          hrmp_snprintf(where, MISC_LENGTH, "%s", "syslog");
          break;
-
    }
 
    return 0;

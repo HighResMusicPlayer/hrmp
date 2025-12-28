@@ -41,15 +41,13 @@
 
 #define HRMP_DEFAULT_PATH "/usr/bin/hrmp"
 
-typedef enum
-{
+typedef enum {
    HRMP_PLAY_MODE_END = 0,
    HRMP_PLAY_MODE_REPEAT,
    HRMP_PLAY_MODE_SHUFFLE
 } HrmpPlayMode;
 
-typedef enum
-{
+typedef enum {
    HRMP_FILES_MODE_FULL = 0,
    HRMP_FILES_MODE_SHORT
 } HrmpFilesMode;
@@ -447,8 +445,7 @@ hrmp_gtk_load_preferences(struct App* app)
    g_key_file_unref(keyfile);
 }
 
-typedef enum
-{
+typedef enum {
    HRMP_SUPPORT_UNKNOWN = 0,
    HRMP_SUPPORT_NO,
    HRMP_SUPPORT_YES
@@ -456,16 +453,16 @@ typedef enum
 
 struct HrmpDevice
 {
-   gchar* name;          /* e.g. "FIIO QX13" */
-   gboolean active;      /* Active: Yes */
-   gchar* active_text;   /* "Yes" / "No" / "Unknown" */
+   gchar* name;        /* e.g. "FIIO QX13" */
+   gboolean active;    /* Active: Yes */
+   gchar* active_text; /* "Yes" / "No" / "Unknown" */
 
-   gchar* device;        /* Device: */
-   gchar* description;   /* Description: */
-   gchar* hardware;      /* Hardware: */
-   gchar* selem;         /* Selem: */
-   gchar* volume;        /* Volume: */
-   gchar* paused;        /* Paused: */
+   gchar* device;      /* Device: */
+   gchar* description; /* Description: */
+   gchar* hardware;    /* Hardware: */
+   gchar* selem;       /* Selem: */
+   gchar* volume;      /* Volume: */
+   gchar* paused;      /* Paused: */
 
    /* Per-format support (defaults to HRMP_SUPPORT_UNKNOWN) */
    HrmpSupport s16;

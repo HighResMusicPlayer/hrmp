@@ -34,9 +34,9 @@ struct list;
 
 struct list_entry
 {
-   char value[MAX_PATH];        /**< Stored string value (NUL-terminated) */
-   struct list_entry* next;     /**< Pointer to the next entry */
-   struct list* list;           /**< Owning list */
+   char value[MAX_PATH];    /**< Stored string value (NUL-terminated) */
+   struct list_entry* next; /**< Pointer to the next entry */
+   struct list* list;       /**< Owning list */
 };
 
 /** @struct list
@@ -44,9 +44,9 @@ struct list_entry
  */
 struct list
 {
-   struct list_entry* head;     /**< First entry in the list */
-   struct list_entry* tail;     /**< Last entry in the list */
-   size_t size;                 /**< Number of elements in the list */
+   struct list_entry* head; /**< First entry in the list */
+   struct list_entry* tail; /**< Last entry in the list */
+   size_t size;             /**< Number of elements in the list */
 };
 
 /**

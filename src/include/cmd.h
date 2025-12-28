@@ -28,9 +28,9 @@
  */
 typedef struct
 {
-   char* short_name;    /**< Short option name */
-   char* long_name;     /**< Long option name */
-   bool requires_arg;   /**< Whether this option requires an argument */
+   char* short_name;  /**< Short option name */
+   char* long_name;   /**< Long option name */
+   bool requires_arg; /**< Whether this option requires an argument */
 } cli_option;
 
 /**
@@ -39,8 +39,8 @@ typedef struct
  */
 typedef struct
 {
-   char* option_name;   /**< The matched option name (short or long) */
-   char* argument;      /**< Argument value if applicable, NULL otherwise */
+   char* option_name; /**< The matched option name (short or long) */
+   char* argument;    /**< Argument value if applicable, NULL otherwise */
 } cli_result;
 
 /**
@@ -67,7 +67,6 @@ int cmd_parse(
    int num_results,
    bool use_last_arg_as_filename,
    char** filename,
-   int* optind
-   );
+   int* optind);
 
 #endif

@@ -34,7 +34,7 @@ Don't forget to indicate your hrmp version.
 For Red Hat RPM based distributions use the following command:
 
 ```
-dnf install git gcc clang clang-analyzer cmake make python3-docutils libasan libasan-static alsa-lib alsa-lib-devel libsndfile libsndfile-devel opus opus-devel faad2-libs faad2-devel gtk3 gtk3-devel
+dnf install git gcc clang clang-analyzer clang-tools-extra cmake make python3-docutils libasan libasan-static alsa-lib alsa-lib-devel libsndfile libsndfile-devel opus opus-devel faad2-libs faad2-devel gtk3 gtk3-devel
 ```
 
 in order to get the necessary dependencies.
@@ -78,7 +78,7 @@ for more information.
 
 * Discuss the feature
 * Do development
-  + Follow the code style - use the `uncrustify.sh` script
+  + Follow the code style - use the `clang-format.sh` script
 * Commits should be atomic and semantic. Therefore, squash your pull request before submission and keep it rebased until merged
   + If your feature has independent parts submit those as separate pull requests
 
@@ -188,10 +188,10 @@ Here are some concrete guidelines for using LLMs as part of your communication w
 
 Please, follow the coding style of the project.
 
-You can use the [uncrustify](http://uncrustify.sourceforge.net/) tool to help with the formatting, by running
+You can use the [clang-format](http://clang.llvm.org/) tool to help with the formatting, by running
 
 ```
-./uncrustify.sh
+./clang-format.sh
 ```
 
 and verify the changes.

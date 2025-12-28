@@ -1033,8 +1033,8 @@ get_metadata_dsf(char* filename, struct file_metadata** file_metadata)
       goto error;
    }
 
-   hrmp_read_le_u64(f); /* chunk_size */
-   hrmp_read_le_u64(f); /* file_size */
+   hrmp_read_le_u64(f);                  /* chunk_size */
+   hrmp_read_le_u64(f);                  /* file_size */
    metadata_chunk = hrmp_read_le_u64(f); /* metadata_chunk */
 
    memset(&id4[0], 0, sizeof(id4));
@@ -1061,7 +1061,7 @@ get_metadata_dsf(char* filename, struct file_metadata** file_metadata)
    block_size = hrmp_read_le_u32(f);
    hrmp_read_le_u32(f); /* reserved */
 
-   hrmp_read_le_u32(f); /* DATA */
+   hrmp_read_le_u32(f);             /* DATA */
    data_size = hrmp_read_le_u64(f); /* data_size */
 
    if (srate % 16)
@@ -1466,8 +1466,8 @@ get_metadata_mkv(char* filename, struct file_metadata** file_metadata)
       }
       fm->total_samples = (unsigned long)(total_bytes / bytes_per_frame);
       fm->duration = (fm->sample_rate > 0)
-                     ? (double)((double)fm->total_samples / (double)fm->sample_rate)
-                     : 0.0;
+                        ? (double)((double)fm->total_samples / (double)fm->sample_rate)
+                        : 0.0;
       fm->data_size = (unsigned long)total_bytes;
    }
 

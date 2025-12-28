@@ -19,7 +19,7 @@
 * [texlive](https://www.tug.org/texlive/)
 
 ```sh
-dnf install git gcc clang clang-analyzer cmake make \
+dnf install git gcc clang clang-analyzer clang-tools-extra cmake make \
     python3-docutils libasan libasan-static \
     alsa-lib alsa-lib-devel \
     libsndfile libsndfile-devel \

@@ -41,26 +41,24 @@ char current_log_path[MAX_PATH]; /* the current log file */
 
 static int log_file_open(void);
 
-static void output_log_line(char *l);
+static void output_log_line(char* l);
 
-static char *levels[] = {
+static char* levels[] = {
    "TRACE",
    "DEBUG",
    "INFO",
    "WARN",
    "ERROR",
-   "FATAL"
-};
+   "FATAL"};
 
 static char* colors[] =
-{
-   "\x1b[37m",
-   "\x1b[36m",
-   "\x1b[32m",
-   "\x1b[91m",
-   "\x1b[31m",
-   "\x1b[35m"
-};
+   {
+      "\x1b[37m",
+      "\x1b[36m",
+      "\x1b[32m",
+      "\x1b[91m",
+      "\x1b[31m",
+      "\x1b[35m"};
 
 /**
  *
@@ -194,7 +192,7 @@ retry:
 #ifdef DEBUG
          if (level > 4)
          {
-            char *bt = NULL;
+            char* bt = NULL;
             hrmp_backtrace_string(&bt);
             if (bt != NULL)
             {
@@ -260,7 +258,7 @@ retry:
          atomic_store(&config->log_lock, STATE_FREE);
       }
       else
-        SLEEP_AND_GOTO(1000000L,retry)
+         SLEEP_AND_GOTO(1000000L, retry)
    }
 }
 

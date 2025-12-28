@@ -313,7 +313,10 @@ hvsnprintf(char* buf, size_t n, const char* fmt, va_list ap)
          continue;
       }
 
-      enum { LM_NONE, LM_L, LM_LL, LM_Z } lm = LM_NONE;
+      enum { LM_NONE,
+             LM_L,
+             LM_LL,
+             LM_Z } lm = LM_NONE;
       if (*p == 'l')
       {
          p++;
@@ -885,13 +888,12 @@ hrmp_remove_whitespace(char* orig)
    return result;
 }
 
-__attribute__((unused))
-static bool
+__attribute__((unused)) static bool
 calculate_offset(uint64_t addr, uint64_t* offset, char** filepath)
 {
 #if defined(HAVE_LINUX) && defined(HAVE_EXECINFO_H)
    char line[256];
-   char* start, * end, * base_offset, * filepath_ptr;
+   char *start, *end, *base_offset, *filepath_ptr;
    uint64_t start_addr, end_addr, base_offset_value;
    FILE* fp;
    bool success = false;
@@ -1164,7 +1166,7 @@ hrmp_backtrace(void)
 int
 hrmp_backtrace_string(char** s)
 {
-#ifdef  HAVE_EXECINFO_H
+#ifdef HAVE_EXECINFO_H
    void* bt[1024];
    char* log_str = NULL;
    size_t bt_size;

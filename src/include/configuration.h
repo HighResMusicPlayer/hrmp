@@ -29,12 +29,12 @@ extern "C" {
  * The main section that must be present in the `hrmp.conf`
  * configuration file.
  */
-#define HRMP_MAIN_INI_SECTION "hrmp"
+#define HRMP_MAIN_INI_SECTION                    "hrmp"
 
-#define HRMP_CONFIGURATION_STATUS_OK 0
+#define HRMP_CONFIGURATION_STATUS_OK             0
 #define HRMP_CONFIGURATION_STATUS_FILE_NOT_FOUND -1
-#define HRMP_CONFIGURATION_STATUS_FILE_TOO_BIG -2
-#define HRMP_CONFIGURATION_STATUS_KO -3
+#define HRMP_CONFIGURATION_STATUS_FILE_TOO_BIG   -2
+#define HRMP_CONFIGURATION_STATUS_KO             -3
 
 /**
  * Initialize the configuration structure

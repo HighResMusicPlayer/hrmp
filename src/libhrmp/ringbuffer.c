@@ -115,7 +115,7 @@ maybe_shrink(struct ringbuffer* rb)
 int
 hrmp_ringbuffer_create(size_t min_size, size_t initial_size, size_t max_size, struct ringbuffer** out)
 {
-   struct ringbuffer *rb = NULL;
+   struct ringbuffer* rb = NULL;
 
    *out = NULL;
 
@@ -236,7 +236,6 @@ hrmp_ringbuffer_ensure_write(struct ringbuffer* rb, size_t n)
    }
 
    return resize_to(rb, newcap);
-
 
 error:
 

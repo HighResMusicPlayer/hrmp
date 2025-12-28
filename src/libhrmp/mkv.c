@@ -423,8 +423,8 @@ ebml_read_binary(EbmlReader* r, uint64_t size, uint8_t** out)
 #define ID_BLOCKGROUP      0xA0u
 #define ID_BLOCK           0xA1u
 
-#define TRACK_TYPE_VIDEO 1
-#define TRACK_TYPE_AUDIO 2
+#define TRACK_TYPE_VIDEO   1
+#define TRACK_TYPE_AUDIO   2
 
 typedef struct
 {
@@ -439,7 +439,7 @@ typedef struct
    PendingPacket* items;
    size_t count;
    size_t cap;
-   size_t head;          /* index of next item to pop */
+   size_t head; /* index of next item to pop */
 } PacketQueue;
 
 static void
@@ -506,10 +506,10 @@ pq_pop(PacketQueue* q, MkvPacket* out)
    return 1;
 }
 
-#define OPUS_OUTPUT_HZ 48000
+#define OPUS_OUTPUT_HZ         48000
 #define OPUS_MAX_FRAME_SAMPLES (5760) /* 120ms @ 48kHz */
 
-#define AAC_OUTPUT_BITS 16
+#define AAC_OUTPUT_BITS        16
 
 struct OpusState
 {
@@ -518,20 +518,20 @@ struct OpusState
    int streams;
    int coupled_streams;
    unsigned char mapping[255];
-   int pre_skip;                  /* samples to drop at start */
+   int pre_skip; /* samples to drop at start */
    int pre_skip_remaining;
    OpusDecoder* dec;
    OpusMSDecoder* msdec;
-   opus_int16* decode_buf;        /* reusable decode buffer */
-   size_t decode_cap;             /* samples total capacity */
+   opus_int16* decode_buf; /* reusable decode buffer */
+   size_t decode_cap;      /* samples total capacity */
 };
 
 struct AacState
 {
    NeAACDecHandle h;
-   int initialized;    /* 0 until Init or Init2 succeeds */
-   int channels;       /* as configured */
-   int sample_rate;    /* as configured */
+   int initialized; /* 0 until Init or Init2 succeeds */
+   int channels;    /* as configured */
+   int sample_rate; /* as configured */
 };
 
 struct MkvDemuxer
@@ -541,17 +541,17 @@ struct MkvDemuxer
 
    /* Segment parsing */
    uint64_t segment_start;
-   uint64_t segment_size;    /* may be (uint64_t)-1 (unknown) */
+   uint64_t segment_size; /* may be (uint64_t)-1 (unknown) */
 
    /* Info */
-   uint64_t timecode_scale_ns;    /* default 1ms = 1,000,000 ns */
+   uint64_t timecode_scale_ns; /* default 1ms = 1,000,000 ns */
 
    /* Selected audio track */
-   uint64_t track_number;    /* match against Block track number */
+   uint64_t track_number; /* match against Block track number */
    MkvAudioInfo ainfo;
 
    /* Cluster state */
-   uint64_t current_cluster_tc;    /* base timecode, in raw "ticks" */
+   uint64_t current_cluster_tc; /* base timecode, in raw "ticks" */
 
    /* Pending packets (from laced block or decoded audio) */
    PacketQueue q;
@@ -623,7 +623,7 @@ init_opus_from_codec_private(MkvDemuxer* m, const uint8_t* cp, size_t cpsize)
 {
    if (!cp || cpsize < 19)
    {
-      return -1;                       /* minimal OpusHead */
+      return -1; /* minimal OpusHead */
    }
    if (memcmp(cp, "OpusHead", 8) != 0)
    {
@@ -1213,7 +1213,6 @@ read_vint_from_mem(const uint8_t* p, const uint8_t* end, uint64_t* val, int allo
       uint64_t all_ones = 0;
       for (int i = 0; i < (8 - len); ++i)
       {
-
       }
       all_ones = 0;
       for (int i = 0; i < (8 - len); ++i)

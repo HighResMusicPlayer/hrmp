@@ -46,8 +46,7 @@
 #define ACTION_STATUS        4
 #define ACTION_PLAY          5
 
-typedef enum
-{
+typedef enum {
    HRMP_PLAYBACK_MODE_ONCE,
    HRMP_PLAYBACK_MODE_REPEAT,
    HRMP_PLAYBACK_MODE_SHUFFLE
@@ -185,8 +184,7 @@ main(int argc, char** argv)
       {"", "experimental", false},
       {"", "developer", false},
       {"", "fallback", false},
-      {"?", "help", false}
-   };
+      {"?", "help", false}};
 
    // Disable stdout buffering (i.e. write to stdout immediatelly).
    setbuf(stdout, NULL);

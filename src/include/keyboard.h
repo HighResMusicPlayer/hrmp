@@ -23,16 +23,16 @@
 #include <stdbool.h>
 #include <stdio.h>
 
-#define KEYBOARD_IGNORE     0
-#define KEYBOARD_Q          1
-#define KEYBOARD_UP         2
-#define KEYBOARD_DOWN       3
-#define KEYBOARD_LEFT       4
-#define KEYBOARD_RIGHT      5
-#define KEYBOARD_ENTER      6
-#define KEYBOARD_SPACE      7
-#define KEYBOARD_COMMA      8
-#define KEYBOARD_PERIOD     9
+#define KEYBOARD_IGNORE    0
+#define KEYBOARD_Q         1
+#define KEYBOARD_UP        2
+#define KEYBOARD_DOWN      3
+#define KEYBOARD_LEFT      4
+#define KEYBOARD_RIGHT     5
+#define KEYBOARD_ENTER     6
+#define KEYBOARD_SPACE     7
+#define KEYBOARD_COMMA     8
+#define KEYBOARD_PERIOD    9
 #define KEYBOARD_M         10
 #define KEYBOARD_SLASH     11
 #define KEYBOARD_BACKSLASH 12

@@ -25,55 +25,55 @@ extern "C" {
 #include <stdatomic.h>
 #include <stdbool.h>
 
-#define VERSION "0.12.0"
+#define VERSION                      "0.12.0"
 
-#define HRMP_HOMEPAGE "https://hrmp.github.io/"
-#define HRMP_ISSUES "https://github.com/HighResMusicPlayer/hrmp/issues"
+#define HRMP_HOMEPAGE                "https://hrmp.github.io/"
+#define HRMP_ISSUES                  "https://github.com/HighResMusicPlayer/hrmp/issues"
 
-#define STATE_NOTINIT -2
-#define STATE_INIT    -1
-#define STATE_FREE     0
-#define STATE_IN_USE   1
+#define STATE_NOTINIT                -2
+#define STATE_INIT                   -1
+#define STATE_FREE                   0
+#define STATE_IN_USE                 1
 
-#define MAX_PROCESS_TITLE_LENGTH 256
+#define MAX_PROCESS_TITLE_LENGTH     256
 
 #define UPDATE_PROCESS_TITLE_NEVER   0
 #define UPDATE_PROCESS_TITLE_STRICT  1
 #define UPDATE_PROCESS_TITLE_MINIMAL 2
 #define UPDATE_PROCESS_TITLE_VERBOSE 3
 
-#define DEFAULT_BUFFER_SIZE 131072
-#define ALIGNMENT_SIZE         512
+#define DEFAULT_BUFFER_SIZE          131072
+#define ALIGNMENT_SIZE               512
 
-#define INDENT_PER_LEVEL 2
-#define FORMAT_JSON 0
-#define FORMAT_TEXT 1
-#define FORMAT_JSON_COMPACT 2
-#define BULLET_POINT "- "
+#define INDENT_PER_LEVEL             2
+#define FORMAT_JSON                  0
+#define FORMAT_TEXT                  1
+#define FORMAT_JSON_COMPACT          2
+#define BULLET_POINT                 "- "
 
-#define MESSAGE_STATUS_ZERO  0
-#define MESSAGE_STATUS_OK    1
-#define MESSAGE_STATUS_ERROR 2
+#define MESSAGE_STATUS_ZERO          0
+#define MESSAGE_STATUS_OK            1
+#define MESSAGE_STATUS_ERROR         2
 
-#define NUMBER_OF_DEVICES 8
+#define NUMBER_OF_DEVICES            8
 
-#define MISC_LENGTH  512
-#define MAX_PATH    1024
+#define MISC_LENGTH                  512
+#define MAX_PATH                     1024
 
-#define HRMP_DEFAULT_OUTPUT_FORMAT "[%n/%N] %d: %f [%i] (%t/%T) (%p)"
+#define HRMP_DEFAULT_OUTPUT_FORMAT   "[%n/%N] %d: %f [%i] (%t/%T) (%p)"
 
 /**
  * The shared memory segment
  */
 extern void* shmem;
 
-#define MAX(a, b)               \
-        ({ __typeof__ (a) _a = (a);  \
+#define MAX(a, b) \
+   ({ __typeof__ (a) _a = (a);  \
            __typeof__ (b) _b = (b);  \
            _a > _b ? _a : _b; })
 
-#define MIN(a, b)               \
-        ({ __typeof__ (a) _a = (a);  \
+#define MIN(a, b) \
+   ({ __typeof__ (a) _a = (a);  \
            __typeof__ (b) _b = (b);  \
            _a < _b ? _a : _b; })
 
@@ -88,13 +88,14 @@ extern void* shmem;
  *
  */
 #define SLEEP(zzz)                  \
-        do                               \
-        {                                \
-           struct timespec ts_private;   \
-           ts_private.tv_sec = 0;        \
-           ts_private.tv_nsec = zzz;     \
-           nanosleep(&ts_private, NULL); \
-        } while (0);
+   do                               \
+   {                                \
+      struct timespec ts_private;   \
+      ts_private.tv_sec = 0;        \
+      ts_private.tv_nsec = zzz;     \
+      nanosleep(&ts_private, NULL); \
+   }                                \
+   while (0);
 
 /*
  * Commonly used block of code to sleep
@@ -110,15 +111,16 @@ extern void* shmem;
      else
        SLEEP_AND_GOTO(100000L, retry)
  */
-#define SLEEP_AND_GOTO(zzz, goto_to)    \
-        do                                   \
-        {                                    \
-           struct timespec ts_private;       \
-           ts_private.tv_sec = 0;            \
-           ts_private.tv_nsec = zzz;         \
-           nanosleep(&ts_private, NULL);     \
-           goto goto_to;                     \
-        } while (0);
+#define SLEEP_AND_GOTO(zzz, goto_to) \
+   do                                \
+   {                                 \
+      struct timespec ts_private;    \
+      ts_private.tv_sec = 0;         \
+      ts_private.tv_nsec = zzz;      \
+      nanosleep(&ts_private, NULL);  \
+      goto goto_to;                  \
+   }                                 \
+   while (0);
 
 /** @struct capabilities
  * Defines the capabilities of a device
@@ -176,37 +178,37 @@ struct device
  */
 struct configuration
 {
-   char configuration_path[MAX_PATH];       /**< The configuration path */
+   char configuration_path[MAX_PATH]; /**< The configuration path */
 
-   char device[MISC_LENGTH];                 /**< The name of the default device */
-   char output[MISC_LENGTH];                 /**< The output format */
+   char device[MISC_LENGTH]; /**< The name of the default device */
+   char output[MISC_LENGTH]; /**< The output format */
 
-   struct device active_device;              /**< The active device */
+   struct device active_device; /**< The active device */
 
-   bool quiet;                               /**< Quiet the output */
+   bool quiet; /**< Quiet the output */
 
-   int volume;                               /**< The current volume */
-   int prev_volume;                          /**< The previous volume */
-   bool is_muted;                            /**< Is muted */
+   int volume;      /**< The current volume */
+   int prev_volume; /**< The previous volume */
+   bool is_muted;   /**< Is muted */
 
-   bool metadata;                            /**< Display metadata about files */
+   bool metadata; /**< Display metadata about files */
 
-   bool experimental;                        /**< Allow experimental features */
-   bool developer;                           /**< Enable developer features */
-   bool fallback;                            /**< Enable fallback features */
+   bool experimental; /**< Allow experimental features */
+   bool developer;    /**< Enable developer features */
+   bool fallback;     /**< Enable fallback features */
 
-   bool dop;                                 /**< DoP mode */
+   bool dop; /**< DoP mode */
 
-   int log_type;                             /**< The logging type */
-   int log_level;                            /**< The logging level */
-   char log_path[MISC_LENGTH];               /**< The logging path */
-   int log_mode;                             /**< The logging mode */
-   char log_line_prefix[MISC_LENGTH];        /**< The logging prefix */
-   atomic_schar log_lock;                    /**< The logging lock */
+   int log_type;                      /**< The logging type */
+   int log_level;                     /**< The logging level */
+   char log_path[MISC_LENGTH];        /**< The logging path */
+   int log_mode;                      /**< The logging mode */
+   char log_line_prefix[MISC_LENGTH]; /**< The logging prefix */
+   atomic_schar log_lock;             /**< The logging lock */
 
-   unsigned int update_process_title;        /**< Behaviour for updating the process title */
+   unsigned int update_process_title; /**< Behaviour for updating the process title */
 
-   int number_of_devices;                    /**< The number of devices */
+   int number_of_devices; /**< The number of devices */
 
    struct device devices[NUMBER_OF_DEVICES]; /**< The IEC598 devices */
 };

@@ -39,8 +39,8 @@
 #include <string.h>
 #include <alsa/asoundlib.h>
 
-#define DOP_MARKER_8MSB 0xFA
-#define DOP_MARKER_8LSB 0x05
+#define DOP_MARKER_8MSB      0xFA
+#define DOP_MARKER_8LSB      0x05
 
 #define HRMP_DSD_FADEOUT_MS  20u
 #define HRMP_DSD_POSTROLL_MS 60u
@@ -140,7 +140,7 @@ frames_from_ms(struct playback* pb, unsigned ms)
 {
    unsigned rate =
       (pb && pb->fm && pb->fm->pcm_rate) ? pb->fm->pcm_rate
-      : (pb && pb->fm ? pb->fm->sample_rate : 0u);
+                                         : (pb && pb->fm ? pb->fm->sample_rate : 0u);
 
    if (rate == 0)
    {
@@ -176,7 +176,7 @@ write_dsd_center_pad(struct playback* pb, unsigned frames, uint8_t* marker)
       for (unsigned i = 0; i < frames; ++i)
       {
          uint8_t a = (i & 1) ? 0x55 : 0xAA;
-         uint8_t b = (uint8_t) ~a;
+         uint8_t b = (uint8_t)~a;
          for (uint32_t c = 0; c < ch_out; ++c)
          {
             size_t off = (size_t)i * bytes_per_frame + (size_t)c * 4u;
@@ -198,7 +198,7 @@ write_dsd_center_pad(struct playback* pb, unsigned frames, uint8_t* marker)
       for (unsigned i = 0; i < frames; ++i)
       {
          uint8_t a = (i & 1) ? 0x55 : 0xAA;
-         uint8_t b = (uint8_t) ~a;
+         uint8_t b = (uint8_t)~a;
          for (uint32_t c = 0; c < ch_out; ++c)
          {
             size_t off = (size_t)i * bytes_per_frame + (size_t)c * 4u;
@@ -1898,7 +1898,7 @@ dsd_play_dop_s32le(FILE* f, struct playback* pb,
       for (unsigned i = 0; i < pre; ++i)
       {
          uint8_t a = (i & 1) ? 0x55 : 0xAA;
-         uint8_t b = (uint8_t) ~a;
+         uint8_t b = (uint8_t)~a;
          for (uint32_t c = 0; c < ch_out; ++c)
          {
             size_t off = (size_t)i * bytes_per_frame + (size_t)c * 4u;
@@ -2317,17 +2317,17 @@ dsd_play_native_u32_be(FILE* f, struct playback* pb,
    }
 
 done:
+{
+   uint8_t m_ignored = DOP_MARKER_8LSB;
+   write_dsd_fadeout(pb, HRMP_DSD_FADEOUT_MS, &m_ignored);
+   snd_pcm_uframes_t buffer_size = 0, period_size = 0;
+   if (snd_pcm_get_params(pb->pcm_handle, &buffer_size, &period_size) == 0 && period_size > 0)
    {
-      uint8_t m_ignored = DOP_MARKER_8LSB;
-      write_dsd_fadeout(pb, HRMP_DSD_FADEOUT_MS, &m_ignored);
-      snd_pcm_uframes_t buffer_size = 0, period_size = 0;
-      if (snd_pcm_get_params(pb->pcm_handle, &buffer_size, &period_size) == 0 && period_size > 0)
-      {
-         write_dsd_center_pad(pb, (unsigned)period_size, &m_ignored);
-      }
-      unsigned post_frames = frames_from_ms(pb, HRMP_DSD_POSTROLL_MS);
-      write_dsd_center_pad(pb, post_frames, &m_ignored);
+      write_dsd_center_pad(pb, (unsigned)period_size, &m_ignored);
    }
+   unsigned post_frames = frames_from_ms(pb, HRMP_DSD_POSTROLL_MS);
+   write_dsd_center_pad(pb, post_frames, &m_ignored);
+}
 
    snd_pcm_drain(pb->pcm_handle);
 

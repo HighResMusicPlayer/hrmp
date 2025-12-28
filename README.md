@@ -46,7 +46,7 @@ See [Configuration](./doc/CONFIGURATION.md) on how to configure `hrmp`.
 
 
 ```sh
-dnf install git gcc clang clang-analyzer cmake make python3-docutils libasan libasan-static alsa-lib alsa-lib-devel libsndfile libsndfile-devel opus opus-devel faad2-libs faad2-devel gtk3 gtk3-devel
+dnf install git gcc clang clang-analyzer clang-tools-extra cmake make python3-docutils libasan libasan-static alsa-lib alsa-lib-devel libsndfile libsndfile-devel opus opus-devel faad2-libs faad2-devel gtk3 gtk3-devel
 ```
 
 Optionally dependencies

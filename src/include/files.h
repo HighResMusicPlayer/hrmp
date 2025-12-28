@@ -28,13 +28,13 @@ extern "C" {
 #include <stdbool.h>
 #include <stdlib.h>
 
-#define TYPE_UNKNOWN 0
-#define TYPE_WAV     1
-#define TYPE_FLAC    2
-#define TYPE_MP3     3
-#define TYPE_DSF     4
-#define TYPE_DFF     5
-#define TYPE_MKV     6
+#define TYPE_UNKNOWN   0
+#define TYPE_WAV       1
+#define TYPE_FLAC      2
+#define TYPE_MP3       3
+#define TYPE_DSF       4
+#define TYPE_DFF       5
+#define TYPE_MKV       6
 
 #define FORMAT_UNKNOWN 0
 #define FORMAT_16      1
@@ -62,14 +62,14 @@ struct file_metadata
    unsigned int block_size;      /**< The block size */
    unsigned long data_size;      /**< The data size */
 
-   char title[MISC_LENGTH];       /**< Title */
-   char artist[MISC_LENGTH];      /**< Artist */
-   char album[MISC_LENGTH];       /**< Album */
-   char genre[MISC_LENGTH];       /**< Genre */
-   char date[MISC_LENGTH];        /**< Date */
+   char title[MISC_LENGTH];  /**< Title */
+   char artist[MISC_LENGTH]; /**< Artist */
+   char album[MISC_LENGTH];  /**< Album */
+   char genre[MISC_LENGTH];  /**< Genre */
+   char date[MISC_LENGTH];   /**< Date */
 
-   int track;                     /**< Track number (0 if unknown) */
-   int disc;                      /**< Disc number (0 if unknown) */
+   int track; /**< Track number (0 if unknown) */
+   int disc;  /**< Disc number (0 if unknown) */
 };
 
 /**
