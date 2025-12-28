@@ -37,15 +37,12 @@ output_log_line(char* l);
 static int
 log_file_open(void);
 
-
 #define LINE_LENGTH 32
 #define MAX_LENGTH  4096
 
 FILE* log_file;
 
 char current_log_path[MAX_PATH]; /* the current log file */
-
-
 
 static char* levels[] = {
    "TRACE",
@@ -471,9 +468,6 @@ retry:
    }
 }
 
-
-
-
 static void
 output_log_line(char* l)
 {
@@ -538,4 +532,3 @@ log_file_open(void)
 
    return 1;
 }
-

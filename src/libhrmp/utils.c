@@ -47,9 +47,9 @@ static void ptr_to_hex(char* buf, size_t n, void* ptr);
 static void dbl_to_str(char* buf, size_t n, double v);
 static int hvsnprintf(char* buf, size_t n, const char* fmt, va_list ap);
 static int string_compare(const void* a, const void* b);
+static int delete_directory_recursive(char* directory);
 
 #define BUFFER_SIZE 8192
-
 
 extern char** environ;
 
@@ -143,14 +143,6 @@ hrmp_read_le_u32_buffer(uint8_t* buffer)
           ((uint32_t)buffer[3] << 24);
 }
 
-
-
-
-
-
-
-
-
 int
 hrmp_snprintf(char* buf, size_t n, const char* fmt, ...)
 {
@@ -183,6 +175,100 @@ hrmp_copy_string(char* s)
    return ret;
 }
 
+int
+hrmp_mkdir(char* dir)
+{
+   char* p;
+
+   for (p = dir + 1; *p; p++)
+   {
+      if (*p == '/')
+      {
+         *p = '\0';
+
+         if (mkdir(dir, S_IRWXU) != 0)
+         {
+            if (errno != EEXIST)
+            {
+               return 1;
+            }
+
+            errno = 0;
+         }
+
+         *p = '/';
+      }
+   }
+
+   if (mkdir(dir, S_IRWXU) != 0)
+   {
+      if (errno != EEXIST)
+      {
+         return 1;
+      }
+
+      errno = 0;
+   }
+
+   return 0;
+}
+
+int
+hrmp_delete_file(char* file)
+{
+   if (file == NULL)
+   {
+      return 1;
+   }
+
+   if (unlink(file) != 0)
+   {
+      if (errno == ENOENT)
+      {
+         errno = 0;
+         return 0;
+      }
+
+      hrmp_log_warn("hrmp_delete_file: %s (%s)", file, strerror(errno));
+      errno = 0;
+      return 1;
+   }
+
+   return 0;
+}
+
+int
+hrmp_delete_directory(char* directory)
+{
+   struct stat statbuf;
+
+   if (directory == NULL)
+   {
+      return 1;
+   }
+
+   memset(&statbuf, 0, sizeof(struct stat));
+   if (lstat(directory, &statbuf) != 0)
+   {
+      if (errno == ENOENT)
+      {
+         errno = 0;
+         return 0;
+      }
+
+      hrmp_log_warn("hrmp_delete_directory: %s (%s)", directory, strerror(errno));
+      errno = 0;
+      return 1;
+   }
+
+   if (!S_ISDIR(statbuf.st_mode))
+   {
+      return 1;
+   }
+
+   return delete_directory_recursive(directory);
+}
+
 char*
 hrmp_get_home_directory(void)
 {
@@ -194,6 +280,25 @@ hrmp_get_home_directory(void)
    }
 
    return pw->pw_dir;
+}
+
+char*
+hrmp_get_current_directory(void)
+{
+   char* cwd = (char*)calloc(MAX_PATH, sizeof(char));
+
+   if (cwd == NULL)
+   {
+      return NULL;
+   }
+
+   if (getcwd(cwd, MAX_PATH) == NULL)
+   {
+      free(cwd);
+      return NULL;
+   }
+
+   return cwd;
 }
 
 bool
@@ -244,6 +349,99 @@ hrmp_exists(char* f)
    }
 
    return false;
+}
+
+static int
+delete_directory_recursive(char* directory)
+{
+   DIR* dir = NULL;
+   struct dirent* entry;
+   int status = 1;
+
+   dir = opendir(directory);
+   if (dir == NULL)
+   {
+      hrmp_log_warn("delete_directory_recursive: %s (%s)", directory, strerror(errno));
+      errno = 0;
+      return 1;
+   }
+
+   while ((entry = readdir(dir)) != NULL)
+   {
+      char* path = NULL;
+      struct stat statbuf;
+
+      if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+      {
+         continue;
+      }
+
+      path = hrmp_append(path, directory);
+      if (path == NULL)
+      {
+         goto cleanup;
+      }
+      if (!hrmp_ends_with(path, "/"))
+      {
+         path = hrmp_append_char(path, '/');
+      }
+      path = hrmp_append(path, entry->d_name);
+      if (path == NULL)
+      {
+         goto cleanup;
+      }
+
+      memset(&statbuf, 0, sizeof(struct stat));
+      if (lstat(path, &statbuf) != 0)
+      {
+         hrmp_log_warn("delete_directory_recursive: %s (%s)", path, strerror(errno));
+         errno = 0;
+         free(path);
+         goto cleanup;
+      }
+
+      if (S_ISDIR(statbuf.st_mode))
+      {
+         if (delete_directory_recursive(path) != 0)
+         {
+            free(path);
+            goto cleanup;
+         }
+      }
+      else if (hrmp_delete_file(path) != 0)
+      {
+         free(path);
+         goto cleanup;
+      }
+
+      free(path);
+   }
+
+   if (closedir(dir) != 0)
+   {
+      dir = NULL;
+      hrmp_log_warn("delete_directory_recursive: %s (%s)", directory, strerror(errno));
+      errno = 0;
+      return 1;
+   }
+   dir = NULL;
+
+   if (rmdir(directory) != 0)
+   {
+      hrmp_log_warn("delete_directory_recursive: %s (%s)", directory, strerror(errno));
+      errno = 0;
+      return 1;
+   }
+
+   status = 0;
+
+cleanup:
+   if (dir != NULL)
+   {
+      closedir(dir);
+   }
+
+   return status;
 }
 
 int
@@ -443,7 +641,6 @@ hrmp_sort(size_t size, char** array)
       qsort(array, size, sizeof(const char*), string_compare);
    }
 }
-
 
 char*
 hrmp_append(char* orig, char* s)
@@ -908,15 +1105,6 @@ error:
    return 1;
 #endif
 }
-
-
-
-
-
-
-
-
-
 
 static void
 append_bounded(char** out, const char* s, size_t current_len, size_t cap)

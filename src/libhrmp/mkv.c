@@ -78,21 +78,9 @@ static int parse_cluster(MkvDemuxer* m, uint64_t elem_end);
 static int parse_tracks(MkvDemuxer* m, uint64_t elem_end);
 static int parse_header_and_segment(MkvDemuxer* m);
 
-
-
-
-
-
-
-
-
 /* Read an EBML variable-length integer (VINT) used for sizes. */
 
 /* Element header: read ID (1..4 bytes VINT-like) and size (VINT) */
-
-
-
-
 
 #define ID_EBML            0x1A45DFA3u
 #define ID_SEGMENT         0x18538067u
@@ -133,10 +121,6 @@ struct PacketQueue
    size_t cap;
    size_t head; /* index of next item to pop */
 };
-
-
-
-
 
 #define OPUS_OUTPUT_HZ         48000
 #define OPUS_MAX_FRAME_SAMPLES (5760) /* 120ms @ 48kHz */
@@ -196,14 +180,7 @@ struct MkvDemuxer
    struct AacState aac;
 };
 
-
-
-
-
-
-
 /* Initialize from AudioSpecificConfig (CodecPrivate) if present */
-
 
 int
 hrmp_mkv_open(FILE* fp, MkvDemuxer** out)
@@ -410,47 +387,6 @@ hrmp_mkv_read_packet(MkvDemuxer* m, MkvPacket* packet)
       }
    }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 static void
 ebml_reader_init(EbmlReader* r, FILE* fp, struct ringbuffer* rb, uint64_t file_size, uint64_t* bytes_left)

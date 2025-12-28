@@ -247,58 +247,6 @@ struct sndfile_vio_state
    struct playback* pb;
 };
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 static void
 normalize_pcm_rate(struct configuration* config, struct file_metadata* fm)
 {
@@ -513,7 +461,6 @@ ensure_ringbuffer_target(struct ringbuffer* rb, size_t file_size)
 static void
 prefill_ringbuffer_limit(FILE* f, struct ringbuffer* rb, size_t bytes_left)
 {
-
    if (f == NULL || rb == NULL)
    {
       return;

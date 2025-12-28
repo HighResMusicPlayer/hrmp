@@ -25,7 +25,6 @@
 #include <string.h>
 #include <sys/mman.h>
 
-
 void* shmem = NULL;
 
 int

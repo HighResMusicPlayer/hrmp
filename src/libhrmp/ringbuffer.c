@@ -26,10 +26,6 @@ clamp_size(size_t v, size_t lo, size_t hi);
 static int
 resize_to(struct ringbuffer* rb, size_t newcap);
 
-
-
-
-
 int
 hrmp_ringbuffer_create(size_t min_size, size_t initial_size, size_t max_size, struct ringbuffer** out)
 {
@@ -250,8 +246,6 @@ error:
    return 1;
 }
 
-
-
 static size_t
 clamp_size(size_t v, size_t lo, size_t hi)
 {
@@ -316,4 +310,3 @@ resize_to(struct ringbuffer* rb, size_t newcap)
 
    return 0;
 }
-

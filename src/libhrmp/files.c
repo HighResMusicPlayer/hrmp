@@ -176,7 +176,6 @@ error:
    return 1;
 }
 
-
 int
 hrmp_print_file_metadata(struct file_metadata* fm)
 {
@@ -1514,4 +1513,3 @@ error:
    free(fm);
    return 1;
 }
-

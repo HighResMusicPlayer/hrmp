@@ -686,7 +686,7 @@ hrmp_interactive_ui(struct list* files, const char* start_path, int* play_from_i
             tui_playlist_pop(files);
          }
       }
-      else if (ch == '*' )
+      else if (ch == '*')
       {
          if (active == TUI_PANEL_DISK)
          {
@@ -865,14 +865,6 @@ hrmp_interactive_ui(struct list* files, const char* start_path, int* play_from_i
    endwin();
    return ret;
 }
-
-
-
-
-
-
-
-
 
 static const char*
 tui_basename(const char* path)

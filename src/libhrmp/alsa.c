@@ -29,9 +29,7 @@
 static int
 find_best_format(struct file_metadata* fm, snd_pcm_format_t* format);
 
-
 #define MAX_BUFFER_SIZE 131072
-
 
 int
 hrmp_alsa_init_handle(struct file_metadata* fm, snd_pcm_t** handle)
@@ -514,7 +512,6 @@ error:
    return 1;
 }
 
-
 static int
 find_best_format(struct file_metadata* fm, snd_pcm_format_t* format)
 {
@@ -604,4 +601,3 @@ error:
 
    return 1;
 }
-

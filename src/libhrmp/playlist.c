@@ -42,16 +42,6 @@ get_playlist_dir(const char* playlist_path, char* out, size_t out_size);
 static void
 join_path(const char* dir, const char* rel, char* out, size_t out_size);
 
-
-
-
-
-
-
-
-
-
-
 int
 hrmp_playlist_load(const char* playlist_path, struct list* files, bool quiet)
 {
@@ -263,14 +253,6 @@ hrmp_playlist_load(const char* playlist_path, struct list* files, bool quiet)
 
    return 0;
 }
-
-
-
-
-
-
-
-
 
 static int
 pathcmp(const void* a, const void* b)
@@ -559,4 +541,3 @@ join_path(const char* dir, const char* rel, char* out, size_t out_size)
 
    hrmp_snprintf(out, out_size, "%s/%s", dir, rel != NULL ? rel : "");
 }
-

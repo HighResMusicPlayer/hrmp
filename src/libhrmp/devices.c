@@ -933,4 +933,3 @@ copy_device_index(int i)
 
    return 0;
 }
-

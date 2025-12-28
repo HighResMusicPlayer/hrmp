@@ -238,7 +238,6 @@ cmd_parse(
    return result_count;
 }
 
-
 static bool
 option_requires_arg(char* option_name, cli_option* options, int num_options, bool is_long_option)
 {
@@ -263,4 +262,3 @@ option_requires_arg(char* option_name, cli_option* options, int num_options, boo
    }
    return false;
 }
-

@@ -116,11 +116,42 @@ char*
 hrmp_copy_string(char* s);
 
 /**
+ * Create a directory
+ * @param dir The directory
+ * @return 0 upon success, otherwise 1
+ */
+int
+hrmp_mkdir(char* dir);
+
+/**
+ * Delete a file if it exists
+ * @param file The file
+ * @return 0 upon success, otherwise 1
+ */
+int
+hrmp_delete_file(char* file);
+
+/**
+ * Delete a directory recursively if it exists
+ * @param directory The directory
+ * @return 0 upon success, otherwise 1
+ */
+int
+hrmp_delete_directory(char* directory);
+
+/**
  * Get the home directory of the user
  * @return The result
  */
 char*
 hrmp_get_home_directory(void);
+
+/**
+ * Get the current directory of the user
+ * @return The result
+ */
+char*
+hrmp_get_current_directory(void);
 
 /**
  * Get the size of the file

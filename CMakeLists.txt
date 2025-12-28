@@ -99,6 +99,13 @@ else()
   message(FATAL_ERROR "gtk3 needed")
 endif()
 
+pkg_check_modules(CDIO REQUIRED libcdio)
+if (CDIO_FOUND)
+  message(STATUS "libcdio found")
+else()
+  message(FATAL_ERROR "libcdio needed")
+endif()
+
 find_package(Rst2man)
 if (RST2MAN_FOUND)
   message(STATUS "rst2man found")

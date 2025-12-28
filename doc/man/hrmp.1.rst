@@ -45,6 +45,9 @@ OPTIONS
 -m, --metadata
   Display metadata of the files
 
+-e, --extract
+  Extract supported disc devices or ``.iso`` files instead of playing them
+
 -s, --status
   Status of the devices
 

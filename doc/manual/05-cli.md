@@ -21,6 +21,7 @@ Options:
   -I, --sample-configuration Generate a sample configuration
   -i, --interactive          Text UI mode
   -m, --metadata             Display metadata of the files
+  -e, --extract              Extract ISO file
   -s, --status               Status of the devices
       --dop                  Use DSD over PCM
   -q, --quiet                Quiet the player
@@ -97,6 +98,22 @@ Display metadata information about the files
 
 ```sh
 hrmp -m
+```
+
+## -e
+
+Extract supported disc images or devices instead of playing them.
+
+Currently this mode accepts:
+
+* device paths under `/dev/...` for Red Book extraction
+* `.iso` files for Scarlet Book extraction
+
+Any other input is rejected as unsupported.
+
+```sh
+hrmp -e /dev/sr0
+hrmp -e my-disc.iso
 ```
 
 ## -s

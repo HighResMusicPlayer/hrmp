@@ -21,6 +21,7 @@
 #include <cmd.h>
 #include <configuration.h>
 #include <devices.h>
+#include <extract.h>
 #include <files.h>
 #include <interactive.h>
 #include <keyboard.h>
@@ -52,6 +53,7 @@ static void usage(void);
 #define ACTION_SAMPLE_CONFIG 3
 #define ACTION_STATUS        4
 #define ACTION_PLAY          5
+#define ACTION_EXTRACT       6
 
 typedef enum {
    HRMP_PLAYBACK_MODE_ONCE,
@@ -101,6 +103,7 @@ main(int argc, char** argv)
       {"m", "metadata", false},
       {"s", "status", false},
       {"", "dop", false},
+      {"e", "extract", false},
       {"q", "quiet", false},
       {"V", "version", false},
       {"", "experimental", false},
@@ -200,6 +203,11 @@ main(int argc, char** argv)
          dop = true;
          files_index += 1;
       }
+      else if (!strcmp(optname, "e") || !strcmp(optname, "extract"))
+      {
+         action = ACTION_EXTRACT;
+         files_index += 1;
+      }
       else if (!strcmp(optname, "q") || !strcmp(optname, "quiet"))
       {
          q = true;
@@ -268,6 +276,48 @@ main(int argc, char** argv)
    else if (action == ACTION_SAMPLE_CONFIG)
    {
       hrmp_sample_configuration();
+   }
+   else if (action == ACTION_EXTRACT)
+   {
+      if (hrmp_list_create(&files))
+      {
+         printf("Error creating files list\n");
+         goto error;
+      }
+
+      for (int i = files_index; i < argc; i++)
+      {
+         bool added = false;
+
+         if (hrmp_exists(argv[i]) && (hrmp_starts_with(argv[i], "/dev/") ||
+                                      hrmp_ends_with(argv[i], ".iso")))
+         {
+            if (hrmp_list_append(files, argv[i]) == 0)
+            {
+               added = true;
+            }
+         }
+
+         if (!added)
+         {
+            if (!config->quiet)
+            {
+               if (!hrmp_exists(argv[i]))
+               {
+                  printf("File not found '%s'\n", argv[i]);
+               }
+            }
+         }
+      }
+
+      for (files_entry = hrmp_list_head(files);
+           files_entry != NULL;
+           files_entry = hrmp_list_next(files_entry))
+      {
+         if (hrmp_extract(files_entry->value))
+         {
+         }
+      }
    }
    else
    {
@@ -554,7 +604,7 @@ main(int argc, char** argv)
                     files_entry != NULL;
                     files_entry = hrmp_list_next(files_entry))
                {
-                   printf("Queued: %s\n", (const char*)files_entry->value);
+                  printf("Queued: %s\n", (const char*)files_entry->value);
                }
 
                printf("Number of files: %ld\n", hrmp_list_size(files));
@@ -631,10 +681,6 @@ error:
 
    return 1;
 }
-
-
-
-
 
 static void
 shuffle_files(struct list** files)
@@ -797,6 +843,7 @@ usage(void)
    printf("  -I, --sample-configuration Generate a sample configuration\n");
    printf("  -i, --interactive          Text UI mode\n");
    printf("  -m, --metadata             Display metadata of the files\n");
+   printf("  -e, --extract              Extract ISO file\n");
    printf("  -s, --status               Status of the devices\n");
    printf("      --dop                  Use DSD over PCM\n");
    printf("  -q, --quiet                Quiet the player\n");
