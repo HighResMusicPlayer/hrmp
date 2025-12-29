@@ -335,6 +335,11 @@ hrmp_sample_configuration(void)
       desc = snd_device_name_get_hint(*n, "DESC");
       cdesc = NULL;
 
+      if (config->developer)
+      {
+         printf("Device name: %s\n", name);
+      }
+
       if (hrmp_starts_with(name, "iec958"))
       {
          cdesc = clean_description(desc);

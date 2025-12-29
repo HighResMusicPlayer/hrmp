@@ -323,56 +323,6 @@ main(int argc, char** argv)
    hrmp_init_configuration(shmem);
    config = (struct configuration*)shmem;
 
-   if (configuration_path != NULL)
-   {
-      cp = hrmp_append(cp, configuration_path);
-   }
-   else
-   {
-      cp = hrmp_append(cp, hrmp_get_home_directory());
-      cp = hrmp_append(cp, "/.hrmp/hrmp.conf");
-   }
-
-   if ((ret = hrmp_read_configuration(shmem, cp, true)) != HRMP_CONFIGURATION_STATUS_OK)
-   {
-      // the configuration has some problem, build up a descriptive message
-      if (ret == HRMP_CONFIGURATION_STATUS_FILE_NOT_FOUND)
-      {
-         hrmp_snprintf(message, MISC_LENGTH, "Configuration file not found");
-      }
-      else if (ret == HRMP_CONFIGURATION_STATUS_FILE_TOO_BIG)
-      {
-         hrmp_snprintf(message, MISC_LENGTH, "Too many sections");
-      }
-      else if (ret == HRMP_CONFIGURATION_STATUS_KO)
-      {
-         hrmp_snprintf(message, MISC_LENGTH, "Invalid configuration file");
-      }
-      else if (ret > 0)
-      {
-         hrmp_snprintf(message, MISC_LENGTH, "%d problematic or duplicated section%c",
-                       ret,
-                       ret > 1 ? 's' : ' ');
-      }
-
-      errx(1, "%s (file <%s>)", message, cp);
-      goto error;
-   }
-
-   memcpy(&config->configuration_path[0], cp, MIN(strlen(cp), (size_t)MAX_PATH - 1));
-
-   if (hrmp_start_logging())
-   {
-      errx(1, "Failed to start logging");
-      goto error;
-   }
-
-   if (hrmp_validate_configuration(shmem))
-   {
-      errx(1, "Invalid configuration");
-      goto error;
-   }
-
    config->quiet = q;
    config->metadata = m;
    config->experimental = e;
@@ -392,220 +342,272 @@ main(int argc, char** argv)
    {
       hrmp_sample_configuration();
    }
-   else if (action == ACTION_STATUS)
-   {
-      hrmp_check_devices();
-      hrmp_print_devices();
-   }
    else
    {
-      action = ACTION_PLAY;
-   }
-
-   if (action == ACTION_PLAY)
-   {
-      if (config->developer)
+      if (configuration_path != NULL)
       {
-         printf("hrmp %s\n", VERSION);
-      }
-
-      hrmp_check_devices();
-
-      if (config->developer)
-      {
-         hrmp_print_devices();
-      }
-
-      if (device_name != NULL)
-      {
-         if (hrmp_is_device_known(device_name))
-         {
-            hrmp_activate_device(device_name);
-         }
+         cp = hrmp_append(cp, configuration_path);
       }
       else
       {
-         hrmp_activate_device(config->device);
+         cp = hrmp_append(cp, hrmp_get_home_directory());
+         cp = hrmp_append(cp, "/.hrmp/hrmp.conf");
       }
 
-      if (strlen(config->active_device.device) == 0)
+      if ((ret = hrmp_read_configuration(shmem, cp, true)) != HRMP_CONFIGURATION_STATUS_OK)
       {
-         if (config->fallback)
+         // the configuration has some problem, build up a descriptive message
+         if (ret == HRMP_CONFIGURATION_STATUS_FILE_NOT_FOUND)
          {
-            if (device_name != NULL)
+            hrmp_snprintf(message, MISC_LENGTH, "Configuration file not found");
+         }
+         else if (ret == HRMP_CONFIGURATION_STATUS_FILE_TOO_BIG)
+         {
+            hrmp_snprintf(message, MISC_LENGTH, "Too many sections");
+         }
+         else if (ret == HRMP_CONFIGURATION_STATUS_KO)
+         {
+            hrmp_snprintf(message, MISC_LENGTH, "Invalid configuration file");
+         }
+         else if (ret > 0)
+         {
+            hrmp_snprintf(message, MISC_LENGTH, "%d problematic or duplicated section%c",
+                          ret,
+                          ret > 1 ? 's' : ' ');
+         }
+
+         errx(1, "%s (%s)", message, cp);
+         goto error;
+      }
+
+      memcpy(&config->configuration_path[0], cp, MIN(strlen(cp), (size_t)MAX_PATH - 1));
+
+      if (hrmp_start_logging())
+      {
+         errx(1, "Failed to start logging");
+         goto error;
+      }
+
+      if (hrmp_validate_configuration(shmem))
+      {
+         errx(1, "Invalid configuration");
+         goto error;
+      }
+
+      if (action == ACTION_STATUS)
+      {
+         hrmp_check_devices();
+         hrmp_print_devices();
+      }
+      else
+      {
+         action = ACTION_PLAY;
+      }
+
+      if (action == ACTION_PLAY)
+      {
+         if (config->developer)
+         {
+            printf("hrmp %s\n", VERSION);
+         }
+
+         hrmp_check_devices();
+
+         if (config->developer)
+         {
+            hrmp_print_devices();
+         }
+
+         if (device_name != NULL)
+         {
+            if (hrmp_is_device_known(device_name))
             {
-               if (config->developer)
+               hrmp_activate_device(device_name);
+            }
+         }
+         else
+         {
+            hrmp_activate_device(config->device);
+         }
+
+         if (strlen(config->active_device.device) == 0)
+         {
+            if (config->fallback)
+            {
+               if (device_name != NULL)
                {
-                  printf("\n");
+                  if (config->developer)
+                  {
+                     printf("\n");
+                     hrmp_list_fallback_devices();
+                  }
+                  hrmp_create_active_device(device_name);
+               }
+               else
+               {
                   hrmp_list_fallback_devices();
-               }
-               hrmp_create_active_device(device_name);
-            }
-            else
-            {
-               hrmp_list_fallback_devices();
-               printf("Fallback requires a device name\n");
-            }
-         }
-      }
-
-      if (config->developer)
-      {
-         printf("\nActive device: ");
-         hrmp_print_device(&config->active_device);
-      }
-
-      if (strlen(config->active_device.device) > 0)
-      {
-         hrmp_alsa_init_volume();
-
-         if (hrmp_list_create(&files))
-         {
-            printf("Error creating files list\n");
-            goto error;
-         }
-
-         if (playlist_path != NULL)
-         {
-            if (hrmp_playlist_load(playlist_path, files, config->quiet))
-            {
-               printf("Error reading playlist '%s'\n", playlist_path);
-               goto error;
-            }
-         }
-
-         for (int i = files_index; i < argc; i++)
-         {
-            if (hrmp_is_directory(argv[i]))
-            {
-               if (recursive)
-               {
-                  hrmp_get_files(argv[i], recursive, files);
-               }
-            }
-            else
-            {
-               bool added = false;
-
-               if (hrmp_exists(argv[i]))
-               {
-                  if (hrmp_list_append(files, argv[i]) == 0)
-                  {
-                     added = true;
-                  }
-               }
-
-               if (!added)
-               {
-                  if (!config->quiet)
-                  {
-                     if (!hrmp_exists(argv[i]))
-                     {
-                        printf("File not found '%s'\n", argv[i]);
-                     }
-                  }
+                  printf("Fallback requires a device name\n");
                }
             }
          }
 
-         /* Filter unsupported files: display them, but don't keep them in the list. */
-         struct list* supported_files = NULL;
-         if (hrmp_list_create(&supported_files))
+         if (config->developer)
          {
-            printf("Error creating files list\n");
-            goto error;
+            printf("\nActive device: ");
+            hrmp_print_device(&config->active_device);
          }
 
-         for (files_entry = hrmp_list_head(files);
-              files_entry != NULL;
-              files_entry = hrmp_list_next(files_entry))
+         if (strlen(config->active_device.device) > 0)
          {
-            struct file_metadata* fm = NULL;
+            hrmp_alsa_init_volume();
 
-            if (hrmp_file_metadata(files_entry->value, &fm))
+            if (hrmp_list_create(&files))
             {
-               continue;
-            }
-
-            if (hrmp_list_append(supported_files, files_entry->value))
-            {
-               free(fm);
-               hrmp_list_destroy(supported_files);
                printf("Error creating files list\n");
                goto error;
             }
 
-            free(fm);
-         }
+            if (playlist_path != NULL)
+            {
+               if (hrmp_playlist_load(playlist_path, files, config->quiet))
+               {
+                  printf("Error reading playlist '%s'\n", playlist_path);
+                  goto error;
+               }
+            }
 
-         hrmp_list_destroy(files);
-         files = supported_files;
+            for (int i = files_index; i < argc; i++)
+            {
+               if (hrmp_is_directory(argv[i]))
+               {
+                  if (recursive)
+                  {
+                     hrmp_get_files(argv[i], recursive, files);
+                  }
+               }
+               else
+               {
+                  bool added = false;
 
-         if (mode == HRMP_PLAYBACK_MODE_SHUFFLE)
-         {
-            srand((unsigned)time(NULL));
-            shuffle_files(&files);
-         }
+                  if (hrmp_exists(argv[i]))
+                  {
+                     if (hrmp_list_append(files, argv[i]) == 0)
+                     {
+                        added = true;
+                     }
+                  }
 
-         /* Keyboard */
-         hrmp_keyboard_mode(true);
+                  if (!added)
+                  {
+                     if (!config->quiet)
+                     {
+                        if (!hrmp_exists(argv[i]))
+                        {
+                           printf("File not found '%s'\n", argv[i]);
+                        }
+                     }
+                  }
+               }
+            }
 
-         if (config->developer && !config->quiet)
-         {
+            /* Filter unsupported files: display them, but don't keep them in the list. */
+            struct list* supported_files = NULL;
+            if (hrmp_list_create(&supported_files))
+            {
+               printf("Error creating files list\n");
+               goto error;
+            }
+
             for (files_entry = hrmp_list_head(files);
                  files_entry != NULL;
                  files_entry = hrmp_list_next(files_entry))
             {
-               printf("Queued: %s\n", files_entry->value);
-            }
+               struct file_metadata* fm = NULL;
 
-            printf("Number of files: %ld\n", hrmp_list_size(files));
-         }
-
-         num_files = 0;
-         files_entry = hrmp_list_head(files);
-         while (files_entry != NULL)
-         {
-            bool next;
-            struct file_metadata* fm = NULL;
-
-            if (hrmp_file_metadata(files_entry->value, &fm))
-            {
-               files_entry = hrmp_list_next(files_entry);
-               continue;
-            }
-
-            hrmp_set_proc_title(argc, argv, fm->name);
-            hrmp_playback(num_files + 1, files->size, fm, &next);
-
-            if (next)
-            {
-               files_entry = hrmp_list_next(files_entry);
-               num_files++;
-
-               if (mode == HRMP_PLAYBACK_MODE_REPEAT && files_entry == NULL && !hrmp_list_empty(files))
+               if (hrmp_file_metadata(files_entry->value, &fm))
                {
-                  files_entry = hrmp_list_head(files);
-                  num_files = 0;
+                  continue;
                }
-            }
-            else
-            {
-               files_entry = hrmp_list_prev(files_entry);
-               num_files--;
-               if (num_files < 0)
+
+               if (hrmp_list_append(supported_files, files_entry->value))
                {
-                  num_files = 0;
+                  free(fm);
+                  hrmp_list_destroy(supported_files);
+                  printf("Error creating files list\n");
+                  goto error;
                }
+
+               free(fm);
             }
 
-            free(fm);
-         }
+            hrmp_list_destroy(files);
+            files = supported_files;
 
-         hrmp_keyboard_mode(false);
+            if (mode == HRMP_PLAYBACK_MODE_SHUFFLE)
+            {
+               srand((unsigned)time(NULL));
+               shuffle_files(&files);
+            }
+
+            /* Keyboard */
+            hrmp_keyboard_mode(true);
+
+            if (config->developer && !config->quiet)
+            {
+               for (files_entry = hrmp_list_head(files);
+                    files_entry != NULL;
+                    files_entry = hrmp_list_next(files_entry))
+               {
+                  printf("Queued: %s\n", files_entry->value);
+               }
+
+               printf("Number of files: %ld\n", hrmp_list_size(files));
+            }
+
+            num_files = 0;
+            files_entry = hrmp_list_head(files);
+            while (files_entry != NULL)
+            {
+               bool next;
+               struct file_metadata* fm = NULL;
+
+               if (hrmp_file_metadata(files_entry->value, &fm))
+               {
+                  files_entry = hrmp_list_next(files_entry);
+                  continue;
+               }
+
+               hrmp_set_proc_title(argc, argv, fm->name);
+               hrmp_playback(num_files + 1, files->size, fm, &next);
+
+               if (next)
+               {
+                  files_entry = hrmp_list_next(files_entry);
+                  num_files++;
+
+                  if (mode == HRMP_PLAYBACK_MODE_REPEAT && files_entry == NULL && !hrmp_list_empty(files))
+                  {
+                     files_entry = hrmp_list_head(files);
+                     num_files = 0;
+                  }
+               }
+               else
+               {
+                  files_entry = hrmp_list_prev(files_entry);
+                  num_files--;
+                  if (num_files < 0)
+                  {
+                     num_files = 0;
+                  }
+               }
+
+               free(fm);
+            }
+
+            hrmp_keyboard_mode(false);
+         }
       }
    }
-
    hrmp_stop_logging();
    hrmp_destroy_shared_memory(shmem, shmem_size);
 
