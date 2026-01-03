@@ -22,6 +22,7 @@
 #include <configuration.h>
 #include <devices.h>
 #include <files.h>
+#include <interactive.h>
 #include <keyboard.h>
 #include <list.h>
 #include <logging.h>
@@ -128,6 +129,7 @@ usage(void)
    printf("  -R, --recursive            Add files recursive of the directory\n");
    printf("  -M, --mode MODE            Playback mode: once, repeat, shuffle\n");
    printf("  -I, --sample-configuration Generate a sample configuration\n");
+   printf("  -i, --interactive          Text UI mode\n");
    printf("  -m, --metadata             Display metadata of the files\n");
    printf("  -s, --status               Status of the devices\n");
    printf("      --dop                  Use DSD over PCM\n");
@@ -138,6 +140,7 @@ usage(void)
    printf("hrmp: %s\n", HRMP_HOMEPAGE);
    printf("Report bugs: %s\n", HRMP_ISSUES);
 }
+
 
 int
 main(int argc, char** argv)
@@ -157,6 +160,7 @@ main(int argc, char** argv)
    bool f = false;
    bool m = false;
    bool dop = false;
+   bool interactive = false;
    playback_mode mode = HRMP_PLAYBACK_MODE_ONCE;
    int files_index = 1;
    int action = ACTION_NOTHING;
@@ -176,6 +180,7 @@ main(int argc, char** argv)
       {"R", "recursive", false},
       {"M", "mode", true},
       {"I", "sample-configuration", false},
+      {"i", "interactive", false},
       {"m", "metadata", false},
       {"s", "status", false},
       {"", "dop", false},
@@ -256,6 +261,11 @@ main(int argc, char** argv)
       else if (!strcmp(optname, "I") || !strcmp(optname, "sample-configuration"))
       {
          action = ACTION_SAMPLE_CONFIG;
+         files_index += 1;
+      }
+      else if (!strcmp(optname, "i") || !strcmp(optname, "interactive"))
+      {
+         interactive = true;
          files_index += 1;
       }
       else if (!strcmp(optname, "m") || !strcmp(optname, "metadata"))
@@ -476,34 +486,61 @@ main(int argc, char** argv)
                }
             }
 
-            for (int i = files_index; i < argc; i++)
+            int play_from_index = 0;
+            if (interactive)
             {
-               if (hrmp_is_directory(argv[i]))
+               if (hrmp_interactive_ui(files, filepath, &play_from_index))
                {
-                  if (recursive)
-                  {
-                     hrmp_get_files(argv[i], recursive, files);
-                  }
+                  printf("Error in interactive UI\n");
+                  goto error;
                }
-               else
-               {
-                  bool added = false;
 
-                  if (hrmp_exists(argv[i]))
+               if (play_from_index < 0)
+               {
+                  struct list_entry* e = files->head;
+                  while (e != NULL)
                   {
-                     if (hrmp_list_append(files, argv[i]) == 0)
+                     struct list_entry* next = e->next;
+                     free(e);
+                     e = next;
+                  }
+                  files->head = NULL;
+                  files->tail = NULL;
+                  files->size = 0;
+                  play_from_index = 0;
+               }
+            }
+            else
+            {
+               for (int i = files_index; i < argc; i++)
+               {
+                  if (hrmp_is_directory(argv[i]))
+                  {
+                     if (recursive)
                      {
-                        added = true;
+                        hrmp_get_files(argv[i], recursive, files);
                      }
                   }
-
-                  if (!added)
+                  else
                   {
-                     if (!config->quiet)
+                     bool added = false;
+
+                     if (hrmp_exists(argv[i]))
                      {
-                        if (!hrmp_exists(argv[i]))
+                        if (hrmp_list_append(files, argv[i]) == 0)
                         {
-                           printf("File not found '%s'\n", argv[i]);
+                           added = true;
+                        }
+                     }
+
+                     if (!added)
+                     {
+                        if (!config->quiet)
+                        {
+                           if (!hrmp_exists(argv[i]))
+                           {
+                              printf("File not found '%s'\n", argv[i]);
+                           }
                         }
                      }
                   }
@@ -547,6 +584,7 @@ main(int argc, char** argv)
             {
                srand((unsigned)time(NULL));
                shuffle_files(&files);
+               play_from_index = 0;
             }
 
             /* Keyboard */
@@ -566,6 +604,11 @@ main(int argc, char** argv)
 
             num_files = 0;
             files_entry = hrmp_list_head(files);
+            for (int i = 0; i < play_from_index && files_entry != NULL; i++)
+            {
+               files_entry = hrmp_list_next(files_entry);
+               num_files++;
+            }
             while (files_entry != NULL)
             {
                bool next;

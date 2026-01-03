@@ -19,6 +19,7 @@ Options:
   -R, --recursive            Add files recursive of the directory
   -M, --mode MODE            Playback mode: once, repeat, shuffle
   -I, --sample-configuration Generate a sample configuration
+  -i, --interactive          Text UI mode
   -m, --metadata             Display metadata of the files
   -s, --status               Status of the devices
       --dop                  Use DSD over PCM

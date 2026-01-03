@@ -25,7 +25,8 @@ dnf install git gcc clang clang-analyzer clang-tools-extra cmake make \
     libsndfile libsndfile-devel \
     opus opus-devel \
     faad2 faad2-devel \
-    gtk3 gtk3-devel
+    gtk3 gtk3-devel \
+    ncurses-libs ncurses-devel
 ```
 
 ### Generate the guide

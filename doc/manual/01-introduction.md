@@ -13,6 +13,7 @@
 * Playlist support
 * Customize console output with color support
 * GTK-based UI
+* ncurses-based UI
 * By-pass PulseAudio for native bit-stream
 
 ### Best effort

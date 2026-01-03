@@ -125,13 +125,16 @@ if (HAS_NOW)
   set (CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,now")
 endif()
 
+find_package(Curses REQUIRED)
+
 #
 # Build libhrmp
 #
 add_library(hrmp SHARED ${SOURCES})
 set_target_properties(hrmp PROPERTIES LINKER_LANGUAGE C VERSION ${VERSION_STRING}
                            SOVERSION ${VERSION_MAJOR})
-target_link_libraries(hrmp PUBLIC)
+target_include_directories(hrmp PRIVATE ${CURSES_INCLUDE_DIRS})
+target_link_libraries(hrmp PUBLIC ${CURSES_LIBRARIES})
 
 install(TARGETS hrmp DESTINATION ${CMAKE_INSTALL_LIBDIR}/)
 
@@ -144,6 +147,7 @@ if (CMAKE_C_LINK_PIE_SUPPORTED)
 else()
   set_target_properties(hrmp-bin PROPERTIES LINKER_LANGUAGE C OUTPUT_NAME hrmp POSITION_INDEPENDENT_CODE FALSE)
 endif()
+
 target_link_libraries(hrmp-bin hrmp)
 
 install(TARGETS hrmp-bin DESTINATION ${CMAKE_INSTALL_BINDIR})

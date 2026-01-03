@@ -39,6 +39,9 @@ OPTIONS
 -I, --sample-configuration
   Generate a sample configuration
 
+-i, --interactive
+  Text UI mode
+
 -m, --metadata
   Display metadata of the files
 

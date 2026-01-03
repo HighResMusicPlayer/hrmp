@@ -18,6 +18,7 @@ high-resolution loss-less files (44.1kHz+/16bit+).
 * Playlist support
 * Customize console output with color support
 * GTK-based UI
+* ncurses-based UI
 * By-pass PulseAudio for native bit-stream
 
 See [Getting Started](./doc/GETTING_STARTED.md) on how to get started with `hrmp`.
@@ -42,11 +43,12 @@ See [Configuration](./doc/CONFIGURATION.md) on how to configure `hrmp`.
 * [opus](https://github.com/xiph/opus)
 * [faad2](https://github.com/knik0/faad2)
 * [GTK](https://www.gtk.org/)
+* [ncurses](https://invisible-island.net/ncurses/)
 * [rst2man](https://docutils.sourceforge.io/)
 
 
 ```sh
-dnf install git gcc clang clang-analyzer clang-tools-extra cmake make python3-docutils libasan libasan-static alsa-lib alsa-lib-devel libsndfile libsndfile-devel opus opus-devel faad2-libs faad2-devel gtk3 gtk3-devel
+dnf install git gcc clang clang-analyzer clang-tools-extra cmake make python3-docutils libasan libasan-static alsa-lib alsa-lib-devel libsndfile libsndfile-devel opus opus-devel faad2-libs faad2-devel gtk3 gtk3-devel ncurses-libs ncurses-devel
 ```
 
 Optionally dependencies
