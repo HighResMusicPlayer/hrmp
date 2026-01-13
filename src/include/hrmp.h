@@ -191,6 +191,8 @@ struct configuration
    int prev_volume; /**< The previous volume */
    bool is_muted;   /**< Is muted */
 
+   size_t cache_size; /**< The cache size */
+
    bool metadata; /**< Display metadata about files */
 
    bool experimental; /**< Allow experimental features */

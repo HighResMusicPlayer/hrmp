@@ -20,6 +20,7 @@
 #include <configuration.h>
 #include <devices.h>
 #include <logging.h>
+#include <ringbuffer.h>
 #include <shmem.h>
 #include <utils.h>
 
@@ -47,6 +48,7 @@ static int as_logging_type(char* str);
 static int as_logging_level(char* str);
 static int as_logging_mode(char* str);
 static int as_volume(char* str);
+static int as_size(char* str, size_t def, size_t* size);
 
 static unsigned int as_update_process_title(char* str, unsigned int* policy, unsigned int default_policy);
 
@@ -92,6 +94,8 @@ hrmp_init_configuration(void* shm)
    config->volume = -1;
    config->prev_volume = -1;
    config->is_muted = false;
+
+   config->cache_size = HRMP_RINGBUFFER_MAX_BYTES;
 
    config->metadata = false;
 
@@ -308,6 +312,13 @@ hrmp_read_configuration(void* shm, char* filename, bool emitWarnings)
                {
                   drv.volume = as_volume(value);
                }
+               else if (key_in_section("cache", section, key, true, &unknown))
+               {
+                  if (as_size(value, HRMP_RINGBUFFER_MAX_BYTES, &config->cache_size))
+                  {
+                     unknown = true;
+                  }
+               }
                else
                {
                   unknown = true;
@@ -430,6 +441,11 @@ hrmp_validate_configuration(void* shm)
             return 1;
          }
       }
+   }
+
+   if (config->cache_size < HRMP_RINGBUFFER_MIN_BYTES)
+   {
+      config->cache_size = HRMP_RINGBUFFER_MIN_BYTES;
    }
 
    return 0;
@@ -1382,4 +1398,91 @@ to_log_type(char* where, int value)
    }
 
    return 0;
+}
+
+static int
+as_size(char* str, size_t def, size_t* size)
+{
+   int multiplier = 1;
+   int index;
+   char value[MISC_LENGTH];
+   bool multiplier_set = false;
+   int i_value = def;
+
+   if (is_empty_string(str))
+   {
+      *size = def;
+      return 0;
+   }
+
+   index = 0;
+   for (size_t i = 0; i < strlen(str); i++)
+   {
+      if (isdigit(str[i]))
+      {
+         value[index++] = str[i];
+      }
+      else if (isalpha(str[i]) && multiplier_set)
+      {
+         // allow a 'B' suffix on a multiplier
+         // like for instance 'MB', but don't allow it
+         // for bytes themselves ('BB')
+         if (multiplier == 1 || (str[i] != 'b' && str[i] != 'B'))
+         {
+            // another non-digit char not allowed
+            goto error;
+         }
+      }
+      else if (isalpha(str[i]) && !multiplier_set)
+      {
+         if (str[i] == 'M' || str[i] == 'm')
+         {
+            multiplier = 1024 * 1024;
+            multiplier_set = true;
+         }
+         else if (str[i] == 'G' || str[i] == 'g')
+         {
+            multiplier = 1024 * 1024 * 1024;
+            multiplier_set = true;
+         }
+         else if (str[i] == 'K' || str[i] == 'k')
+         {
+            multiplier = 1024;
+            multiplier_set = true;
+         }
+         else if (str[i] == 'B' || str[i] == 'b')
+         {
+            multiplier = 1;
+            multiplier_set = true;
+         }
+      }
+      else
+      {
+         // do not allow alien chars
+         goto error;
+      }
+   }
+
+   value[index] = '\0';
+   if (!as_int(value, &i_value))
+   {
+      // sanity check: the value
+      // must be a positive number!
+      if (i_value >= 0)
+      {
+         *size = i_value * multiplier;
+      }
+      else
+      {
+         goto error;
+      }
+
+      return 0;
+   }
+   else
+   {
+error:
+      *size = def;
+      return 1;
+   }
 }
