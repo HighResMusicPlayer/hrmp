@@ -24,6 +24,7 @@ extern "C" {
 
 #include <stdatomic.h>
 #include <stdbool.h>
+#include <stddef.h>
 
 #define VERSION                      "0.12.1"
 
