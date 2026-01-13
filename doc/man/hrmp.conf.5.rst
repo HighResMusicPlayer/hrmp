@@ -34,6 +34,9 @@ output
 volume
   The volume in percent. -1 means use current volume
 
+cache
+  The cache size. Default is 256Mb
+
 log_type
   The logging type (console, file, syslog). Default is console
 

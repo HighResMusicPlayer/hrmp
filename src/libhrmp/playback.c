@@ -313,12 +313,14 @@ struct sndfile_vio_state
 static size_t
 ringbuffer_target_capacity(size_t file_size)
 {
+   struct configuration* config = (struct configuration*)shmem;
+
    if (file_size == 0)
    {
       return HRMP_RINGBUFFER_MIN_BYTES;
    }
 
-   size_t target = MIN(HRMP_RINGBUFFER_MAX_BYTES, file_size);
+   size_t target = MIN(config->cache_size, file_size);
    if (target < HRMP_RINGBUFFER_MIN_BYTES)
    {
       target = HRMP_RINGBUFFER_MIN_BYTES;
@@ -330,12 +332,14 @@ ringbuffer_target_capacity(size_t file_size)
 static size_t
 ringbuffer_target_max(size_t file_size)
 {
-   if (file_size > 0 && file_size < HRMP_RINGBUFFER_MAX_BYTES)
+   struct configuration* config = (struct configuration*)shmem;
+
+   if (file_size > 0 && file_size < config->cache_size)
    {
       return file_size < HRMP_RINGBUFFER_MIN_BYTES ? HRMP_RINGBUFFER_MIN_BYTES : file_size;
    }
 
-   return HRMP_RINGBUFFER_MAX_BYTES;
+   return config->cache_size;
 }
 
 static void
@@ -1618,6 +1622,7 @@ playback_init(int number, int total,
 {
    char* desc = NULL;
    struct playback* pb = NULL;
+   struct configuration* config = (struct configuration*)shmem;
 
    *playback = NULL;
 
@@ -1646,8 +1651,8 @@ playback_init(int number, int total,
 
    size_t cap = ringbuffer_target_capacity(pb->file_size);
 
-   /* If file < 256MiB, allow max up to file size (but never below the 4MiB minimum). */
-   size_t max_size = (pb->file_size > 0 && pb->file_size < HRMP_RINGBUFFER_MAX_BYTES) ? pb->file_size : HRMP_RINGBUFFER_MAX_BYTES;
+   /* If file < config->cache_size, allow max up to file size (but never below the 4MiB minimum). */
+   size_t max_size = (pb->file_size > 0 && pb->file_size < config->cache_size) ? pb->file_size : config->cache_size;
    if (max_size < HRMP_RINGBUFFER_MIN_BYTES)
    {
       max_size = HRMP_RINGBUFFER_MIN_BYTES;
