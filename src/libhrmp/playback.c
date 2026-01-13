@@ -1706,7 +1706,25 @@ playback_identifier(struct file_metadata* fm, char** identifer)
    }
    else if (fm->type == TYPE_DSF)
    {
-      id = hrmp_append(id, "DSF/");
+      if (config->dop)
+      {
+         id = hrmp_append(id, "DoP/");
+      }
+      else
+      {
+         id = hrmp_append(id, "DSF/");
+      }
+   }
+   else if (fm->type == TYPE_DFF)
+   {
+      if (config->dop)
+      {
+         id = hrmp_append(id, "DoP/");
+      }
+      else
+      {
+         id = hrmp_append(id, "DFF/");
+      }
    }
    else if (fm->type == TYPE_MKV)
    {
@@ -1812,7 +1830,14 @@ playback_identifier(struct file_metadata* fm, char** identifer)
    switch (fm->bits_per_sample)
    {
       case 1:
-         id = hrmp_append(id, "1bit");
+         if (config->dop)
+         {
+            id = hrmp_append(id, "24bits");
+         }
+         else
+         {
+            id = hrmp_append(id, "1bit");
+         }
          break;
       case 16:
          id = hrmp_append(id, "16bits");
