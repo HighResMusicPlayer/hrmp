@@ -365,7 +365,11 @@ prefill_ringbuffer(FILE* f, struct ringbuffer* rb, size_t file_size)
       return;
    }
 
-   ensure_ringbuffer_target(rb, file_size);
+   off_t pos = ftello(f);
+   if (pos >= 0 && (size_t)pos <= file_size)
+   {
+      ensure_ringbuffer_target(rb, file_size - (size_t)pos);
+   }
 
    while (hrmp_ringbuffer_size(rb) < hrmp_ringbuffer_capacity(rb))
    {
@@ -395,11 +399,17 @@ prefill_ringbuffer(FILE* f, struct ringbuffer* rb, size_t file_size)
 }
 
 static size_t
-read_some(FILE* f, struct ringbuffer* rb, void* buf, size_t n)
+read_some(FILE* f, struct ringbuffer* rb, void* buf, size_t n, size_t file_size)
 {
    if (rb == NULL)
    {
       return fread(buf, 1, n, f);
+   }
+
+   off_t pos = ftello(f);
+   if (pos >= 0 && (size_t)pos <= file_size)
+   {
+      ensure_ringbuffer_target(rb, file_size - (size_t)pos);
    }
 
    uint8_t* out = (uint8_t*)buf;
@@ -521,7 +531,7 @@ sndfile_vio_read(void* ptr, sf_count_t count, void* user_data)
       return 0;
    }
 
-   size_t got = read_some(st->fp, st->rb, ptr, (size_t)count);
+   size_t got = read_some(st->fp, st->rb, ptr, (size_t)count, (size_t)st->file_size);
    st->pos += (uint64_t)got;
    if (st->pb != NULL)
    {
