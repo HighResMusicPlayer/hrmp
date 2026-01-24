@@ -7,7 +7,7 @@ URL:           https://github.com/HighResMusicPlayer/hrmp
 Source0:       https://github.com/HighResMusicPlayer/hrmp/releases/download/%{version}/hrmp-%{version}.tar.gz
 
 BuildRequires: gcc cmake make python3-docutils alsa-lib alsa-lib-devel libsndfile libsndfile-devel opus-devel faad2-devel gtk3-devel ncurses-libs ncurses-devel
-Requires:      alsa-lib libsndfile opus faad2 gtk3 ncurses-labs
+Requires:      alsa-lib libsndfile opus faad2 gtk3 ncurses-libs
 
 %description
 hrmp is a high resolution music player.
@@ -19,7 +19,7 @@ hrmp is a high resolution music player.
 
 %{__mkdir} build
 cd build
-cmake -DCMAKE_BUILD_TYPE=Release ..
+cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_SKIP_RPATH=true ..
 %{__make}
 
 %install
@@ -32,6 +32,7 @@ cmake -DCMAKE_BUILD_TYPE=Release ..
 %{__mkdir} -p %{buildroot}%{_datadir}/applications
 %{__mkdir} -p %{buildroot}%{_datadir}/icons/hicolor
 %{__mkdir} -p %{buildroot}%{_sysconfdir}/hrmp
+%{__mkdir} -p %{buildroot}%{_docdir}/%{name}
 
 %{__install} -m 644 %{_builddir}/%{name}-%{version}/LICENSE %{buildroot}%{_docdir}/%{name}/LICENSE
 %{__install} -m 644 %{_builddir}/%{name}-%{version}/CODE_OF_CONDUCT.md %{buildroot}%{_docdir}/%{name}/CODE_OF_CONDUCT.md
@@ -59,8 +60,6 @@ for size in 16 24 32 48 64 96 128 256 512; do \
 done
 
 %{__install} -m 755 %{_builddir}/%{name}-%{version}/build/src/libhrmp.so.%{version} %{buildroot}%{_libdir}/libhrmp.so.%{version}
-
-chrpath -r %{_libdir} %{buildroot}%{_bindir}/hrmp
 
 cd %{buildroot}%{_libdir}/
 %{__ln_s} -f libhrmp.so.%{version} libhrmp.so.0
