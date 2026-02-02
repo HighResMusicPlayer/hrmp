@@ -28,6 +28,9 @@ extern "C" {
 #define HRMP_RINGBUFFER_MIN_BYTES (4u * 1024u * 1024u)
 #define HRMP_RINGBUFFER_MAX_BYTES (256u * 1024u * 1024u)
 
+/** @struct ringbuffer
+ * Ringbuffer storage.
+ */
 struct ringbuffer
 {
    uint8_t *buf; /**< The buffer */

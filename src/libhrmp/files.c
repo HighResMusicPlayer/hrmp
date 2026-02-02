@@ -1063,6 +1063,7 @@ get_metadata_dsf(char* filename, struct file_metadata** file_metadata)
 
    hrmp_read_le_u32(f);             /* DATA */
    data_size = hrmp_read_le_u64(f); /* data_size */
+   long data_offset = ftell(f);
 
    if (srate % 16)
    {
@@ -1087,7 +1088,33 @@ get_metadata_dsf(char* filename, struct file_metadata** file_metadata)
    fm->total_samples = samples;
    fm->duration = (double)((double)samples / srate);
    fm->block_size = block_size;
-   fm->data_size = data_size;
+   uint64_t max_bytes = data_size;
+   if (fm->file_size > 0 && data_offset > 0 && (uint64_t)data_offset < fm->file_size)
+   {
+      uint64_t avail = fm->file_size - (uint64_t)data_offset;
+      if (metadata_chunk != 0 && metadata_chunk > (uint64_t)data_offset && metadata_chunk <= fm->file_size)
+      {
+         avail = metadata_chunk - (uint64_t)data_offset;
+      }
+      if (avail < max_bytes)
+      {
+         max_bytes = avail;
+      }
+   }
+
+   if (samples > 0 && channel_number > 0)
+   {
+      uint64_t expected_bytes = (samples * (uint64_t)channel_number + 7u) / 8u;
+      fm->data_size = expected_bytes;
+      if (max_bytes < fm->data_size)
+      {
+         fm->data_size = max_bytes;
+      }
+   }
+   else
+   {
+      fm->data_size = max_bytes;
+   }
 
    if (metadata_chunk != 0)
    {

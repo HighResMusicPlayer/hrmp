@@ -86,32 +86,6 @@ resize_to(struct ringbuffer* rb, size_t newcap)
    return 0;
 }
 
-static void
-maybe_shrink(struct ringbuffer* rb)
-{
-   if (!rb)
-   {
-      return;
-   }
-
-   while (rb->cap > rb->min && rb->size < (rb->cap / 4u))
-   {
-      size_t newcap = rb->cap / 2u;
-      if (newcap < rb->min)
-      {
-         break;
-      }
-      if (rb->size > newcap)
-      {
-         break;
-      }
-      if (resize_to(rb, newcap))
-      {
-         break;
-      }
-   }
-}
-
 int
 hrmp_ringbuffer_create(size_t min_size, size_t initial_size, size_t max_size, struct ringbuffer** out)
 {
@@ -197,12 +171,7 @@ hrmp_ringbuffer_size(struct ringbuffer* rb)
 int
 hrmp_ringbuffer_ensure_write(struct ringbuffer* rb, size_t n)
 {
-   if (rb == NULL)
-   {
-      goto error;
-   }
-
-   if (n > rb->max)
+   if (rb == NULL || n > rb->max)
    {
       goto error;
    }
@@ -287,8 +256,6 @@ hrmp_ringbuffer_consume(struct ringbuffer* rb, size_t n)
       rb->r = 0;
       rb->w = 0;
    }
-
-   maybe_shrink(rb);
 }
 
 size_t
