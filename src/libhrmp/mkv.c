@@ -59,6 +59,60 @@ ebml_reader_init(EbmlReader* r, FILE* fp, struct ringbuffer* rb, uint64_t file_s
    }
 }
 
+static void
+mkv_prefill_ringbuffer(EbmlReader* r)
+{
+   if (!r || !r->rb || !r->fp)
+   {
+      return;
+   }
+
+   size_t target = r->rb->max;
+   if (r->file_size > 0)
+   {
+      off_t pos = ftello(r->fp);
+      if (pos >= 0 && (uint64_t)pos <= r->file_size)
+      {
+         uint64_t remaining = r->file_size - (uint64_t)pos;
+         if (remaining < target)
+         {
+            target = (size_t)remaining;
+         }
+      }
+   }
+   if (target < r->rb->min)
+   {
+      target = r->rb->min;
+   }
+
+   size_t cur = hrmp_ringbuffer_size(r->rb);
+   if (target > cur)
+   {
+      (void)hrmp_ringbuffer_ensure_write(r->rb, target - cur);
+   }
+
+   while (hrmp_ringbuffer_size(r->rb) < hrmp_ringbuffer_capacity(r->rb))
+   {
+      void* wp = NULL;
+      size_t span = hrmp_ringbuffer_get_write_span(r->rb, &wp);
+      if (span == 0)
+      {
+         break;
+      }
+
+      size_t got = fread(wp, 1, span, r->fp);
+      if (got == 0)
+      {
+         break;
+      }
+
+      if (hrmp_ringbuffer_produce(r->rb, got))
+      {
+         break;
+      }
+   }
+}
+
 static uint64_t
 ebml_tell(EbmlReader* r)
 {
@@ -113,6 +167,7 @@ ebml_read(EbmlReader* r, void* dst, size_t size)
    }
    else
    {
+      mkv_prefill_ringbuffer(r);
       uint8_t* out = (uint8_t*)dst;
       while (n < size)
       {
@@ -124,6 +179,7 @@ ebml_read(EbmlReader* r, void* dst, size_t size)
             memcpy(out + n, rp, take);
             hrmp_ringbuffer_consume(r->rb, take);
             n += take;
+            mkv_prefill_ringbuffer(r);
             continue;
          }
 

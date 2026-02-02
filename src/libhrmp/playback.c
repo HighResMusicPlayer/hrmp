@@ -52,7 +52,7 @@ static char* format_output(struct playback* pb);
 static char* get_progress(struct playback* pb);
 static void print_progress_done(struct playback* pb);
 
-static int read_exact(FILE* f, struct ringbuffer* rb, void* buf, size_t n);
+static int read_exact(FILE* f, struct ringbuffer* rb, void* buf, size_t n, size_t bytes_left);
 
 static uint8_t bitrev8(uint8_t x);
 
@@ -350,7 +350,7 @@ ensure_ringbuffer_target(struct ringbuffer* rb, size_t file_size)
       return;
    }
 
-   size_t target = ringbuffer_target_capacity(file_size);
+   size_t target = ringbuffer_target_max(file_size);
    size_t cur = hrmp_ringbuffer_size(rb);
    if (target <= cur)
    {
@@ -362,31 +362,52 @@ ensure_ringbuffer_target(struct ringbuffer* rb, size_t file_size)
 }
 
 static void
-prefill_ringbuffer(FILE* f, struct ringbuffer* rb, size_t file_size)
+prefill_ringbuffer_limit(FILE* f, struct ringbuffer* rb, size_t bytes_left)
 {
+
    if (f == NULL || rb == NULL)
    {
       return;
    }
 
-   off_t pos = ftello(f);
-   if (pos >= 0 && (size_t)pos <= file_size)
+   if (bytes_left == 0)
    {
-      ensure_ringbuffer_target(rb, file_size - (size_t)pos);
+      return;
    }
 
-   while (hrmp_ringbuffer_size(rb) < hrmp_ringbuffer_capacity(rb))
+   size_t cur = hrmp_ringbuffer_size(rb);
+   if (cur >= bytes_left)
    {
-      if (hrmp_ringbuffer_ensure_write(rb, 1))
-      {
-         break;
-      }
+      return;
+   }
 
+   size_t target = ringbuffer_target_max(bytes_left);
+   if (target > bytes_left)
+   {
+      target = bytes_left;
+   }
+   if (target <= cur)
+   {
+      return;
+   }
+
+   if (hrmp_ringbuffer_ensure_write(rb, target - cur))
+   {
+      return;
+   }
+
+   size_t remaining = bytes_left - cur;
+   while (hrmp_ringbuffer_size(rb) < target && remaining > 0)
+   {
       void* wp = NULL;
       size_t span = hrmp_ringbuffer_get_write_span(rb, &wp);
       if (span == 0)
       {
          break;
+      }
+      if (span > remaining)
+      {
+         span = remaining;
       }
 
       size_t got = fread(wp, 1, span, f);
@@ -399,7 +420,33 @@ prefill_ringbuffer(FILE* f, struct ringbuffer* rb, size_t file_size)
       {
          break;
       }
+      if (got > remaining)
+      {
+         break;
+      }
+      remaining -= got;
    }
+}
+
+static void
+prefill_ringbuffer(FILE* f, struct ringbuffer* rb, size_t file_size)
+{
+   if (f == NULL || rb == NULL)
+   {
+      return;
+   }
+
+   size_t remaining = SIZE_MAX;
+   if (file_size > 0)
+   {
+      off_t pos = ftello(f);
+      if (pos >= 0 && (size_t)pos <= file_size)
+      {
+         remaining = file_size - (size_t)pos;
+      }
+   }
+
+   prefill_ringbuffer_limit(f, rb, remaining);
 }
 
 static size_t
@@ -429,6 +476,7 @@ read_some(FILE* f, struct ringbuffer* rb, void* buf, size_t n, size_t file_size)
          memcpy(out + off, rp, take);
          hrmp_ringbuffer_consume(rb, take);
          off += take;
+         prefill_ringbuffer(f, rb, file_size);
          continue;
       }
 
@@ -867,7 +915,7 @@ bitrev8(uint8_t x)
 }
 
 static int
-read_exact(FILE* f, struct ringbuffer* rb, void* buf, size_t n)
+read_exact(FILE* f, struct ringbuffer* rb, void* buf, size_t n, size_t bytes_left)
 {
    if (rb == NULL)
    {
@@ -883,6 +931,14 @@ read_exact(FILE* f, struct ringbuffer* rb, void* buf, size_t n)
 
       while (hrmp_ringbuffer_size(rb) < remaining)
       {
+         size_t bytes_remaining = bytes_left > off ? bytes_left - off : 0;
+         size_t buffered = hrmp_ringbuffer_size(rb);
+         size_t to_read_limit = bytes_remaining > buffered ? bytes_remaining - buffered : 0;
+         if (to_read_limit == 0)
+         {
+            return -1;
+         }
+
          if (hrmp_ringbuffer_ensure_write(rb, 1))
          {
             return -1;
@@ -897,6 +953,10 @@ read_exact(FILE* f, struct ringbuffer* rb, void* buf, size_t n)
                return -1;
             }
             continue;
+         }
+         if (span > to_read_limit)
+         {
+            span = to_read_limit;
          }
 
          size_t got = fread(wp, 1, span, f);
@@ -922,6 +982,10 @@ read_exact(FILE* f, struct ringbuffer* rb, void* buf, size_t n)
       memcpy(out + off, rp, take);
       hrmp_ringbuffer_consume(rb, take);
       off += take;
+      if (bytes_left > off)
+      {
+         prefill_ringbuffer_limit(f, rb, bytes_left - off);
+      }
    }
 
    return 0;
@@ -958,7 +1022,7 @@ playback_dsf(snd_pcm_t* pcm_handle, struct playback* pb, int number, int total, 
    if (pb->rb != NULL)
    {
       hrmp_ringbuffer_reset(pb->rb);
-      prefill_ringbuffer(f, pb->rb, pb->file_size);
+      prefill_ringbuffer_limit(f, pb->rb, pb->fm->data_size);
    }
 
    uint32_t ch_in = pb->fm->channels > 0 ? pb->fm->channels : 2;
@@ -1039,7 +1103,7 @@ playback_dff(snd_pcm_t* pcm_handle, struct playback* pb, int number, int total, 
          if (pb->rb != NULL)
          {
             hrmp_ringbuffer_reset(pb->rb);
-            prefill_ringbuffer(f, pb->rb, pb->file_size);
+            prefill_ringbuffer_limit(f, pb->rb, chunk_size);
          }
 
          uint32_t ch_in = pb->fm->channels > 0 ? pb->fm->channels : 2;
@@ -1982,7 +2046,6 @@ dsd_play_dop_s32le(FILE* f, struct playback* pb,
    }
 
    pb->bytes_left = bytes_left;
-
    while (bytes_left > 0)
    {
       uint64_t per_ch_avail = bytes_left / (uint64_t)in_channels;
@@ -1998,7 +2061,7 @@ dsd_play_dop_s32le(FILE* f, struct playback* pb,
       }
 
       size_t to_read = (size_t)in_channels * (size_t)per_ch;
-      if (read_exact(f, pb->rb, blk, to_read) < 0)
+      if (read_exact(f, pb->rb, blk, to_read, bytes_left) < 0)
       {
          break;
       }
@@ -2083,6 +2146,12 @@ dsd_play_dop_s32le(FILE* f, struct playback* pb,
 
          /* Each DoP PCM frame carries 16 DSD samples per channel */
          pb->current_samples += (unsigned long)(n * 16u);
+         if (pb->fm->total_samples > 0 && pb->current_samples >= pb->fm->total_samples)
+         {
+            bytes_left = 0;
+            pb->bytes_left = 0;
+            goto done;
+         }
 
          kb = do_keyboard(f, NULL, pb, &k);
 
@@ -2182,7 +2251,6 @@ dsd_play_native_u32_be(FILE* f, struct playback* pb,
    bool interleaved = (pb->fm->type == TYPE_DFF);
 
    pb->bytes_left = bytes_left;
-
    while (bytes_left > 0)
    {
       uint64_t per_ch_avail = bytes_left / (uint64_t)in_channels;
@@ -2198,7 +2266,7 @@ dsd_play_native_u32_be(FILE* f, struct playback* pb,
       }
 
       size_t to_read = (size_t)in_channels * (size_t)per_ch;
-      if (read_exact(f, pb->rb, blk, to_read) < 0)
+      if (read_exact(f, pb->rb, blk, to_read, bytes_left) < 0)
       {
          break;
       }
@@ -2314,12 +2382,17 @@ dsd_play_native_u32_be(FILE* f, struct playback* pb,
          {
             n = to_write;
          }
-         p += (size_t)n * bytes_per_frame;
+         bytes += (size_t)n * bytes_per_frame;
          to_write -= n;
 
-         p = get_progress(pb);
          /* Each native DSD_U32_BE frame carries 32 DSD samples per channel */
          pb->current_samples += (unsigned long)(n * 32u);
+         if (pb->fm->total_samples > 0 && pb->current_samples >= pb->fm->total_samples)
+         {
+            bytes_left = 0;
+            pb->bytes_left = 0;
+            goto done;
+         }
 
          kb = do_keyboard(f, NULL, pb, &k);
 
@@ -2329,11 +2402,10 @@ dsd_play_native_u32_be(FILE* f, struct playback* pb,
             {
                *next = false;
             }
-            free(p);
-            p = NULL;
             goto done;
          }
 
+         p = get_progress(pb);
          if (p != NULL)
          {
             printf("%s", p);
@@ -2513,7 +2585,7 @@ keyboard:
          if (pb->rb != NULL)
          {
             hrmp_ringbuffer_reset(pb->rb);
-            prefill_ringbuffer(f, pb->rb, pb->file_size);
+            prefill_ringbuffer_limit(f, pb->rb, pb->fm->data_size - aligned_bytes);
          }
          hrmp_alsa_reset_handle(pb->pcm_handle);
       }
