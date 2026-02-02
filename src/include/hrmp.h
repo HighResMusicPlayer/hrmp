@@ -43,6 +43,10 @@ extern "C" {
 #define UPDATE_PROCESS_TITLE_MINIMAL 2
 #define UPDATE_PROCESS_TITLE_VERBOSE 3
 
+#define HRMP_CACHE_FILES_OFF     0
+#define HRMP_CACHE_FILES_MINIMAL 1
+#define HRMP_CACHE_FILES_ALL     2
+
 #define DEFAULT_BUFFER_SIZE          131072
 #define ALIGNMENT_SIZE               512
 
@@ -193,6 +197,7 @@ struct configuration
    bool is_muted;   /**< Is muted */
 
    size_t cache_size; /**< The cache size */
+   int cache_files;   /**< The cache files policy */
 
    bool metadata; /**< Display metadata about files */
 

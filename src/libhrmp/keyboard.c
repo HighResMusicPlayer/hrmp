@@ -25,6 +25,7 @@
 #include <termios.h>
 #include <unistd.h>
 
+
 int
 hrmp_keyboard_mode(bool enable)
 {

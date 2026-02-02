@@ -21,30 +21,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-static bool
-option_requires_arg(char* option_name, cli_option* options, int num_options, bool is_long_option)
-{
-   for (int j = 0; j < num_options; j++)
-   {
-      cli_option* option = &options[j];
-      bool matches = false;
-
-      if (is_long_option)
-      {
-         matches = (strcmp(option_name, option->long_name) == 0);
-      }
-      else
-      {
-         matches = (strcmp(option_name, option->short_name) == 0);
-      }
-
-      if (matches)
-      {
-         return option->requires_arg;
-      }
-   }
-   return false;
-}
+static bool option_requires_arg(char* option_name, cli_option* options, int num_options, bool is_long_option);
 
 int
 cmd_parse(
@@ -260,3 +237,30 @@ cmd_parse(
 
    return result_count;
 }
+
+
+static bool
+option_requires_arg(char* option_name, cli_option* options, int num_options, bool is_long_option)
+{
+   for (int j = 0; j < num_options; j++)
+   {
+      cli_option* option = &options[j];
+      bool matches = false;
+
+      if (is_long_option)
+      {
+         matches = (strcmp(option_name, option->long_name) == 0);
+      }
+      else
+      {
+         matches = (strcmp(option_name, option->short_name) == 0);
+      }
+
+      if (matches)
+      {
+         return option->requires_arg;
+      }
+   }
+   return false;
+}
+

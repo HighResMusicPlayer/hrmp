@@ -35,7 +35,11 @@ volume
   The volume in percent. -1 means use current volume
 
 cache
-  The cache size. Default is 256Mb
+  The cache size. 0 means no caching. Default is 256Mb
+
+cache_files
+  File caching policy: off only caches the current file, minimal caches the previous and next files as well, and all caches all files
+  in the playlist
 
 log_type
   The logging type (console, file, syslog). Default is console

@@ -42,6 +42,68 @@
 #define HRMP_DEFAULT_PATH "/usr/bin/hrmp"
 
 typedef enum {
+   HRMP_SUPPORT_UNKNOWN = 0,
+   HRMP_SUPPORT_NO,
+   HRMP_SUPPORT_YES
+} HrmpSupport;
+
+struct App;
+
+static gboolean on_debug_window_delete(GtkWidget* widget, GdkEvent* event, gpointer user_data);
+static void hrmp_gtk_show_debug_window(struct App* app);
+static void on_menu_debug(GtkWidget* widget, gpointer user_data);
+static void on_debug_clear_clicked(GtkWidget* widget, gpointer user_data);
+static void on_debug_close_clicked(GtkWidget* widget, gpointer user_data);
+static void on_menu_load(GtkWidget* widget, gpointer user_data);
+static void on_menu_save(GtkWidget* widget, gpointer user_data);
+static gchar* hrmp_gtk_get_config_path(void);
+static void hrmp_gtk_load_preferences(struct App* app);
+static void hrmp_gtk_free_devices(struct App* app);
+static GtkWidget* hrmp_gtk_support_icon(HrmpSupport support);
+static void hrmp_gtk_parse_devices(struct App* app, const gchar* text);
+static gboolean hrmp_gtk_delayed_status_refresh(gpointer user_data);
+static void hrmp_gtk_ensure_devices(struct App* app);
+static void hrmp_gtk_save_preferences(struct App* app);
+static void hrmp_gtk_update_song_from_output(struct App* app);
+static void append_output(struct App* app, const gchar* text);
+static void hrmp_gtk_update_status(struct App* app);
+static void hrmp_gtk_update_playlist_display(struct App* app);
+static void update_mode_button_icon(struct App* app);
+static void update_play_button_icon(struct App* app);
+static void hrmp_gtk_handle_child_finished(struct App* app, gboolean allow_repeat);
+static gboolean on_child_stdout(GIOChannel* source, GIOCondition condition, gpointer data);
+static void stop_hrmp(struct App* app);
+static void send_escape_sequence(struct App* app, const gchar* seq);
+static void send_key(struct App* app, gchar c);
+static void on_button_prev_clicked(GtkWidget* button, gpointer user_data);
+static void on_button_next_clicked(GtkWidget* button, gpointer user_data);
+static void on_button_volume_down_clicked(GtkWidget* button, gpointer user_data);
+static void on_button_volume_up_clicked(GtkWidget* button, gpointer user_data);
+static void on_button_skip_back_clicked(GtkWidget* button, gpointer user_data);
+static void on_button_skip_ahead_clicked(GtkWidget* button, gpointer user_data);
+static void on_button_stop_clicked(GtkWidget* button, gpointer user_data);
+static void start_hrmp(struct App* app);
+static void on_button_play_clicked(GtkWidget* button, gpointer user_data);
+static void on_button_add_clicked(GtkWidget* button, gpointer user_data);
+static void on_button_move_up_clicked(GtkWidget* button, gpointer user_data);
+static void on_button_move_down_clicked(GtkWidget* button, gpointer user_data);
+static void on_button_clear_clicked(GtkWidget* button, gpointer user_data);
+static gchar* hrmp_gtk_load_license_text(void);
+static gchar* hrmp_gtk_load_authors_text(void);
+static void on_menu_about(GtkWidget* widget, gpointer user_data);
+static void on_menu_list_devices(GtkWidget* widget, gpointer user_data);
+static void on_menu_license(GtkWidget* widget, gpointer user_data);
+static void on_menu_preferences(GtkWidget* widget, gpointer user_data);
+static void on_mode_button_clicked(GtkWidget* button, gpointer user_data);
+static gboolean on_playlist_button_press(GtkWidget* widget, GdkEventButton* event, gpointer user_data);
+static void on_playlist_row_activated(GtkTreeView* tree_view,
+                                      GtkTreePath* path,
+                                      GtkTreeViewColumn* column,
+                                      gpointer user_data);
+static void on_window_destroy(GtkWidget* widget, gpointer user_data);
+static GtkWidget* create_main_window(struct App* app);
+
+typedef enum {
    HRMP_PLAY_MODE_END = 0,
    HRMP_PLAY_MODE_REPEAT,
    HRMP_PLAY_MODE_SHUFFLE
@@ -92,19 +154,94 @@ struct App
    guint status_refresh_attempt;
 };
 
-static void start_hrmp(struct App* app);
-static void stop_hrmp(struct App* app);
-static void send_key(struct App* app, gchar c);
-static void hrmp_gtk_update_status(struct App* app);
-static void hrmp_gtk_update_song_from_output(struct App* app);
+struct HrmpDevice
+{
+   gchar* name;        /* e.g. "FIIO QX13" */
+   gboolean active;    /* Active: Yes */
+   gchar* active_text; /* "Yes" / "No" / "Unknown" */
 
-static gboolean on_debug_window_delete(GtkWidget* widget, GdkEvent* event, gpointer user_data);
-static void hrmp_gtk_show_debug_window(struct App* app);
-static void on_menu_debug(GtkWidget* widget, gpointer user_data);
-static void on_menu_load(GtkWidget* widget, gpointer user_data);
-static void on_menu_save(GtkWidget* widget, gpointer user_data);
-static void on_debug_clear_clicked(GtkWidget* widget, gpointer user_data);
-static void on_debug_close_clicked(GtkWidget* widget, gpointer user_data);
+   gchar* device;      /* Device: */
+   gchar* description; /* Description: */
+   gchar* hardware;    /* Hardware: */
+   gchar* selem;       /* Selem: */
+   gchar* volume;      /* Volume: */
+   gchar* paused;      /* Paused: */
+
+   /* Per-format support (defaults to HRMP_SUPPORT_UNKNOWN) */
+   HrmpSupport s16;
+   HrmpSupport s16_le;
+   HrmpSupport s16_be;
+   HrmpSupport u16;
+   HrmpSupport u16_le;
+   HrmpSupport u16_be;
+
+   HrmpSupport s24;
+   HrmpSupport s24_3le;
+   HrmpSupport s24_le;
+   HrmpSupport s24_be;
+   HrmpSupport u24;
+   HrmpSupport u24_le;
+   HrmpSupport u24_be;
+
+   HrmpSupport s32;
+   HrmpSupport s32_le;
+   HrmpSupport s32_be;
+   HrmpSupport u32;
+   HrmpSupport u32_le;
+   HrmpSupport u32_be;
+
+   HrmpSupport dsd_u8;
+   HrmpSupport dsd_u16_le;
+   HrmpSupport dsd_u16_be;
+   HrmpSupport dsd_u32_le;
+   HrmpSupport dsd_u32_be;
+};
+
+int
+main(int argc, char** argv)
+{
+   struct App app;
+
+   memset(&app, 0, sizeof(app));
+
+   g_set_prgname("hrmp-ui");
+   g_set_application_name("hrmp-ui");
+
+   gtk_init(&argc, &argv);
+
+   hrmp_gtk_load_preferences(&app);
+
+   app.window = create_main_window(&app);
+   app.output_buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(app.output_view));
+   hrmp_gtk_update_status(&app);
+   update_mode_button_icon(&app);
+
+   g_signal_connect(app.list_view,
+                    "row-activated",
+                    G_CALLBACK(on_playlist_row_activated),
+                    &app);
+   g_signal_connect(app.list_view,
+                    "button-press-event",
+                    G_CALLBACK(on_playlist_button_press),
+                    &app);
+
+   gtk_widget_show_all(app.window);
+
+   /* Retry hrmp -s a few times after showing the UI to avoid races with ALSA
+    * / device initialisation. */
+   app.status_refresh_attempt = 0;
+   g_timeout_add(500, hrmp_gtk_delayed_status_refresh, &app);
+
+   gtk_main();
+
+   stop_hrmp(&app);
+
+   g_free(app.hrmp_path);
+   g_free(app.default_device);
+   hrmp_gtk_free_devices(&app);
+
+   return 0;
+}
 
 static gboolean
 on_debug_window_delete(GtkWidget* widget, GdkEvent* event, gpointer user_data)
@@ -244,7 +381,7 @@ on_menu_load(GtkWidget* widget, gpointer user_data)
          {
             for (struct list_entry* e = hrmp_list_head(files); e != NULL; e = hrmp_list_next(e))
             {
-               const char* filename = e->value;
+               const char* filename = (const char*)e->value;
 
                if (!hrmp_file_is_supported((char*)filename))
                {
@@ -355,9 +492,6 @@ on_menu_save(GtkWidget* widget, gpointer user_data)
    gtk_widget_destroy(dialog);
 }
 
-static void hrmp_gtk_ensure_devices(struct App* app);
-static gboolean hrmp_gtk_delayed_status_refresh(gpointer user_data);
-
 static gchar*
 hrmp_gtk_get_config_path(void)
 {
@@ -444,55 +578,6 @@ hrmp_gtk_load_preferences(struct App* app)
    g_free(config_path);
    g_key_file_unref(keyfile);
 }
-
-typedef enum {
-   HRMP_SUPPORT_UNKNOWN = 0,
-   HRMP_SUPPORT_NO,
-   HRMP_SUPPORT_YES
-} HrmpSupport;
-
-struct HrmpDevice
-{
-   gchar* name;        /* e.g. "FIIO QX13" */
-   gboolean active;    /* Active: Yes */
-   gchar* active_text; /* "Yes" / "No" / "Unknown" */
-
-   gchar* device;      /* Device: */
-   gchar* description; /* Description: */
-   gchar* hardware;    /* Hardware: */
-   gchar* selem;       /* Selem: */
-   gchar* volume;      /* Volume: */
-   gchar* paused;      /* Paused: */
-
-   /* Per-format support (defaults to HRMP_SUPPORT_UNKNOWN) */
-   HrmpSupport s16;
-   HrmpSupport s16_le;
-   HrmpSupport s16_be;
-   HrmpSupport u16;
-   HrmpSupport u16_le;
-   HrmpSupport u16_be;
-
-   HrmpSupport s24;
-   HrmpSupport s24_3le;
-   HrmpSupport s24_le;
-   HrmpSupport s24_be;
-   HrmpSupport u24;
-   HrmpSupport u24_le;
-   HrmpSupport u24_be;
-
-   HrmpSupport s32;
-   HrmpSupport s32_le;
-   HrmpSupport s32_be;
-   HrmpSupport u32;
-   HrmpSupport u32_le;
-   HrmpSupport u32_be;
-
-   HrmpSupport dsd_u8;
-   HrmpSupport dsd_u16_le;
-   HrmpSupport dsd_u16_be;
-   HrmpSupport dsd_u32_le;
-   HrmpSupport dsd_u32_be;
-};
 
 static void
 hrmp_gtk_free_devices(struct App* app)
@@ -3135,50 +3220,4 @@ create_main_window(struct App* app)
    g_signal_connect(app->mode_button, "clicked", G_CALLBACK(on_mode_button_clicked), app);
 
    return window;
-}
-
-int
-main(int argc, char** argv)
-{
-   struct App app;
-
-   memset(&app, 0, sizeof(app));
-
-   g_set_prgname("hrmp-ui");
-   g_set_application_name("hrmp-ui");
-
-   gtk_init(&argc, &argv);
-
-   hrmp_gtk_load_preferences(&app);
-
-   app.window = create_main_window(&app);
-   app.output_buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(app.output_view));
-   hrmp_gtk_update_status(&app);
-   update_mode_button_icon(&app);
-
-   g_signal_connect(app.list_view,
-                    "row-activated",
-                    G_CALLBACK(on_playlist_row_activated),
-                    &app);
-   g_signal_connect(app.list_view,
-                    "button-press-event",
-                    G_CALLBACK(on_playlist_button_press),
-                    &app);
-
-   gtk_widget_show_all(app.window);
-
-   /* Retry hrmp -s a few times after showing the UI to avoid races with ALSA
-    * / device initialisation. */
-   app.status_refresh_attempt = 0;
-   g_timeout_add(500, hrmp_gtk_delayed_status_refresh, &app);
-
-   gtk_main();
-
-   stop_hrmp(&app);
-
-   g_free(app.hrmp_path);
-   g_free(app.default_device);
-   hrmp_gtk_free_devices(&app);
-
-   return 0;
 }

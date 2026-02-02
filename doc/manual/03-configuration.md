@@ -26,7 +26,8 @@ The `Bool` data type supports the following values: `on`, `yes`, `1`, `true`, `o
 | device   | | String | No | The default device name |
 | output | `[%n/%N] %d: %f [%i] (%t/%T) (%p)`| String | No | Defines the console output. Valid expansions are: `%n` (current track number), `%N` (total number of tracks), `%d` (device name), `%f` (file name), `%F` (full path of file), `%i` (file information), `%t` (current time), `%T` (total time), `%p` (percentage), `%b` (ringbuffer current size in Mb), `%B` (ringbuffer maximum size in Mb)|
 | volume   | -1 | Int | No | The volume in percent. -1 means use current volume |
-| cache   | 256Mb | Int | No | The cache size |
+| cache   | 256Mb | Int | No | The cache size. `0` means no caching |
+| cache_files | `off` | String | No | File caching policy: `off` only caches the current file, `minimal` caches the previous and next files as well, and `all` caches all files in the playlist |
 | log_type | console | String | No | The logging type (console, file, syslog) |
 | log_level | info | String | No | The logging level, any of the (case insensitive) strings `FATAL`, `ERROR`, `WARN`, `INFO` and `DEBUG` (that can be more specific as `DEBUG1` thru `DEBUG5`). Debug level greater than 5 will be set to `DEBUG5`. Not recognized values will make the log_level be `INFO` |
 | log_path | hrmp.log | String | No | The log file location. Can be a strftime(3) compatible string. |

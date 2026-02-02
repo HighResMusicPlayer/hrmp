@@ -48,15 +48,32 @@ struct playback
 };
 
 /**
- * Play back a file
+ * Initialize a playback
  * @param number The file number
  * @param total The total number of files
  * @param fm The file metadata
+ * @param pb The playback
+ * @return 0 upon success, otherwise 1
+ */
+int
+hrmp_playback_init(int number, int total, struct file_metadata* fm, struct playback** pb);
+
+/**
+ * Prepare a playback ringbuffer according to cache settings
+ * @param pb The playback
+ * @return 0 upon success, otherwise 1
+ */
+int
+hrmp_playback_prepare_ringbuffer(struct playback* pb);
+
+/**
+ * Play back a file
+ * @param pb The playback
  * @param next Are going forward or backward
  * @return 0 upon success, otherwise 1
  */
 int
-hrmp_playback(int number, int total, struct file_metadata* fm, bool* next);
+hrmp_playback(struct playback* pb, bool* next);
 
 #ifdef __cplusplus
 }

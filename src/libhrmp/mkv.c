@@ -41,6 +41,417 @@ typedef struct
    uint64_t* bytes_left;
 } EbmlReader;
 
+typedef struct PacketQueue PacketQueue;
+
+static void ebml_reader_init(EbmlReader* r, FILE* fp, struct ringbuffer* rb, uint64_t file_size, uint64_t* bytes_left);
+static void mkv_prefill_ringbuffer(EbmlReader* r);
+static uint64_t ebml_tell(EbmlReader* r);
+static int ebml_seek(EbmlReader* r, uint64_t pos);
+static long ebml_read(EbmlReader* r, void* dst, size_t size);
+static int ebml_skip(EbmlReader* r, uint64_t size);
+static int ebml_read_u8(EbmlReader* r);
+static int clz8(uint8_t b);
+static int ebml_read_vint(EbmlReader* r, uint64_t* value, int allow_unknown);
+static int ebml_read_element_header(EbmlReader* r, uint32_t* id, uint64_t* size);
+static int ebml_read_uint(EbmlReader* r, uint64_t size, uint64_t* out);
+static int ebml_read_float(EbmlReader* r, uint64_t size, double* out);
+static int ebml_read_string(EbmlReader* r, uint64_t size, char* buf, size_t bufsize);
+static int ebml_read_binary(EbmlReader* r, uint64_t size, uint8_t** out);
+static void pq_init(PacketQueue* q);
+static void pq_free(PacketQueue* q);
+static int pq_push(PacketQueue* q, uint8_t* data, size_t size, int64_t pts_ns, int keyframe);
+static int pq_pop(PacketQueue* q, MkvPacket* out);
+static MkvCodecId codec_from_id(const char* cid);
+static uint16_t rd_le_u16(const uint8_t* p);
+static uint32_t rd_le_u32(const uint8_t* p);
+static int init_opus_from_codec_private(MkvDemuxer* m, const uint8_t* cp, size_t cpsize);
+static int opus_decode_packet(MkvDemuxer* m, const uint8_t* pkt, size_t pkt_sz, uint8_t** out, size_t* out_bytes);
+static int init_aac_decoder(MkvDemuxer* m);
+static int init_aac_from_codec_private(MkvDemuxer* m, const uint8_t* cp, size_t cpsize);
+static int aac_decode_packet(MkvDemuxer* m, const uint8_t* pkt, size_t pkt_sz, uint8_t** out, size_t* out_bytes);
+static int parse_info(MkvDemuxer* m, uint64_t elem_end);
+static int read_vint_from_mem(const uint8_t* p, const uint8_t* end, uint64_t* val, int allow_unknown, int* length);
+static int64_t clamp_i128_to_i64(__int128 v);
+static int enqueue_pcm_bytes(MkvDemuxer* m, const uint8_t* pcm, size_t bytes, int64_t pts_ns, int keyframe);
+static int read_block_into_queue(MkvDemuxer* m, uint8_t* block, uint64_t block_size, int simple_block);
+static int parse_cluster(MkvDemuxer* m, uint64_t elem_end);
+static int parse_tracks(MkvDemuxer* m, uint64_t elem_end);
+static int parse_header_and_segment(MkvDemuxer* m);
+
+
+
+
+
+
+
+
+
+/* Read an EBML variable-length integer (VINT) used for sizes. */
+
+/* Element header: read ID (1..4 bytes VINT-like) and size (VINT) */
+
+
+
+
+
+#define ID_EBML            0x1A45DFA3u
+#define ID_SEGMENT         0x18538067u
+#define ID_INFO            0x1549A966u
+#define ID_TIMECODESCALE   0x2AD7B1u
+#define ID_TRACKS          0x1654AE6Bu
+#define ID_TRACKENTRY      0xAEu
+#define ID_TRACKNUMBER     0xD7u
+#define ID_TRACKTYPE       0x83u
+#define ID_CODECID         0x86u
+#define ID_CODECPRIVATE    0x63A2u
+#define ID_AUDIO           0xE1u
+#define ID_SAMPLINGFREQ    0xB5u
+#define ID_CHANNELS        0x9Fu
+#define ID_BITDEPTH        0x6264u
+
+#define ID_CLUSTER         0x1F43B675u
+#define ID_CLUSTERTIMECODE 0xE7u
+#define ID_SIMPLEBLOCK     0xA3u
+#define ID_BLOCKGROUP      0xA0u
+#define ID_BLOCK           0xA1u
+
+#define TRACK_TYPE_VIDEO   1
+#define TRACK_TYPE_AUDIO   2
+
+typedef struct
+{
+   uint8_t* data;
+   size_t size;
+   int64_t pts_ns;
+   int keyframe;
+} PendingPacket;
+
+struct PacketQueue
+{
+   PendingPacket* items;
+   size_t count;
+   size_t cap;
+   size_t head; /* index of next item to pop */
+};
+
+
+
+
+
+#define OPUS_OUTPUT_HZ         48000
+#define OPUS_MAX_FRAME_SAMPLES (5760) /* 120ms @ 48kHz */
+
+#define AAC_OUTPUT_BITS        16
+
+struct OpusState
+{
+   int is_multistream;
+   int channels;
+   int streams;
+   int coupled_streams;
+   unsigned char mapping[255];
+   int pre_skip; /* samples to drop at start */
+   int pre_skip_remaining;
+   OpusDecoder* dec;
+   OpusMSDecoder* msdec;
+   opus_int16* decode_buf; /* reusable decode buffer */
+   size_t decode_cap;      /* samples total capacity */
+};
+
+struct AacState
+{
+   NeAACDecHandle h;
+   int initialized; /* 0 until Init or Init2 succeeds */
+   int channels;    /* as configured */
+   int sample_rate; /* as configured */
+};
+
+struct MkvDemuxer
+{
+   EbmlReader r;
+   int opened;
+
+   /* Segment parsing */
+   uint64_t segment_start;
+   uint64_t segment_size; /* may be (uint64_t)-1 (unknown) */
+
+   /* Info */
+   uint64_t timecode_scale_ns; /* default 1ms = 1,000,000 ns */
+
+   /* Selected audio track */
+   uint64_t track_number; /* match against Block track number */
+   MkvAudioInfo ainfo;
+
+   /* Cluster state */
+   uint64_t current_cluster_tc; /* base timecode, in raw "ticks" */
+
+   /* Pending packets (from laced block or decoded audio) */
+   PacketQueue q;
+
+   /* FILE* ownership */
+   int own_fp;
+
+   /* Codec states */
+   struct OpusState opus;
+   struct AacState aac;
+};
+
+
+
+
+
+
+
+/* Initialize from AudioSpecificConfig (CodecPrivate) if present */
+
+
+int
+hrmp_mkv_open(FILE* fp, MkvDemuxer** out)
+{
+   if (!fp || !out)
+   {
+      return -1;
+   }
+   MkvDemuxer* m = (MkvDemuxer*)calloc(1, sizeof(*m));
+   if (!m)
+   {
+      return -1;
+   }
+   ebml_reader_init(&m->r, fp, NULL, 0, NULL);
+   m->timecode_scale_ns = 1000000ULL;
+   pq_init(&m->q);
+   m->own_fp = 1;
+
+   if (parse_header_and_segment(m) < 0 || m->track_number == 0)
+   {
+      pq_free(&m->q);
+      if (m->own_fp && m->r.fp)
+      {
+         fclose(m->r.fp);
+      }
+      free(m);
+      return -1;
+   }
+
+   m->opened = 1;
+   *out = m;
+   return 0;
+}
+
+int
+hrmp_mkv_open_path(const char* path, MkvDemuxer** out)
+{
+   if (!path || !out)
+   {
+      return -1;
+   }
+   FILE* fp = fopen(path, "rb");
+   if (!fp)
+   {
+      return -1;
+   }
+   int rc = hrmp_mkv_open(fp, out);
+   if (rc < 0)
+   {
+      return rc;
+   }
+   return 0;
+}
+
+int
+hrmp_mkv_open_path_rb(const char* path, struct ringbuffer* rb, uint64_t file_size, uint64_t* bytes_left, MkvDemuxer** out)
+{
+   if (!path || !out)
+   {
+      return -1;
+   }
+   FILE* fp = fopen(path, "rb");
+   if (!fp)
+   {
+      return -1;
+   }
+   if (rb != NULL)
+   {
+      hrmp_ringbuffer_reset(rb);
+   }
+
+   MkvDemuxer* m = (MkvDemuxer*)calloc(1, sizeof(*m));
+   if (!m)
+   {
+      fclose(fp);
+      return -1;
+   }
+
+   ebml_reader_init(&m->r, fp, rb, file_size, bytes_left);
+   m->timecode_scale_ns = 1000000ULL;
+   pq_init(&m->q);
+   m->own_fp = 1;
+
+   if (parse_header_and_segment(m) < 0 || m->track_number == 0)
+   {
+      pq_free(&m->q);
+      if (m->own_fp && m->r.fp)
+      {
+         fclose(m->r.fp);
+      }
+      free(m);
+      return -1;
+   }
+
+   m->opened = 1;
+   *out = m;
+   return 0;
+}
+
+void
+hrmp_mkv_close(MkvDemuxer* m)
+{
+   if (m != NULL)
+   {
+      pq_free(&m->q);
+      if (m->ainfo.codec_private)
+      {
+         free(m->ainfo.codec_private);
+      }
+      if (m->opus.dec)
+      {
+         opus_decoder_destroy(m->opus.dec);
+      }
+      if (m->opus.msdec)
+      {
+         opus_multistream_decoder_destroy(m->opus.msdec);
+      }
+      free(m->opus.decode_buf);
+      if (m->aac.h)
+      {
+         NeAACDecClose(m->aac.h);
+      }
+      if (m->own_fp && m->r.fp)
+      {
+         fclose(m->r.fp);
+      }
+      free(m);
+   }
+}
+
+int
+hrmp_mkv_get_audio_info(MkvDemuxer* m, MkvAudioInfo* out_info)
+{
+   if (!m || !m->opened || !out_info)
+   {
+      return -1;
+   }
+   *out_info = m->ainfo;
+   return 0;
+}
+
+void
+hrmp_mkv_free_packet(MkvPacket* packet)
+{
+   if (!packet)
+   {
+      return;
+   }
+   free(packet->data);
+   packet->data = NULL;
+   packet->size = 0;
+}
+
+int
+hrmp_mkv_read_packet(MkvDemuxer* m, MkvPacket* packet)
+{
+   if (!m || !packet)
+   {
+      return -1;
+   }
+
+   int qrc = pq_pop(&m->q, packet);
+   if (qrc != 0)
+   {
+      return qrc;
+   }
+
+   while (1)
+   {
+      uint32_t id;
+      uint64_t size;
+      int hdr = ebml_read_element_header(&m->r, &id, &size);
+      if (hdr < 0)
+      {
+         /* EOF or error */
+         return 0;
+      }
+      uint64_t elem_start = ebml_tell(&m->r);
+      uint64_t elem_end = (size == (uint64_t)-1) ? 0 : elem_start + size;
+
+      if (id == ID_CLUSTER)
+      {
+         if (parse_cluster(m, elem_end) < 0)
+         {
+            return -1;
+         }
+         /* Now pop one */
+         qrc = pq_pop(&m->q, packet);
+         if (qrc != 0)
+         {
+            return qrc;
+         }
+      }
+      else
+      {
+         if (size == (uint64_t)-1)
+         {
+            return 0;
+         }
+         if (ebml_skip(&m->r, size) < 0)
+         {
+            return -1;
+         }
+      }
+   }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 static void
 ebml_reader_init(EbmlReader* r, FILE* fp, struct ringbuffer* rb, uint64_t file_size, uint64_t* bytes_left)
 {
@@ -265,7 +676,6 @@ clz8(uint8_t b)
    return n;
 }
 
-/* Read an EBML variable-length integer (VINT) used for sizes. */
 static int
 ebml_read_vint(EbmlReader* r, uint64_t* value, int allow_unknown)
 {
@@ -313,7 +723,6 @@ ebml_read_vint(EbmlReader* r, uint64_t* value, int allow_unknown)
    return length;
 }
 
-/* Element header: read ID (1..4 bytes VINT-like) and size (VINT) */
 static int
 ebml_read_element_header(EbmlReader* r, uint32_t* id, uint64_t* size)
 {
@@ -458,46 +867,6 @@ ebml_read_binary(EbmlReader* r, uint64_t size, uint8_t** out)
    return 0;
 }
 
-#define ID_EBML            0x1A45DFA3u
-#define ID_SEGMENT         0x18538067u
-#define ID_INFO            0x1549A966u
-#define ID_TIMECODESCALE   0x2AD7B1u
-#define ID_TRACKS          0x1654AE6Bu
-#define ID_TRACKENTRY      0xAEu
-#define ID_TRACKNUMBER     0xD7u
-#define ID_TRACKTYPE       0x83u
-#define ID_CODECID         0x86u
-#define ID_CODECPRIVATE    0x63A2u
-#define ID_AUDIO           0xE1u
-#define ID_SAMPLINGFREQ    0xB5u
-#define ID_CHANNELS        0x9Fu
-#define ID_BITDEPTH        0x6264u
-
-#define ID_CLUSTER         0x1F43B675u
-#define ID_CLUSTERTIMECODE 0xE7u
-#define ID_SIMPLEBLOCK     0xA3u
-#define ID_BLOCKGROUP      0xA0u
-#define ID_BLOCK           0xA1u
-
-#define TRACK_TYPE_VIDEO   1
-#define TRACK_TYPE_AUDIO   2
-
-typedef struct
-{
-   uint8_t* data;
-   size_t size;
-   int64_t pts_ns;
-   int keyframe;
-} PendingPacket;
-
-typedef struct
-{
-   PendingPacket* items;
-   size_t count;
-   size_t cap;
-   size_t head; /* index of next item to pop */
-} PacketQueue;
-
 static void
 pq_init(PacketQueue* q)
 {
@@ -562,73 +931,6 @@ pq_pop(PacketQueue* q, MkvPacket* out)
    return 1;
 }
 
-#define OPUS_OUTPUT_HZ         48000
-#define OPUS_MAX_FRAME_SAMPLES (5760) /* 120ms @ 48kHz */
-
-#define AAC_OUTPUT_BITS        16
-
-struct OpusState
-{
-   int is_multistream;
-   int channels;
-   int streams;
-   int coupled_streams;
-   unsigned char mapping[255];
-   int pre_skip; /* samples to drop at start */
-   int pre_skip_remaining;
-   OpusDecoder* dec;
-   OpusMSDecoder* msdec;
-   opus_int16* decode_buf; /* reusable decode buffer */
-   size_t decode_cap;      /* samples total capacity */
-};
-
-struct AacState
-{
-   NeAACDecHandle h;
-   int initialized; /* 0 until Init or Init2 succeeds */
-   int channels;    /* as configured */
-   int sample_rate; /* as configured */
-};
-
-struct MkvDemuxer
-{
-   EbmlReader r;
-   int opened;
-
-   /* Segment parsing */
-   uint64_t segment_start;
-   uint64_t segment_size; /* may be (uint64_t)-1 (unknown) */
-
-   /* Info */
-   uint64_t timecode_scale_ns; /* default 1ms = 1,000,000 ns */
-
-   /* Selected audio track */
-   uint64_t track_number; /* match against Block track number */
-   MkvAudioInfo ainfo;
-
-   /* Cluster state */
-   uint64_t current_cluster_tc; /* base timecode, in raw "ticks" */
-
-   /* Pending packets (from laced block or decoded audio) */
-   PacketQueue q;
-
-   /* FILE* ownership */
-   int own_fp;
-
-   /* Codec states */
-   struct OpusState opus;
-   struct AacState aac;
-};
-
-static int parse_header_and_segment(MkvDemuxer* m);
-static int parse_info(MkvDemuxer* m, uint64_t elem_end);
-static int parse_tracks(MkvDemuxer* m, uint64_t elem_end);
-static int parse_cluster(MkvDemuxer* m, uint64_t elem_end);
-static int read_block_into_queue(MkvDemuxer* m, uint8_t* block, uint64_t block_size, int simple_block);
-static int read_vint_from_mem(const uint8_t* p, const uint8_t* end, uint64_t* val, int allow_unknown, int* length);
-static int64_t clamp_i128_to_i64(__int128 v);
-static int enqueue_pcm_bytes(MkvDemuxer* m, const uint8_t* pcm, size_t bytes, int64_t pts_ns, int keyframe);
-
 static MkvCodecId
 codec_from_id(const char* cid)
 {
@@ -668,6 +970,7 @@ rd_le_u16(const uint8_t* p)
 {
    return (uint16_t)(p[0] | (p[1] << 8));
 }
+
 static uint32_t
 rd_le_u32(const uint8_t* p)
 {
@@ -872,7 +1175,6 @@ init_aac_decoder(MkvDemuxer* m)
    return 0;
 }
 
-/* Initialize from AudioSpecificConfig (CodecPrivate) if present */
 static int
 init_aac_from_codec_private(MkvDemuxer* m, const uint8_t* cp, size_t cpsize)
 {
@@ -988,212 +1290,6 @@ aac_decode_packet(MkvDemuxer* m, const uint8_t* pkt, size_t pkt_sz,
    *out = buf;
    *out_bytes = bytes;
    return 0;
-}
-
-int
-hrmp_mkv_open(FILE* fp, MkvDemuxer** out)
-{
-   if (!fp || !out)
-   {
-      return -1;
-   }
-   MkvDemuxer* m = (MkvDemuxer*)calloc(1, sizeof(*m));
-   if (!m)
-   {
-      return -1;
-   }
-   ebml_reader_init(&m->r, fp, NULL, 0, NULL);
-   m->timecode_scale_ns = 1000000ULL;
-   pq_init(&m->q);
-   m->own_fp = 1;
-
-   if (parse_header_and_segment(m) < 0 || m->track_number == 0)
-   {
-      pq_free(&m->q);
-      if (m->own_fp && m->r.fp)
-      {
-         fclose(m->r.fp);
-      }
-      free(m);
-      return -1;
-   }
-
-   m->opened = 1;
-   *out = m;
-   return 0;
-}
-
-int
-hrmp_mkv_open_path(const char* path, MkvDemuxer** out)
-{
-   if (!path || !out)
-   {
-      return -1;
-   }
-   FILE* fp = fopen(path, "rb");
-   if (!fp)
-   {
-      return -1;
-   }
-   int rc = hrmp_mkv_open(fp, out);
-   if (rc < 0)
-   {
-      return rc;
-   }
-   return 0;
-}
-
-int
-hrmp_mkv_open_path_rb(const char* path, struct ringbuffer* rb, uint64_t file_size, uint64_t* bytes_left, MkvDemuxer** out)
-{
-   if (!path || !out)
-   {
-      return -1;
-   }
-   FILE* fp = fopen(path, "rb");
-   if (!fp)
-   {
-      return -1;
-   }
-   if (rb != NULL)
-   {
-      hrmp_ringbuffer_reset(rb);
-   }
-
-   MkvDemuxer* m = (MkvDemuxer*)calloc(1, sizeof(*m));
-   if (!m)
-   {
-      fclose(fp);
-      return -1;
-   }
-
-   ebml_reader_init(&m->r, fp, rb, file_size, bytes_left);
-   m->timecode_scale_ns = 1000000ULL;
-   pq_init(&m->q);
-   m->own_fp = 1;
-
-   if (parse_header_and_segment(m) < 0 || m->track_number == 0)
-   {
-      pq_free(&m->q);
-      if (m->own_fp && m->r.fp)
-      {
-         fclose(m->r.fp);
-      }
-      free(m);
-      return -1;
-   }
-
-   m->opened = 1;
-   *out = m;
-   return 0;
-}
-
-void
-hrmp_mkv_close(MkvDemuxer* m)
-{
-   if (m != NULL)
-   {
-      pq_free(&m->q);
-      if (m->ainfo.codec_private)
-      {
-         free(m->ainfo.codec_private);
-      }
-      if (m->opus.dec)
-      {
-         opus_decoder_destroy(m->opus.dec);
-      }
-      if (m->opus.msdec)
-      {
-         opus_multistream_decoder_destroy(m->opus.msdec);
-      }
-      free(m->opus.decode_buf);
-      if (m->aac.h)
-      {
-         NeAACDecClose(m->aac.h);
-      }
-      if (m->own_fp && m->r.fp)
-      {
-         fclose(m->r.fp);
-      }
-      free(m);
-   }
-}
-
-int
-hrmp_mkv_get_audio_info(MkvDemuxer* m, MkvAudioInfo* out_info)
-{
-   if (!m || !m->opened || !out_info)
-   {
-      return -1;
-   }
-   *out_info = m->ainfo;
-   return 0;
-}
-
-void
-hrmp_mkv_free_packet(MkvPacket* packet)
-{
-   if (!packet)
-   {
-      return;
-   }
-   free(packet->data);
-   packet->data = NULL;
-   packet->size = 0;
-}
-
-int
-hrmp_mkv_read_packet(MkvDemuxer* m, MkvPacket* packet)
-{
-   if (!m || !packet)
-   {
-      return -1;
-   }
-
-   int qrc = pq_pop(&m->q, packet);
-   if (qrc != 0)
-   {
-      return qrc;
-   }
-
-   while (1)
-   {
-      uint32_t id;
-      uint64_t size;
-      int hdr = ebml_read_element_header(&m->r, &id, &size);
-      if (hdr < 0)
-      {
-         /* EOF or error */
-         return 0;
-      }
-      uint64_t elem_start = ebml_tell(&m->r);
-      uint64_t elem_end = (size == (uint64_t)-1) ? 0 : elem_start + size;
-
-      if (id == ID_CLUSTER)
-      {
-         if (parse_cluster(m, elem_end) < 0)
-         {
-            return -1;
-         }
-         /* Now pop one */
-         qrc = pq_pop(&m->q, packet);
-         if (qrc != 0)
-         {
-            return qrc;
-         }
-      }
-      else
-      {
-         if (size == (uint64_t)-1)
-         {
-            return 0;
-         }
-         if (ebml_skip(&m->r, size) < 0)
-         {
-            return -1;
-         }
-      }
-   }
 }
 
 static int

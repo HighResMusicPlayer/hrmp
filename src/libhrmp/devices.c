@@ -39,8 +39,7 @@ static bool is_device_active(char* device);
 static int get_hardware_number(char* device);
 static char* get_hardware_selem(int hardware);
 static bool has_capabilities(struct capabilities c);
-
-static int copy_device_index(int index);
+static int copy_device_index(int i);
 
 void
 hrmp_check_devices(void)
@@ -934,3 +933,4 @@ copy_device_index(int i)
 
    return 0;
 }
+

@@ -42,334 +42,14 @@ typedef enum {
    TUI_PANEL_PLAYLIST
 } tui_panel;
 
-static const char*
-tui_basename(const char* path)
-{
-   const char* s;
-
-   if (path == NULL)
-   {
-      return "";
-   }
-
-   s = strrchr(path, '/');
-   return s != NULL ? s + 1 : path;
-}
-
-static int
-tui_entry_cmp(const void* a, const void* b)
-{
-   const struct tui_entry* ea = a;
-   const struct tui_entry* eb = b;
-
-   if (ea == NULL && eb == NULL)
-   {
-      return 0;
-   }
-   if (ea == NULL)
-   {
-      return 1;
-   }
-   if (eb == NULL)
-   {
-      return -1;
-   }
-
-   if (ea->is_dir != eb->is_dir)
-   {
-      return ea->is_dir ? -1 : 1;
-   }
-
-   return strcmp(ea->name, eb->name);
-}
-
-static void
-tui_parent_dir(char* dir)
-{
-   size_t len;
-
-   if (dir == NULL)
-   {
-      return;
-   }
-
-   len = strlen(dir);
-   while (len > 1 && dir[len - 1] == '/')
-   {
-      dir[len - 1] = '\0';
-      len--;
-   }
-
-   if (strcmp(dir, "/") == 0)
-   {
-      return;
-   }
-
-   char* slash = strrchr(dir, '/');
-   if (slash == NULL)
-   {
-      hrmp_snprintf(dir, PATH_MAX, "/");
-      return;
-   }
-
-   if (slash == dir)
-   {
-      dir[1] = '\0';
-   }
-   else
-   {
-      *slash = '\0';
-   }
-}
-
-static void
-tui_get_term_size(int* out_rows, int* out_cols)
-{
-   if (out_rows != NULL)
-   {
-      *out_rows = LINES;
-   }
-   if (out_cols != NULL)
-   {
-      *out_cols = COLS;
-   }
-
-   struct winsize ws;
-   memset(&ws, 0, sizeof(ws));
-
-   int ok = (ioctl(STDIN_FILENO, TIOCGWINSZ, &ws) == 0);
-   if (!ok)
-   {
-      memset(&ws, 0, sizeof(ws));
-      ok = (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0);
-   }
-
-   if (!ok)
-   {
-      return;
-   }
-
-   if (ws.ws_row > 0 && out_rows != NULL)
-   {
-      *out_rows = (int)ws.ws_row;
-   }
-   if (ws.ws_col > 0 && out_cols != NULL)
-   {
-      *out_cols = (int)ws.ws_col;
-   }
-}
-
-static int
-tui_load_dir(const char* dir, struct tui_entry** entries, size_t* n_entries)
-{
-   DIR* d = NULL;
-   struct dirent* de = NULL;
-   struct tui_entry* arr = NULL;
-   size_t n = 0;
-   size_t cap = 0;
-
-   if (dir == NULL || entries == NULL || n_entries == NULL)
-   {
-      return 1;
-   }
-
-   *entries = NULL;
-   *n_entries = 0;
-
-   d = opendir(dir);
-   if (d == NULL)
-   {
-      return 1;
-   }
-
-   cap = 64;
-   arr = calloc(cap, sizeof(struct tui_entry));
-   if (arr == NULL)
-   {
-      closedir(d);
-      return 1;
-   }
-
-   hrmp_snprintf(arr[n].name, sizeof(arr[n].name), "..");
-   arr[n].is_dir = true;
-   n++;
-
-   while ((de = readdir(d)) != NULL)
-   {
-      if (de->d_name[0] == '.' && (de->d_name[1] == '\0' || (de->d_name[1] == '.' && de->d_name[2] == '\0')))
-      {
-         continue;
-      }
-
-      char full[PATH_MAX];
-      struct stat st;
-
-      if (strcmp(dir, "/") == 0)
-      {
-         hrmp_snprintf(full, sizeof(full), "/%s", de->d_name);
-      }
-      else
-      {
-         hrmp_snprintf(full, sizeof(full), "%s/%s", dir, de->d_name);
-      }
-
-      if (lstat(full, &st) != 0)
-      {
-         continue;
-      }
-
-      bool is_dir = S_ISDIR(st.st_mode);
-      bool is_file = S_ISREG(st.st_mode);
-
-      if (!is_dir)
-      {
-         if (!is_file)
-         {
-            continue;
-         }
-
-         if (!hrmp_file_is_supported(de->d_name))
-         {
-            continue;
-         }
-      }
-
-      if (n == cap)
-      {
-         cap *= 2;
-         struct tui_entry* tmp = realloc(arr, cap * sizeof(struct tui_entry));
-         if (tmp == NULL)
-         {
-            free(arr);
-            closedir(d);
-            return 1;
-         }
-         arr = tmp;
-      }
-
-      memset(&arr[n], 0, sizeof(struct tui_entry));
-      hrmp_snprintf(arr[n].name, sizeof(arr[n].name), "%s", de->d_name);
-      arr[n].is_dir = is_dir;
-      n++;
-   }
-
-   closedir(d);
-
-   if (n > 1)
-   {
-      qsort(arr + 1, n - 1, sizeof(struct tui_entry), tui_entry_cmp);
-   }
-
-   *entries = arr;
-   *n_entries = n;
-
-   return 0;
-}
-
-static void
-tui_playlist_clear(struct list* files)
-{
-   if (files == NULL)
-   {
-      return;
-   }
-
-   struct list_entry* e = files->head;
-   while (e != NULL)
-   {
-      struct list_entry* next = e->next;
-      free(e);
-      e = next;
-   }
-
-   files->head = NULL;
-   files->tail = NULL;
-   files->size = 0;
-}
-
-static void
-tui_playlist_pop(struct list* files)
-{
-   if (files == NULL || files->head == NULL)
-   {
-      return;
-   }
-
-   if (files->head == files->tail)
-   {
-      free(files->head);
-      files->head = NULL;
-      files->tail = NULL;
-      files->size = 0;
-      return;
-   }
-
-   struct list_entry* prev = files->head;
-   while (prev->next != NULL && prev->next != files->tail)
-   {
-      prev = prev->next;
-   }
-
-   if (files->tail != NULL)
-   {
-      free(files->tail);
-   }
-
-   prev->next = NULL;
-   files->tail = prev;
-   if (files->size > 0)
-   {
-      files->size--;
-   }
-}
-
-static void
-tui_playlist_remove_at(struct list* files, int idx)
-{
-   if (files == NULL || files->head == NULL || idx < 0)
-   {
-      return;
-   }
-
-   if (idx == 0)
-   {
-      struct list_entry* old = files->head;
-      files->head = old->next;
-      if (files->tail == old)
-      {
-         files->tail = files->head;
-      }
-      free(old);
-      if (files->size > 0)
-      {
-         files->size--;
-      }
-      return;
-   }
-
-   struct list_entry* prev = files->head;
-   for (int i = 0; i < idx - 1 && prev != NULL; i++)
-   {
-      prev = prev->next;
-   }
-
-   if (prev == NULL || prev->next == NULL)
-   {
-      return;
-   }
-
-   struct list_entry* cur = prev->next;
-   prev->next = cur->next;
-   if (files->tail == cur)
-   {
-      files->tail = prev;
-   }
-   free(cur);
-   if (files->size > 0)
-   {
-      files->size--;
-   }
-}
+static const char* tui_basename(const char* path);
+static int tui_entry_cmp(const void* a, const void* b);
+static void tui_parent_dir(char* dir);
+static void tui_get_term_size(int* out_rows, int* out_cols);
+static int tui_load_dir(const char* dir, struct tui_entry** entries, size_t* n_entries);
+static void tui_playlist_clear(struct list* files);
+static void tui_playlist_pop(struct list* files);
+static void tui_playlist_remove_at(struct list* files, int idx);
 
 int
 hrmp_interactive_ui(struct list* files, const char* start_path, int* play_from_index)
@@ -644,7 +324,7 @@ hrmp_interactive_ui(struct list* files, const char* start_path, int* play_from_i
             wattron(right, A_REVERSE);
          }
 
-         mvwprintw(right, 1 + pr_y, 1, "%-*.*s", pr_w - 2, pr_w - 2, tui_basename(e->value));
+         mvwprintw(right, 1 + pr_y, 1, "%-*.*s", pr_w - 2, pr_w - 2, tui_basename((char*)e->value));
 
          if (active == TUI_PANEL_PLAYLIST && idx == pl_sel)
          {
@@ -811,7 +491,7 @@ hrmp_interactive_ui(struct list* files, const char* start_path, int* play_from_i
             {
                for (struct list_entry* e = hrmp_list_head(files); e != NULL; e = hrmp_list_next(e))
                {
-                  fprintf(f, "%s\n", e->value);
+                  fprintf(f, "%s\n", (char*)e->value);
                }
                fclose(f);
             }
@@ -989,3 +669,346 @@ hrmp_interactive_ui(struct list* files, const char* start_path, int* play_from_i
    endwin();
    return ret;
 }
+
+
+
+
+
+
+
+
+
+static const char*
+tui_basename(const char* path)
+{
+   const char* s;
+
+   if (path == NULL)
+   {
+      return "";
+   }
+
+   s = strrchr(path, '/');
+   return s != NULL ? s + 1 : path;
+}
+
+static int
+tui_entry_cmp(const void* a, const void* b)
+{
+   const struct tui_entry* ea = a;
+   const struct tui_entry* eb = b;
+
+   if (ea == NULL && eb == NULL)
+   {
+      return 0;
+   }
+   if (ea == NULL)
+   {
+      return 1;
+   }
+   if (eb == NULL)
+   {
+      return -1;
+   }
+
+   if (ea->is_dir != eb->is_dir)
+   {
+      return ea->is_dir ? -1 : 1;
+   }
+
+   return strcmp(ea->name, eb->name);
+}
+
+static void
+tui_parent_dir(char* dir)
+{
+   size_t len;
+
+   if (dir == NULL)
+   {
+      return;
+   }
+
+   len = strlen(dir);
+   while (len > 1 && dir[len - 1] == '/')
+   {
+      dir[len - 1] = '\0';
+      len--;
+   }
+
+   if (strcmp(dir, "/") == 0)
+   {
+      return;
+   }
+
+   char* slash = strrchr(dir, '/');
+   if (slash == NULL)
+   {
+      hrmp_snprintf(dir, PATH_MAX, "/");
+      return;
+   }
+
+   if (slash == dir)
+   {
+      dir[1] = '\0';
+   }
+   else
+   {
+      *slash = '\0';
+   }
+}
+
+static void
+tui_get_term_size(int* out_rows, int* out_cols)
+{
+   if (out_rows != NULL)
+   {
+      *out_rows = LINES;
+   }
+   if (out_cols != NULL)
+   {
+      *out_cols = COLS;
+   }
+
+   struct winsize ws;
+   memset(&ws, 0, sizeof(ws));
+
+   int ok = (ioctl(STDIN_FILENO, TIOCGWINSZ, &ws) == 0);
+   if (!ok)
+   {
+      memset(&ws, 0, sizeof(ws));
+      ok = (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0);
+   }
+
+   if (!ok)
+   {
+      return;
+   }
+
+   if (ws.ws_row > 0 && out_rows != NULL)
+   {
+      *out_rows = (int)ws.ws_row;
+   }
+   if (ws.ws_col > 0 && out_cols != NULL)
+   {
+      *out_cols = (int)ws.ws_col;
+   }
+}
+
+static int
+tui_load_dir(const char* dir, struct tui_entry** entries, size_t* n_entries)
+{
+   DIR* d = NULL;
+   struct dirent* de = NULL;
+   struct tui_entry* arr = NULL;
+   size_t n = 0;
+   size_t cap = 0;
+
+   if (dir == NULL || entries == NULL || n_entries == NULL)
+   {
+      return 1;
+   }
+
+   *entries = NULL;
+   *n_entries = 0;
+
+   d = opendir(dir);
+   if (d == NULL)
+   {
+      return 1;
+   }
+
+   cap = 64;
+   arr = calloc(cap, sizeof(struct tui_entry));
+   if (arr == NULL)
+   {
+      closedir(d);
+      return 1;
+   }
+
+   hrmp_snprintf(arr[n].name, sizeof(arr[n].name), "..");
+   arr[n].is_dir = true;
+   n++;
+
+   while ((de = readdir(d)) != NULL)
+   {
+      if (de->d_name[0] == '.' && (de->d_name[1] == '\0' || (de->d_name[1] == '.' && de->d_name[2] == '\0')))
+      {
+         continue;
+      }
+
+      char full[PATH_MAX];
+      struct stat st;
+
+      if (strcmp(dir, "/") == 0)
+      {
+         hrmp_snprintf(full, sizeof(full), "/%s", de->d_name);
+      }
+      else
+      {
+         hrmp_snprintf(full, sizeof(full), "%s/%s", dir, de->d_name);
+      }
+
+      if (lstat(full, &st) != 0)
+      {
+         continue;
+      }
+
+      bool is_dir = S_ISDIR(st.st_mode);
+      bool is_file = S_ISREG(st.st_mode);
+
+      if (!is_dir)
+      {
+         if (!is_file)
+         {
+            continue;
+         }
+
+         if (!hrmp_file_is_supported(de->d_name))
+         {
+            continue;
+         }
+      }
+
+      if (n == cap)
+      {
+         cap *= 2;
+         struct tui_entry* tmp = realloc(arr, cap * sizeof(struct tui_entry));
+         if (tmp == NULL)
+         {
+            free(arr);
+            closedir(d);
+            return 1;
+         }
+         arr = tmp;
+      }
+
+      memset(&arr[n], 0, sizeof(struct tui_entry));
+      hrmp_snprintf(arr[n].name, sizeof(arr[n].name), "%s", de->d_name);
+      arr[n].is_dir = is_dir;
+      n++;
+   }
+
+   closedir(d);
+
+   if (n > 1)
+   {
+      qsort(arr + 1, n - 1, sizeof(struct tui_entry), tui_entry_cmp);
+   }
+
+   *entries = arr;
+   *n_entries = n;
+
+   return 0;
+}
+
+static void
+tui_playlist_clear(struct list* files)
+{
+   if (files == NULL)
+   {
+      return;
+   }
+
+   struct list_entry* e = files->head;
+   while (e != NULL)
+   {
+      struct list_entry* next = e->next;
+      free(e->value);
+      free(e);
+      e = next;
+   }
+
+   files->head = NULL;
+   files->tail = NULL;
+   files->size = 0;
+}
+
+static void
+tui_playlist_pop(struct list* files)
+{
+   if (files == NULL || files->head == NULL)
+   {
+      return;
+   }
+
+   if (files->head == files->tail)
+   {
+      free(files->head->value);
+      free(files->head);
+      files->head = NULL;
+      files->tail = NULL;
+      files->size = 0;
+      return;
+   }
+
+   struct list_entry* prev = files->head;
+   while (prev->next != NULL && prev->next != files->tail)
+   {
+      prev = prev->next;
+   }
+
+   if (files->tail != NULL)
+   {
+      free(files->tail->value);
+      free(files->tail);
+   }
+
+   prev->next = NULL;
+   files->tail = prev;
+   if (files->size > 0)
+   {
+      files->size--;
+   }
+}
+
+static void
+tui_playlist_remove_at(struct list* files, int idx)
+{
+   if (files == NULL || files->head == NULL || idx < 0)
+   {
+      return;
+   }
+
+   if (idx == 0)
+   {
+      struct list_entry* old = files->head;
+      files->head = old->next;
+      if (files->tail == old)
+      {
+         files->tail = files->head;
+      }
+      free(old->value);
+      free(old);
+      if (files->size > 0)
+      {
+         files->size--;
+      }
+      return;
+   }
+
+   struct list_entry* prev = files->head;
+   for (int i = 0; i < idx - 1 && prev != NULL; i++)
+   {
+      prev = prev->next;
+   }
+
+   if (prev == NULL || prev->next == NULL)
+   {
+      return;
+   }
+
+   struct list_entry* cur = prev->next;
+   prev->next = cur->next;
+   if (files->tail == cur)
+   {
+      files->tail = prev;
+   }
+   free(cur->value);
+   free(cur);
+   if (files->size > 0)
+   {
+      files->size--;
+   }
+}
+

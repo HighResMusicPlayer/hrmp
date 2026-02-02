@@ -31,18 +31,322 @@
 #include <inttypes.h>
 #include <alsa/asoundlib.h>
 
+static uint32_t id3_synchsafe32(const unsigned char b[4]);
+static uint32_t id3_be_u32(const unsigned char b[4]);
+static void id3_copy_text_utf8(char* dst, size_t dstsz, const unsigned char* data, size_t len);
+static void id3_assign_text_frame(struct file_metadata* fm, const char id[4], const unsigned char* payload, uint32_t size);
+static void parse_id3v2(FILE* f, uint64_t offset, struct file_metadata* fm);
+static bool metadata_supported(struct file_metadata* fm);
 static int init_metadata(char* filename, int type, struct file_metadata** file_metadata);
 static int get_metadata(char* filename, int type, struct file_metadata** file_metadata);
 static int get_metadata_dsf(char* filename, struct file_metadata** file_metadata);
 static int get_metadata_dff(char* filename, struct file_metadata** file_metadata);
 static int get_metadata_mkv(char* filename, struct file_metadata** file_metadata);
-static bool metadata_supported(struct file_metadata* fm);
 
-static uint32_t id3_be_u32(const unsigned char b[4]);
-static uint32_t id3_synchsafe32(const unsigned char b[4]);
-static void id3_copy_text_utf8(char* dst, size_t dstsz, const unsigned char* data, size_t len);
-static void id3_assign_text_frame(struct file_metadata* fm, const char id[4], const unsigned char* payload, uint32_t size);
-static void parse_id3v2(FILE* f, uint64_t offset, struct file_metadata* fm);
+bool
+hrmp_file_is_supported(char* filename)
+{
+   if (filename == NULL)
+   {
+      return false;
+   }
+
+   return hrmp_ends_with(filename, ".wav") ||
+          hrmp_ends_with(filename, ".flac") ||
+          hrmp_ends_with(filename, ".mp3") ||
+          hrmp_ends_with(filename, ".dsf") ||
+          hrmp_ends_with(filename, ".dff") ||
+          hrmp_ends_with(filename, ".mkv") ||
+          hrmp_ends_with(filename, ".mka") ||
+          hrmp_ends_with(filename, ".webm");
+}
+
+int
+hrmp_file_metadata(char* f, struct file_metadata** fm)
+{
+   int type = TYPE_UNKNOWN;
+   struct file_metadata* m = NULL;
+   struct configuration* config = NULL;
+
+   config = (struct configuration*)shmem;
+
+   *fm = NULL;
+
+   if (strlen(&config->active_device.device[0]) == 0)
+   {
+      goto error;
+   }
+
+   if (hrmp_ends_with(f, ".wav"))
+   {
+      type = TYPE_WAV;
+   }
+   else if (hrmp_ends_with(f, ".flac"))
+   {
+      type = TYPE_FLAC;
+   }
+   else if (hrmp_ends_with(f, ".mp3"))
+   {
+      type = TYPE_MP3;
+   }
+   else if (hrmp_ends_with(f, ".dsf"))
+   {
+      type = TYPE_DSF;
+   }
+   else if (hrmp_ends_with(f, ".dff"))
+   {
+      type = TYPE_DFF;
+   }
+   else if (hrmp_ends_with(f, ".mkv") || hrmp_ends_with(f, ".mka") || hrmp_ends_with(f, ".webm"))
+   {
+      type = TYPE_MKV;
+   }
+
+   if (type == TYPE_WAV || type == TYPE_FLAC || type == TYPE_MP3)
+   {
+      if (get_metadata(f, type, &m))
+      {
+         if (!config->quiet)
+         {
+            printf("Unsupported metadata for %s\n", f);
+         }
+         goto error;
+      }
+   }
+   else if (type == TYPE_DSF)
+   {
+      if (get_metadata_dsf(f, &m))
+      {
+         if (!config->quiet)
+         {
+            printf("Unsupported metadata for %s\n", f);
+         }
+         goto error;
+      }
+   }
+   else if (type == TYPE_DFF)
+   {
+      if (get_metadata_dff(f, &m))
+      {
+         if (!config->quiet)
+         {
+            printf("Unsupported metadata for %s\n", f);
+         }
+         goto error;
+      }
+   }
+   else if (type == TYPE_MKV)
+   {
+      if (get_metadata_mkv(f, &m))
+      {
+         if (!config->quiet)
+         {
+            printf("Unsupported metadata for %s\n", f);
+         }
+         goto error;
+      }
+   }
+   else
+   {
+      if (!config->quiet)
+      {
+         printf("Unsupported file extension for %s\n", f);
+      }
+      goto error;
+   }
+
+   if (!metadata_supported(m))
+   {
+      if (!config->quiet)
+      {
+         printf("Unsupported file: %s/ch%d/%dHz/%dbits\n", f, m->channels,
+                m->sample_rate, m->bits_per_sample);
+      }
+      goto error;
+   }
+
+   *fm = m;
+
+   return 0;
+
+error:
+
+   free(m);
+
+   return 1;
+}
+
+
+int
+hrmp_print_file_metadata(struct file_metadata* fm)
+{
+   if (fm != NULL)
+   {
+      printf("%s\n", fm->name);
+      if (fm->type == TYPE_UNKNOWN)
+      {
+         printf("  Type: TYPE_UNKNOWN\n");
+      }
+      else if (fm->type == TYPE_WAV)
+      {
+         printf("  Type: TYPE_WAV\n");
+      }
+      else if (fm->type == TYPE_FLAC)
+      {
+         printf("  Type: TYPE_FLAC\n");
+      }
+      else if (fm->type == TYPE_MP3)
+      {
+         printf("  Type: TYPE_MP3\n");
+      }
+      else if (fm->type == TYPE_DSF)
+      {
+         printf("  Type: TYPE_DSF\n");
+      }
+      else if (fm->type == TYPE_DFF)
+      {
+         printf("  Type: TYPE_DFF\n");
+      }
+      else if (fm->type == TYPE_MKV)
+      {
+         printf("  Type: TYPE_MKV\n");
+      }
+      else
+      {
+         printf("  Type: TYPE_UNKNOWN (%d)\n", fm->type);
+      }
+      if (fm->format == FORMAT_1)
+      {
+         printf("  Format: FORMAT_1\n");
+      }
+      else if (fm->format == FORMAT_16)
+      {
+         printf("  Format: FORMAT_16\n");
+      }
+      else if (fm->format == FORMAT_24)
+      {
+         printf("  Format: FORMAT_24\n");
+      }
+      else if (fm->format == FORMAT_32)
+      {
+         printf("  Format: FORMAT_32\n");
+      }
+      else
+      {
+         printf("  Format: FORMAT_UNKNOWN (%d)\n", fm->format);
+      }
+      printf("  Bits: %d\n", fm->bits_per_sample);
+      printf("  Container: %d\n", fm->container);
+      printf("  Channels: %d\n", fm->channels);
+      printf("  Size: %zu\n", fm->file_size);
+      printf("  Rate: %d Hz\n", fm->sample_rate);
+      printf("  PCM: %d Hz\n", fm->pcm_rate);
+
+      if (fm->alsa_snd == SND_PCM_FORMAT_S16)
+      {
+         printf("  ALSA: SND_PCM_FORMAT_S16\n");
+      }
+      else if (fm->alsa_snd == SND_PCM_FORMAT_S16_LE)
+      {
+         printf("  ALSA: SND_PCM_FORMAT_S16_LE\n");
+      }
+      else if (fm->alsa_snd == SND_PCM_FORMAT_S16_BE)
+      {
+         printf("  ALSA: SND_PCM_FORMAT_S16_BE\n");
+      }
+      else if (fm->alsa_snd == SND_PCM_FORMAT_S24)
+      {
+         printf("  ALSA: SND_PCM_FORMAT_S24\n");
+      }
+      else if (fm->alsa_snd == SND_PCM_FORMAT_S24_3LE)
+      {
+         printf("  ALSA: SND_PCM_FORMAT_S24_3LE\n");
+      }
+      else if (fm->alsa_snd == SND_PCM_FORMAT_S24_LE)
+      {
+         printf("  ALSA: SND_PCM_FORMAT_S24_LE\n");
+      }
+      else if (fm->alsa_snd == SND_PCM_FORMAT_S24_3BE)
+      {
+         printf("  ALSA: SND_PCM_FORMAT_S24_3BE\n");
+      }
+      else if (fm->alsa_snd == SND_PCM_FORMAT_S24_BE)
+      {
+         printf("  ALSA: SND_PCM_FORMAT_S24_BE\n");
+      }
+      else if (fm->alsa_snd == SND_PCM_FORMAT_S32)
+      {
+         printf("  ALSA: SND_PCM_FORMAT_S32\n");
+      }
+      else if (fm->alsa_snd == SND_PCM_FORMAT_S32_LE)
+      {
+         printf("  ALSA: SND_PCM_FORMAT_S32_LE\n");
+      }
+      else if (fm->alsa_snd == SND_PCM_FORMAT_S32_BE)
+      {
+         printf("  ALSA: SND_PCM_FORMAT_S32_BE\n");
+      }
+      else if (fm->alsa_snd == SND_PCM_FORMAT_DSD_U8)
+      {
+         printf("  ALSA: SND_PCM_FORMAT_DSD_U8\n");
+      }
+      else if (fm->alsa_snd == SND_PCM_FORMAT_DSD_U16_LE)
+      {
+         printf("  ALSA: SND_PCM_FORMAT_DSD_U16_LE\n");
+      }
+      else if (fm->alsa_snd == SND_PCM_FORMAT_DSD_U32_LE)
+      {
+         printf("  ALSA: SND_PCM_FORMAT_DSD_U32_LE\n");
+      }
+      else if (fm->alsa_snd == SND_PCM_FORMAT_DSD_U16_BE)
+      {
+         printf("  ALSA: SND_PCM_FORMAT_DSD_U16_BE\n");
+      }
+      else if (fm->alsa_snd == SND_PCM_FORMAT_DSD_U32_BE)
+      {
+         printf("  ALSA: SND_PCM_FORMAT_DSD_U32_BE\n");
+      }
+      else
+      {
+         printf("  ALSA: UNKNOWN (%d)\n", fm->alsa_snd);
+      }
+      printf("  Samples: %lu\n", fm->total_samples);
+      printf("  Duration: %lf\n", fm->duration);
+      printf("  Block size: %d\n", fm->block_size);
+      printf("  Data size: %lu\n", fm->data_size);
+
+      if (strlen(fm->title) > 0)
+      {
+         printf("  Title: %s\n", fm->title);
+      }
+      if (strlen(fm->artist) > 0)
+      {
+         printf("  Artist: %s\n", fm->artist);
+      }
+      if (strlen(fm->album) > 0)
+      {
+         printf("  Album: %s\n", fm->album);
+      }
+      if (strlen(fm->genre) > 0)
+      {
+         printf("  Genre: %s\n", fm->genre);
+      }
+      if (strlen(fm->date) > 0)
+      {
+         printf("  Date: %s\n", fm->date);
+      }
+      if (fm->track > 0)
+      {
+         printf("  Track: %d\n", fm->track);
+      }
+      if (fm->disc > 0)
+      {
+         printf("  Disc: %d\n", fm->disc);
+      }
+   }
+
+   return 0;
+}
 
 static uint32_t
 id3_synchsafe32(const unsigned char b[4])
@@ -307,139 +611,6 @@ done:
    }
 }
 
-bool
-hrmp_file_is_supported(char* filename)
-{
-   if (filename == NULL)
-   {
-      return false;
-   }
-
-   return hrmp_ends_with(filename, ".wav") ||
-          hrmp_ends_with(filename, ".flac") ||
-          hrmp_ends_with(filename, ".mp3") ||
-          hrmp_ends_with(filename, ".dsf") ||
-          hrmp_ends_with(filename, ".dff") ||
-          hrmp_ends_with(filename, ".mkv") ||
-          hrmp_ends_with(filename, ".mka") ||
-          hrmp_ends_with(filename, ".webm");
-}
-
-int
-hrmp_file_metadata(char* f, struct file_metadata** fm)
-{
-   int type = TYPE_UNKNOWN;
-   struct file_metadata* m = NULL;
-   struct configuration* config = NULL;
-
-   config = (struct configuration*)shmem;
-
-   *fm = NULL;
-
-   if (strlen(&config->active_device.device[0]) == 0)
-   {
-      goto error;
-   }
-
-   if (hrmp_ends_with(f, ".wav"))
-   {
-      type = TYPE_WAV;
-   }
-   else if (hrmp_ends_with(f, ".flac"))
-   {
-      type = TYPE_FLAC;
-   }
-   else if (hrmp_ends_with(f, ".mp3"))
-   {
-      type = TYPE_MP3;
-   }
-   else if (hrmp_ends_with(f, ".dsf"))
-   {
-      type = TYPE_DSF;
-   }
-   else if (hrmp_ends_with(f, ".dff"))
-   {
-      type = TYPE_DFF;
-   }
-   else if (hrmp_ends_with(f, ".mkv") || hrmp_ends_with(f, ".mka") || hrmp_ends_with(f, ".webm"))
-   {
-      type = TYPE_MKV;
-   }
-
-   if (type == TYPE_WAV || type == TYPE_FLAC || type == TYPE_MP3)
-   {
-      if (get_metadata(f, type, &m))
-      {
-         if (!config->quiet)
-         {
-            printf("Unsupported metadata for %s\n", f);
-         }
-         goto error;
-      }
-   }
-   else if (type == TYPE_DSF)
-   {
-      if (get_metadata_dsf(f, &m))
-      {
-         if (!config->quiet)
-         {
-            printf("Unsupported metadata for %s\n", f);
-         }
-         goto error;
-      }
-   }
-   else if (type == TYPE_DFF)
-   {
-      if (get_metadata_dff(f, &m))
-      {
-         if (!config->quiet)
-         {
-            printf("Unsupported metadata for %s\n", f);
-         }
-         goto error;
-      }
-   }
-   else if (type == TYPE_MKV)
-   {
-      if (get_metadata_mkv(f, &m))
-      {
-         if (!config->quiet)
-         {
-            printf("Unsupported metadata for %s\n", f);
-         }
-         goto error;
-      }
-   }
-   else
-   {
-      if (!config->quiet)
-      {
-         printf("Unsupported file extension for %s\n", f);
-      }
-      goto error;
-   }
-
-   if (!metadata_supported(m))
-   {
-      if (!config->quiet)
-      {
-         printf("Unsupported file: %s/ch%d/%dHz/%dbits\n", f, m->channels,
-                m->sample_rate, m->bits_per_sample);
-      }
-      goto error;
-   }
-
-   *fm = m;
-
-   return 0;
-
-error:
-
-   free(m);
-
-   return 1;
-}
-
 static bool
 metadata_supported(struct file_metadata* fm)
 {
@@ -619,177 +790,6 @@ metadata_supported(struct file_metadata* fm)
    }
 
    return false;
-}
-
-int
-hrmp_print_file_metadata(struct file_metadata* fm)
-{
-   if (fm != NULL)
-   {
-      printf("%s\n", fm->name);
-      if (fm->type == TYPE_UNKNOWN)
-      {
-         printf("  Type: TYPE_UNKNOWN\n");
-      }
-      else if (fm->type == TYPE_WAV)
-      {
-         printf("  Type: TYPE_WAV\n");
-      }
-      else if (fm->type == TYPE_FLAC)
-      {
-         printf("  Type: TYPE_FLAC\n");
-      }
-      else if (fm->type == TYPE_MP3)
-      {
-         printf("  Type: TYPE_MP3\n");
-      }
-      else if (fm->type == TYPE_DSF)
-      {
-         printf("  Type: TYPE_DSF\n");
-      }
-      else if (fm->type == TYPE_DFF)
-      {
-         printf("  Type: TYPE_DFF\n");
-      }
-      else if (fm->type == TYPE_MKV)
-      {
-         printf("  Type: TYPE_MKV\n");
-      }
-      else
-      {
-         printf("  Type: TYPE_UNKNOWN (%d)\n", fm->type);
-      }
-      if (fm->format == FORMAT_1)
-      {
-         printf("  Format: FORMAT_1\n");
-      }
-      else if (fm->format == FORMAT_16)
-      {
-         printf("  Format: FORMAT_16\n");
-      }
-      else if (fm->format == FORMAT_24)
-      {
-         printf("  Format: FORMAT_24\n");
-      }
-      else if (fm->format == FORMAT_32)
-      {
-         printf("  Format: FORMAT_32\n");
-      }
-      else
-      {
-         printf("  Format: FORMAT_UNKNOWN (%d)\n", fm->format);
-      }
-      printf("  Bits: %d\n", fm->bits_per_sample);
-      printf("  Container: %d\n", fm->container);
-      printf("  Channels: %d\n", fm->channels);
-      printf("  Size: %zu\n", fm->file_size);
-      printf("  Rate: %d Hz\n", fm->sample_rate);
-      printf("  PCM: %d Hz\n", fm->pcm_rate);
-
-      if (fm->alsa_snd == SND_PCM_FORMAT_S16)
-      {
-         printf("  ALSA: SND_PCM_FORMAT_S16\n");
-      }
-      else if (fm->alsa_snd == SND_PCM_FORMAT_S16_LE)
-      {
-         printf("  ALSA: SND_PCM_FORMAT_S16_LE\n");
-      }
-      else if (fm->alsa_snd == SND_PCM_FORMAT_S16_BE)
-      {
-         printf("  ALSA: SND_PCM_FORMAT_S16_BE\n");
-      }
-      else if (fm->alsa_snd == SND_PCM_FORMAT_S24)
-      {
-         printf("  ALSA: SND_PCM_FORMAT_S24\n");
-      }
-      else if (fm->alsa_snd == SND_PCM_FORMAT_S24_3LE)
-      {
-         printf("  ALSA: SND_PCM_FORMAT_S24_3LE\n");
-      }
-      else if (fm->alsa_snd == SND_PCM_FORMAT_S24_LE)
-      {
-         printf("  ALSA: SND_PCM_FORMAT_S24_LE\n");
-      }
-      else if (fm->alsa_snd == SND_PCM_FORMAT_S24_3BE)
-      {
-         printf("  ALSA: SND_PCM_FORMAT_S24_3BE\n");
-      }
-      else if (fm->alsa_snd == SND_PCM_FORMAT_S24_BE)
-      {
-         printf("  ALSA: SND_PCM_FORMAT_S24_BE\n");
-      }
-      else if (fm->alsa_snd == SND_PCM_FORMAT_S32)
-      {
-         printf("  ALSA: SND_PCM_FORMAT_S32\n");
-      }
-      else if (fm->alsa_snd == SND_PCM_FORMAT_S32_LE)
-      {
-         printf("  ALSA: SND_PCM_FORMAT_S32_LE\n");
-      }
-      else if (fm->alsa_snd == SND_PCM_FORMAT_S32_BE)
-      {
-         printf("  ALSA: SND_PCM_FORMAT_S32_BE\n");
-      }
-      else if (fm->alsa_snd == SND_PCM_FORMAT_DSD_U8)
-      {
-         printf("  ALSA: SND_PCM_FORMAT_DSD_U8\n");
-      }
-      else if (fm->alsa_snd == SND_PCM_FORMAT_DSD_U16_LE)
-      {
-         printf("  ALSA: SND_PCM_FORMAT_DSD_U16_LE\n");
-      }
-      else if (fm->alsa_snd == SND_PCM_FORMAT_DSD_U32_LE)
-      {
-         printf("  ALSA: SND_PCM_FORMAT_DSD_U32_LE\n");
-      }
-      else if (fm->alsa_snd == SND_PCM_FORMAT_DSD_U16_BE)
-      {
-         printf("  ALSA: SND_PCM_FORMAT_DSD_U16_BE\n");
-      }
-      else if (fm->alsa_snd == SND_PCM_FORMAT_DSD_U32_BE)
-      {
-         printf("  ALSA: SND_PCM_FORMAT_DSD_U32_BE\n");
-      }
-      else
-      {
-         printf("  ALSA: UNKNOWN (%d)\n", fm->alsa_snd);
-      }
-      printf("  Samples: %lu\n", fm->total_samples);
-      printf("  Duration: %lf\n", fm->duration);
-      printf("  Block size: %d\n", fm->block_size);
-      printf("  Data size: %lu\n", fm->data_size);
-
-      if (strlen(fm->title) > 0)
-      {
-         printf("  Title: %s\n", fm->title);
-      }
-      if (strlen(fm->artist) > 0)
-      {
-         printf("  Artist: %s\n", fm->artist);
-      }
-      if (strlen(fm->album) > 0)
-      {
-         printf("  Album: %s\n", fm->album);
-      }
-      if (strlen(fm->genre) > 0)
-      {
-         printf("  Genre: %s\n", fm->genre);
-      }
-      if (strlen(fm->date) > 0)
-      {
-         printf("  Date: %s\n", fm->date);
-      }
-      if (fm->track > 0)
-      {
-         printf("  Track: %d\n", fm->track);
-      }
-      if (fm->disc > 0)
-      {
-         printf("  Disc: %d\n", fm->disc);
-      }
-   }
-
-   return 0;
 }
 
 static int
@@ -1514,3 +1514,4 @@ error:
    free(fm);
    return 1;
 }
+

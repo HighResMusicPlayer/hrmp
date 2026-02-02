@@ -28,19 +28,19 @@ extern "C" {
 #include <stddef.h>
 
 /** @struct list_entry
- * Node of a singly linked list of strings
+ * Node of a singly linked list
  */
 struct list;
 
 struct list_entry
 {
-   char value[MAX_PATH];    /**< Stored string value (NUL-terminated) */
+   void* value;             /**< Stored value (owned by the list) */
    struct list_entry* next; /**< Pointer to the next entry */
    struct list* list;       /**< Owning list */
 };
 
 /** @struct list
- * Singly linked list of strings
+ * Singly linked list
  */
 struct list
 {
@@ -63,6 +63,14 @@ hrmp_list_create(struct list** list);
  */
 void
 hrmp_list_destroy(struct list* list);
+
+/**
+ * Destroy a list and free all its entries using a custom free function
+ * @param list The list
+ * @param free_value Function to free each value (can be NULL)
+ */
+void
+hrmp_list_destroy_with(struct list* list, void (*free_value)(void*));
 
 /**
  * Is the list empty
@@ -88,6 +96,15 @@ hrmp_list_size(const struct list* list);
  */
 int
 hrmp_list_append(struct list* list, const char* value);
+
+/**
+ * Append a value to the end of the list (takes ownership)
+ * @param list The list
+ * @param value The value to append (owned by list)
+ * @return 0 if success, otherwise 1
+ */
+int
+hrmp_list_append_owned(struct list* list, void* value);
 
 /**
  * Prepend a value to the beginning of the list

@@ -40,32 +40,29 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
-#define LINE_LENGTH 512
-
 static int extract_key_value(char* str, char** key, char** value);
 static int as_int(char* str, int* i);
 static int as_logging_type(char* str);
 static int as_logging_level(char* str);
 static int as_logging_mode(char* str);
 static int as_volume(char* str);
-static int as_size(char* str, size_t def, size_t* size);
-
-static unsigned int as_update_process_title(char* str, unsigned int* policy, unsigned int default_policy);
-
-static bool is_empty_string(char* s);
 static bool is_same_device(struct device* d1, struct device* d2);
-
+static bool is_empty_string(char* s);
 static bool key_in_section(char* wanted, char* section, char* key, bool global, bool* unknown);
 static bool is_comment_line(char* line);
 static bool section_line(char* line, char* section);
-
+static unsigned int as_update_process_title(char* str, unsigned int* policy, unsigned int default_policy);
 static int hrmp_write_device_config_value(char* buffer, char* device_name, char* config_key, size_t buffer_size);
-
 static int to_string(char* where, char* value, size_t max_length);
 static int to_update_process_title(char* where, int value);
-static int to_log_mode(char* where, int value);
 static int to_log_level(char* where, int value);
+static int to_log_mode(char* where, int value);
 static int to_log_type(char* where, int value);
+static int as_cache_files(char* str, int* policy);
+static int to_cache_files(char* where, int value);
+static int as_size(char* str, size_t def, size_t* size);
+
+#define LINE_LENGTH 512
 
 /**
  * This struct is going to store the metadata
@@ -81,9 +78,6 @@ struct config_section
    bool main;              /**< Is this the main configuration section or a server one? */
 };
 
-/**
- *
- */
 int
 hrmp_init_configuration(void* shm)
 {
@@ -96,6 +90,7 @@ hrmp_init_configuration(void* shm)
    config->is_muted = false;
 
    config->cache_size = HRMP_RINGBUFFER_MAX_BYTES;
+   config->cache_files = HRMP_CACHE_FILES_OFF;
 
    config->metadata = false;
 
@@ -319,6 +314,13 @@ hrmp_read_configuration(void* shm, char* filename, bool emitWarnings)
                      unknown = true;
                   }
                }
+               else if (key_in_section("cache_files", section, key, true, &unknown))
+               {
+                  if (as_cache_files(value, &config->cache_files))
+                  {
+                     unknown = true;
+                  }
+               }
                else
                {
                   unknown = true;
@@ -443,43 +445,142 @@ hrmp_validate_configuration(void* shm)
       }
    }
 
-   if (config->cache_size < HRMP_RINGBUFFER_MIN_BYTES)
+   if (config->cache_size < 0)
+   {
+      config->cache_size = 0;
+   }
+   if (config->cache_size > 0 && config->cache_size < HRMP_RINGBUFFER_MIN_BYTES)
    {
       config->cache_size = HRMP_RINGBUFFER_MIN_BYTES;
+   }
+
+   if (config->cache_files < HRMP_CACHE_FILES_OFF || config->cache_files > HRMP_CACHE_FILES_ALL)
+   {
+      config->cache_files = HRMP_CACHE_FILES_OFF;
    }
 
    return 0;
 }
 
-/**
- * Given a line of text extracts the key part and the value.
- * Valid lines must have the form <key> = <value>.
- *
- * The key must be unquoted and cannot have any spaces
- * in front of it.
- *
- * Comments on the right side of a value are allowed.
- *
- * The value can be quoted, and this allows for inserting spaces
- * and comment signs. Quotes are '""' and '\''.
- * Example of valid lines are:
- * <code>
- * foo = bar
- * foo=bar
- * foo=  bar
- * foo = "bar"
- * foo = 'bar'
- * foo = "#bar"
- * foo = '#bar'
- * foo = bar # bar set!
- * foo = bar# bar set!
- * </code>
- *
- * @param str the line of text incoming from the configuration file
- * @param key the pointer to where to store the key extracted from the line
- * @param value the pointer to where to store the value (unquoted)
- * @returns 1 if unable to parse the line, 0 if everything is ok
- */
+int
+hrmp_write_config_value(char* buffer, char* config_key, size_t buffer_size)
+{
+   struct configuration* config;
+
+   char section[MISC_LENGTH];
+   char context[MISC_LENGTH];
+   char key[MISC_LENGTH];
+   int begin = -1, end = -1;
+   bool main_section;
+
+   config = (struct configuration*)shmem;
+
+   memset(section, 0, MISC_LENGTH);
+   memset(context, 0, MISC_LENGTH);
+   memset(key, 0, MISC_LENGTH);
+
+   for (size_t i = 0; i < strlen(config_key); i++)
+   {
+      if (config_key[i] == '.')
+      {
+         if (!strlen(section))
+         {
+            memcpy(section, &config_key[begin], end - begin + 1);
+            section[end - begin + 1] = '\0';
+            begin = end = -1;
+            continue;
+         }
+         else if (!strlen(context))
+         {
+            memcpy(context, &config_key[begin], end - begin + 1);
+            context[end - begin + 1] = '\0';
+            begin = end = -1;
+            continue;
+         }
+         else if (!strlen(key))
+         {
+            memcpy(key, &config_key[begin], end - begin + 1);
+            key[end - begin + 1] = '\0';
+            begin = end = -1;
+            continue;
+         }
+      }
+
+      if (begin < 0)
+      {
+         begin = i;
+      }
+
+      end = i;
+   }
+
+   // if the key has not been found, since there is no ending dot,
+   // try to extract it from the string
+   if (!strlen(key))
+   {
+      memcpy(key, &config_key[begin], end - begin + 1);
+      key[end - begin + 1] = '\0';
+   }
+
+   // force the main section, i.e., global parameters, if and only if
+   // there is no section or section is 'hrmp' without any subsection
+   main_section = (!strlen(section) || !strncmp(section, "hrmp", MISC_LENGTH)) && !strlen(context);
+
+   if (!strncmp(section, "device", MISC_LENGTH))
+   {
+      return hrmp_write_device_config_value(buffer, context, key, buffer_size);
+   }
+   else if (main_section)
+   {
+      if (!strncmp(key, "log_type", MISC_LENGTH))
+      {
+         return to_log_type(buffer, config->log_type);
+      }
+      else if (!strncmp(key, "log_mode", MISC_LENGTH))
+      {
+         return to_log_mode(buffer, config->log_mode);
+      }
+      else if (!strncmp(key, "log_line_prefix", MISC_LENGTH))
+      {
+         return to_string(buffer, config->log_line_prefix, buffer_size);
+      }
+      else if (!strncmp(key, "log_level", MISC_LENGTH))
+      {
+         return to_log_level(buffer, config->log_level);
+      }
+      else if (!strncmp(key, "log_path", MISC_LENGTH))
+      {
+         return to_string(buffer, config->log_path, buffer_size);
+      }
+      else if (!strncmp(key, "output", MISC_LENGTH))
+      {
+         return to_string(buffer, config->output, buffer_size);
+      }
+      else if (!strncmp(key, "update_process_title", MISC_LENGTH))
+      {
+         return to_update_process_title(buffer, config->update_process_title);
+      }
+      else if (!strncmp(key, "cache_files", MISC_LENGTH))
+      {
+         return to_cache_files(buffer, config->cache_files);
+      }
+      else
+      {
+         goto error;
+      }
+
+   } // end of global configuration settings
+   else
+   {
+      goto error;
+   }
+
+   return 0;
+error:
+   hrmp_log_debug("Unknown configuration key <%s>", config_key);
+   return 1;
+}
+
 static int
 extract_key_value(char* str, char** key, char** value)
 {
@@ -790,16 +891,6 @@ as_volume(char* str)
    return i;
 }
 
-/**
- * Checks if the configuration of the first server
- * is the same as the configuration of the second server.
- * So far it tests for the same connection string, meaning
- * that the hostname and the port must be the same (i.e.,
- * pointing to the same endpoint).
- * It does not resolve the hostname, therefore 'localhost' and '127.0.0.1'
- * are considered as different hosts.
- * @return true if the server configurations look the same
- */
 static bool
 is_same_device(struct device* d1, struct device* d2)
 {
@@ -841,28 +932,6 @@ is_empty_string(char* s)
    return true;
 }
 
-/**
- * Function to check if the specified key belongs to the right section.
- * The idea is to pass all the values read from the configuration file,
- * and a boolean parameter to check if the section the parameter belongs is global or not.
- * A global section is the main `hrmp` section, while a local section
- * is a custom user section, i.e., a server section.
- *
- * @param wanted the key we want to match against
- * @param section the section in which the key has been found
- * @param key the key read from the configuration file
- * @param global true if the `section` has to be `hrmp`
- * @param unknown set to true if the key does match but the section does not.
- *        For instance the key `host` found in a local section while required
- *        to be global will set `unknown` to true.
- *        This parameter can be omitted.
- *
- * @returns true if the key matches and the section is of the specified type.
- *
- * Example:
- *  key_in_section("host", section, key, true, &unknown); // search for [hrmp] -> host
- *  key_in_section("port", section, key, false, &unknown); // search for server section -> port
- */
 static bool
 key_in_section(char* wanted, char* section, char* key, bool global, bool* unknown)
 {
@@ -894,15 +963,6 @@ key_in_section(char* wanted, char* section, char* key, bool global, bool* unknow
    }
 }
 
-/**
- * Function to see if the specified line is a comment line
- * and has to be ignored.
- * A comment line is a line that starts with '#' or ';' or
- * with spaces (or tabs) and a comment sign.
- *
- * @param line the line read from the file
- * @return true if the line is a full comment line
- */
 static bool
 is_comment_line(char* line)
 {
@@ -926,19 +986,6 @@ is_comment_line(char* line)
    return false;
 }
 
-/**
- * Function to inspect a configuration line and detect if it handles a section.
- * If the line handles a section name, like `[hrmp]` the function does set
- * the `section` argument, otherwise it does nothing.
- *
- * @param line the line to inspect
- * @param section the pointer to the string that will contain
- *        the section name, only if the line handles a section, otherwise
- *        the pointer will not be changed.
- *
- * @returns true if the line handles a section and the `section` pointer
- *          has been changed
- */
 static bool
 section_line(char* line, char* section)
 {
@@ -967,18 +1014,6 @@ section_line(char* line, char* section)
    return false;
 }
 
-/**
- * Utility function to understand the setting for updating
- * the process title.
- *
- * @param str the value obtained by the configuration parsing
- * @param policy the pointer to the value where the setting will be stored
- * @param default_policy a value to set when the configuration cannot be
- * understood
- *
- * @return 0 on success, 1 on error. In any case the `policy` variable is set to
- * `default_policy`.
- */
 static unsigned int
 as_update_process_title(char* str, unsigned int* policy, unsigned int default_policy)
 {
@@ -1016,129 +1051,6 @@ as_update_process_title(char* str, unsigned int* policy, unsigned int default_po
    }
 }
 
-int
-hrmp_write_config_value(char* buffer, char* config_key, size_t buffer_size)
-{
-   struct configuration* config;
-
-   char section[MISC_LENGTH];
-   char context[MISC_LENGTH];
-   char key[MISC_LENGTH];
-   int begin = -1, end = -1;
-   bool main_section;
-
-   config = (struct configuration*)shmem;
-
-   memset(section, 0, MISC_LENGTH);
-   memset(context, 0, MISC_LENGTH);
-   memset(key, 0, MISC_LENGTH);
-
-   for (size_t i = 0; i < strlen(config_key); i++)
-   {
-      if (config_key[i] == '.')
-      {
-         if (!strlen(section))
-         {
-            memcpy(section, &config_key[begin], end - begin + 1);
-            section[end - begin + 1] = '\0';
-            begin = end = -1;
-            continue;
-         }
-         else if (!strlen(context))
-         {
-            memcpy(context, &config_key[begin], end - begin + 1);
-            context[end - begin + 1] = '\0';
-            begin = end = -1;
-            continue;
-         }
-         else if (!strlen(key))
-         {
-            memcpy(key, &config_key[begin], end - begin + 1);
-            key[end - begin + 1] = '\0';
-            begin = end = -1;
-            continue;
-         }
-      }
-
-      if (begin < 0)
-      {
-         begin = i;
-      }
-
-      end = i;
-   }
-
-   // if the key has not been found, since there is no ending dot,
-   // try to extract it from the string
-   if (!strlen(key))
-   {
-      memcpy(key, &config_key[begin], end - begin + 1);
-      key[end - begin + 1] = '\0';
-   }
-
-   // force the main section, i.e., global parameters, if and only if
-   // there is no section or section is 'hrmp' without any subsection
-   main_section = (!strlen(section) || !strncmp(section, "hrmp", MISC_LENGTH)) && !strlen(context);
-
-   if (!strncmp(section, "device", MISC_LENGTH))
-   {
-      return hrmp_write_device_config_value(buffer, context, key, buffer_size);
-   }
-   else if (main_section)
-   {
-      if (!strncmp(key, "log_type", MISC_LENGTH))
-      {
-         return to_log_type(buffer, config->log_type);
-      }
-      else if (!strncmp(key, "log_mode", MISC_LENGTH))
-      {
-         return to_log_mode(buffer, config->log_mode);
-      }
-      else if (!strncmp(key, "log_line_prefix", MISC_LENGTH))
-      {
-         return to_string(buffer, config->log_line_prefix, buffer_size);
-      }
-      else if (!strncmp(key, "log_level", MISC_LENGTH))
-      {
-         return to_log_level(buffer, config->log_level);
-      }
-      else if (!strncmp(key, "log_path", MISC_LENGTH))
-      {
-         return to_string(buffer, config->log_path, buffer_size);
-      }
-      else if (!strncmp(key, "output", MISC_LENGTH))
-      {
-         return to_string(buffer, config->output, buffer_size);
-      }
-      else if (!strncmp(key, "update_process_title", MISC_LENGTH))
-      {
-         return to_update_process_title(buffer, config->update_process_title);
-      }
-      else
-      {
-         goto error;
-      }
-
-   } // end of global configuration settings
-   else
-   {
-      goto error;
-   }
-
-   return 0;
-error:
-   hrmp_log_debug("Unknown configuration key <%s>", config_key);
-   return 1;
-}
-
-/**
- * Function to extract a configuration value for a specific server.
- * @param device_name the name of the device
- * @param config_key one of the configuration keys allowed in the server section
- * @param buffer the buffer where to write the stringified version of the value
- * @param buffer_size the max size of the buffer where the result will be stored
- * @return 0 on success
- */
 static int
 hrmp_write_device_config_value(char* buffer, char* device_name, char* config_key, size_t buffer_size)
 {
@@ -1169,25 +1081,6 @@ error:
    return 1;
 }
 
-/**
- * An utility function to place a string into another string.
- *
- * In the case the string has inner spaces, such spaces are quoted. The function
- * tries to be as smart as possible identifying if there is the need for
- * single or double quotes.
- *
- * The function accepts the size of the destination string, and before writing
- * into such a string the result, it zero fills it. This means it is not mandatory
- * to zero fill the destination string before calling this function.
- * Also please note that if the string that is copied into the destination string
- * has a length bigger than that specified, the function will not copy any data
- * (and will not zero set the destination string, that will remain untouched!)
- *
- * @param where the string where to print the value, must be already allocated
- * @param value the value to convert into a string
- * @param max_length the max length of the 'where' destination string
- * @return 0 on success, 1 otherwise
- */
 static int
 to_string(char* where, char* value, size_t max_length)
 {
@@ -1263,14 +1156,6 @@ to_string(char* where, char* value, size_t max_length)
    return 0;
 }
 
-/**
- * An utility function to convert the enumeration of values for the update_process_title
- * into one of its possible string descriptions.
- *
- * @param where the buffer used to store the stringy thing
- * @param value the config->update_process_title setting
- * @return 0 on success, 1 otherwise
- */
 static int
 to_update_process_title(char* where, int value)
 {
@@ -1298,14 +1183,6 @@ to_update_process_title(char* where, int value)
    return 0;
 }
 
-/**
- * An utility function to convert the enumeration of values for the log_level setting
- * into one of its possible string descriptions.
- *
- * @param where the buffer used to store the stringy thing
- * @param value the config->log_level setting
- * @return 0 on success, 1 otherwise
- */
 static int
 to_log_level(char* where, int value)
 {
@@ -1339,14 +1216,6 @@ to_log_level(char* where, int value)
    return 0;
 }
 
-/**
- * An utility function to convert the enumeration of values for the log_level setting
- * into one of its possible string descriptions.
- *
- * @param where the buffer used to store the stringy thing
- * @param value the config->log_mode setting
- * @return 0 on success, 1 otherwise
- */
 static int
 to_log_mode(char* where, int value)
 {
@@ -1368,14 +1237,6 @@ to_log_mode(char* where, int value)
    return 0;
 }
 
-/**
- * An utility function to convert the enumeration of values for the log_type setting
- * into one of its possible string descriptions.
- *
- * @param where the buffer used to store the stringy thing
- * @param value the config->log_type setting
- * @return 0 on success, 1 otherwise
- */
 static int
 to_log_type(char* where, int value)
 {
@@ -1394,6 +1255,64 @@ to_log_type(char* where, int value)
          break;
       case HRMP_LOGGING_TYPE_SYSLOG:
          hrmp_snprintf(where, MISC_LENGTH, "%s", "syslog");
+         break;
+   }
+
+   return 0;
+}
+
+static int
+as_cache_files(char* str, int* policy)
+{
+   if (!policy)
+   {
+      return 1;
+   }
+
+   if (is_empty_string(str))
+   {
+      *policy = HRMP_CACHE_FILES_OFF;
+      return 1;
+   }
+
+   if (!strcasecmp(str, "off") || !strcasecmp(str, "no") || !strcasecmp(str, "false"))
+   {
+      *policy = HRMP_CACHE_FILES_OFF;
+      return 0;
+   }
+   else if (!strcasecmp(str, "minimal"))
+   {
+      *policy = HRMP_CACHE_FILES_MINIMAL;
+      return 0;
+   }
+   else if (!strcasecmp(str, "all"))
+   {
+      *policy = HRMP_CACHE_FILES_ALL;
+      return 0;
+   }
+
+   *policy = HRMP_CACHE_FILES_OFF;
+   return 1;
+}
+
+static int
+to_cache_files(char* where, int value)
+{
+   if (!where || value < 0)
+   {
+      return 1;
+   }
+
+   switch (value)
+   {
+      case HRMP_CACHE_FILES_OFF:
+         hrmp_snprintf(where, MISC_LENGTH, "%s", "off");
+         break;
+      case HRMP_CACHE_FILES_MINIMAL:
+         hrmp_snprintf(where, MISC_LENGTH, "%s", "minimal");
+         break;
+      case HRMP_CACHE_FILES_ALL:
+         hrmp_snprintf(where, MISC_LENGTH, "%s", "all");
          break;
    }
 
@@ -1486,3 +1405,4 @@ error:
       return 1;
    }
 }
+

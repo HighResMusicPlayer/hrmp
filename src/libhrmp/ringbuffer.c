@@ -22,69 +22,13 @@
 #include <string.h>
 
 static size_t
-clamp_size(size_t v, size_t lo, size_t hi)
-{
-   if (v < lo)
-   {
-      return lo;
-   }
-   if (v > hi)
-   {
-      return hi;
-   }
-   return v;
-}
-
+clamp_size(size_t v, size_t lo, size_t hi);
 static int
-resize_to(struct ringbuffer* rb, size_t newcap)
-{
-   if (!rb)
-   {
-      return 1;
-   }
+resize_to(struct ringbuffer* rb, size_t newcap);
 
-   newcap = clamp_size(newcap, rb->min, rb->max);
-   if (newcap == rb->cap)
-   {
-      return 0;
-   }
-   if (rb->size > newcap)
-   {
-      return 1;
-   }
 
-   uint8_t* nb = (uint8_t*)malloc(newcap);
-   if (!nb)
-   {
-      return 1;
-   }
 
-   if (rb->size)
-   {
-      size_t first = rb->cap - rb->r;
-      if (first > rb->size)
-      {
-         first = rb->size;
-      }
-      memcpy(nb, rb->buf + rb->r, first);
-      if (first < rb->size)
-      {
-         memcpy(nb + first, rb->buf, rb->size - first);
-      }
-   }
 
-   free(rb->buf);
-   rb->buf = nb;
-   rb->cap = newcap;
-   rb->r = 0;
-   rb->w = rb->size;
-   if (rb->w >= rb->cap)
-   {
-      rb->w = 0;
-   }
-
-   return 0;
-}
 
 int
 hrmp_ringbuffer_create(size_t min_size, size_t initial_size, size_t max_size, struct ringbuffer** out)
@@ -305,3 +249,71 @@ error:
 
    return 1;
 }
+
+
+
+static size_t
+clamp_size(size_t v, size_t lo, size_t hi)
+{
+   if (v < lo)
+   {
+      return lo;
+   }
+   if (v > hi)
+   {
+      return hi;
+   }
+   return v;
+}
+
+static int
+resize_to(struct ringbuffer* rb, size_t newcap)
+{
+   if (!rb)
+   {
+      return 1;
+   }
+
+   newcap = clamp_size(newcap, rb->min, rb->max);
+   if (newcap == rb->cap)
+   {
+      return 0;
+   }
+   if (rb->size > newcap)
+   {
+      return 1;
+   }
+
+   uint8_t* nb = (uint8_t*)malloc(newcap);
+   if (!nb)
+   {
+      return 1;
+   }
+
+   if (rb->size)
+   {
+      size_t first = rb->cap - rb->r;
+      if (first > rb->size)
+      {
+         first = rb->size;
+      }
+      memcpy(nb, rb->buf + rb->r, first);
+      if (first < rb->size)
+      {
+         memcpy(nb + first, rb->buf, rb->size - first);
+      }
+   }
+
+   free(rb->buf);
+   rb->buf = nb;
+   rb->cap = newcap;
+   rb->r = 0;
+   rb->w = rb->size;
+   if (rb->w >= rb->cap)
+   {
+      rb->w = 0;
+   }
+
+   return 0;
+}
+

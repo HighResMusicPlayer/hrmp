@@ -27,6 +27,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+
 void
 hrmp_memory_stream_buffer_init(struct stream_buffer** buffer)
 {

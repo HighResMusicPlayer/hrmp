@@ -40,6 +40,12 @@
 #include <time.h>
 #include <unistd.h>
 
+static void shuffle_files(struct list** files);
+static int update_ringbuffer_cache(struct list* playbacks, struct list_entry* current, struct configuration* config);
+static void free_playback_entry(void* value);
+static void version(void);
+static void usage(void);
+
 #define ACTION_NOTHING       0
 #define ACTION_HELP          1
 #define ACTION_VERSION       2
@@ -52,95 +58,6 @@ typedef enum {
    HRMP_PLAYBACK_MODE_REPEAT,
    HRMP_PLAYBACK_MODE_SHUFFLE
 } playback_mode;
-
-static void
-shuffle_files(struct list** files)
-{
-   if (files == NULL || *files == NULL)
-   {
-      return;
-   }
-
-   size_t n = hrmp_list_size(*files);
-   if (n < 2)
-   {
-      return;
-   }
-
-   char** a = malloc(n * sizeof(char*));
-   if (a == NULL)
-   {
-      return;
-   }
-
-   size_t i = 0;
-   for (struct list_entry* e = hrmp_list_head(*files); e != NULL; e = hrmp_list_next(e))
-   {
-      a[i++] = e->value;
-   }
-
-   for (i = n - 1; i > 0; i--)
-   {
-      size_t j = (size_t)(rand() % (i + 1));
-      char* tmp = a[i];
-      a[i] = a[j];
-      a[j] = tmp;
-   }
-
-   struct list* shuffled = NULL;
-   if (hrmp_list_create(&shuffled))
-   {
-      free(a);
-      return;
-   }
-
-   for (i = 0; i < n; i++)
-   {
-      hrmp_list_append(shuffled, a[i]);
-   }
-
-   hrmp_list_destroy(*files);
-   *files = shuffled;
-
-   free(a);
-}
-
-static void
-version(void)
-{
-   printf("hrmp %s\n", VERSION);
-}
-
-static void
-usage(void)
-{
-   printf("hrmp %s\n", VERSION);
-   printf("  High resolution music player\n");
-   printf("\n");
-
-   printf("Usage:\n");
-   printf("  hrmp <FILES>\n");
-   printf("\n");
-   printf("Options:\n");
-   printf("  -c, --config CONFIG_FILE   Set the path to the hrmp.conf file\n");
-   printf("                             Default: $HOME/.hrmp/hrmp.conf\n");
-   printf("  -D, --device               Set the device name\n");
-   printf("  -p, --playlist PLAYLIST    Load a playlist (.hrmp)\n");
-   printf("  -R, --recursive            Add files recursive of the directory\n");
-   printf("  -M, --mode MODE            Playback mode: once, repeat, shuffle\n");
-   printf("  -I, --sample-configuration Generate a sample configuration\n");
-   printf("  -i, --interactive          Text UI mode\n");
-   printf("  -m, --metadata             Display metadata of the files\n");
-   printf("  -s, --status               Status of the devices\n");
-   printf("      --dop                  Use DSD over PCM\n");
-   printf("  -q, --quiet                Quiet the player\n");
-   printf("  -V, --version              Display version information\n");
-   printf("  -?, --help                 Display help\n");
-   printf("\n");
-   printf("hrmp: %s\n", HRMP_HOMEPAGE);
-   printf("Report bugs: %s\n", HRMP_ISSUES);
-}
-
 
 int
 main(int argc, char** argv)
@@ -561,12 +478,12 @@ main(int argc, char** argv)
             {
                struct file_metadata* fm = NULL;
 
-               if (hrmp_file_metadata(files_entry->value, &fm))
+               if (hrmp_file_metadata((char*)files_entry->value, &fm))
                {
                   continue;
                }
 
-               if (hrmp_list_append(supported_files, files_entry->value))
+               if (hrmp_list_append(supported_files, (const char*)files_entry->value))
                {
                   free(fm);
                   hrmp_list_destroy(supported_files);
@@ -587,6 +504,46 @@ main(int argc, char** argv)
                play_from_index = 0;
             }
 
+            struct list* playbacks = NULL;
+            if (hrmp_list_create(&playbacks))
+            {
+               printf("Error creating playback list\n");
+               goto error;
+            }
+
+            num_files = 0;
+            for (files_entry = hrmp_list_head(files);
+                 files_entry != NULL;
+                 files_entry = hrmp_list_next(files_entry))
+            {
+               struct playback* pb = NULL;
+               struct file_metadata* fm = NULL;
+
+               if (hrmp_file_metadata((char*)files_entry->value, &fm))
+               {
+                  continue;
+               }
+
+               if (hrmp_playback_init(num_files + 1, files->size, fm, &pb))
+               {
+                  free(fm);
+                  hrmp_list_destroy_with(playbacks, free_playback_entry);
+                  printf("Error creating playback\n");
+                  goto error;
+               }
+
+               if (hrmp_list_append_owned(playbacks, pb))
+               {
+                  free(fm);
+                  free_playback_entry(pb);
+                  hrmp_list_destroy_with(playbacks, free_playback_entry);
+                  printf("Error creating playback list\n");
+                  goto error;
+               }
+
+               num_files++;
+            }
+
             /* Keyboard */
             hrmp_keyboard_mode(true);
 
@@ -596,14 +553,14 @@ main(int argc, char** argv)
                     files_entry != NULL;
                     files_entry = hrmp_list_next(files_entry))
                {
-                  printf("Queued: %s\n", files_entry->value);
+                   printf("Queued: %s\n", (const char*)files_entry->value);
                }
 
                printf("Number of files: %ld\n", hrmp_list_size(files));
             }
 
             num_files = 0;
-            files_entry = hrmp_list_head(files);
+            files_entry = hrmp_list_head(playbacks);
             for (int i = 0; i < play_from_index && files_entry != NULL; i++)
             {
                files_entry = hrmp_list_next(files_entry);
@@ -611,26 +568,26 @@ main(int argc, char** argv)
             }
             while (files_entry != NULL)
             {
-               bool next;
-               struct file_metadata* fm = NULL;
+               bool next = true;
+               struct playback* pb = (struct playback*)files_entry->value;
 
-               if (hrmp_file_metadata(files_entry->value, &fm))
+               hrmp_set_proc_title(argc, argv, pb->fm->name);
+               if (update_ringbuffer_cache(playbacks, files_entry, config))
                {
-                  files_entry = hrmp_list_next(files_entry);
-                  continue;
+                  hrmp_list_destroy_with(playbacks, free_playback_entry);
+                  printf("Error preparing cache\n");
+                  goto error;
                }
-
-               hrmp_set_proc_title(argc, argv, fm->name);
-               hrmp_playback(num_files + 1, files->size, fm, &next);
+               hrmp_playback(pb, &next);
 
                if (next)
                {
                   files_entry = hrmp_list_next(files_entry);
                   num_files++;
 
-                  if (mode == HRMP_PLAYBACK_MODE_REPEAT && files_entry == NULL && !hrmp_list_empty(files))
+                  if (mode == HRMP_PLAYBACK_MODE_REPEAT && files_entry == NULL && !hrmp_list_empty(playbacks))
                   {
-                     files_entry = hrmp_list_head(files);
+                     files_entry = hrmp_list_head(playbacks);
                      num_files = 0;
                   }
                }
@@ -643,9 +600,9 @@ main(int argc, char** argv)
                      num_files = 0;
                   }
                }
-
-               free(fm);
             }
+
+            hrmp_list_destroy_with(playbacks, free_playback_entry);
 
             hrmp_keyboard_mode(false);
          }
@@ -672,4 +629,179 @@ error:
    free(cp);
 
    return 1;
+}
+
+
+
+
+
+static void
+shuffle_files(struct list** files)
+{
+   if (files == NULL || *files == NULL)
+   {
+      return;
+   }
+
+   size_t n = hrmp_list_size(*files);
+   if (n < 2)
+   {
+      return;
+   }
+
+   char** a = malloc(n * sizeof(char*));
+   if (a == NULL)
+   {
+      return;
+   }
+
+   size_t i = 0;
+   for (struct list_entry* e = hrmp_list_head(*files); e != NULL; e = hrmp_list_next(e))
+   {
+      a[i++] = (char*)e->value;
+   }
+
+   for (i = n - 1; i > 0; i--)
+   {
+      size_t j = (size_t)(rand() % (i + 1));
+      char* tmp = a[i];
+      a[i] = a[j];
+      a[j] = tmp;
+   }
+
+   struct list* shuffled = NULL;
+   if (hrmp_list_create(&shuffled))
+   {
+      free(a);
+      return;
+   }
+
+   for (i = 0; i < n; i++)
+   {
+      hrmp_list_append(shuffled, a[i]);
+   }
+
+   hrmp_list_destroy(*files);
+   *files = shuffled;
+
+   free(a);
+}
+
+static int
+update_ringbuffer_cache(struct list* playbacks, struct list_entry* current, struct configuration* config)
+{
+   if (playbacks == NULL || current == NULL || config == NULL)
+   {
+      return 1;
+   }
+
+   if (config->cache_size == 0)
+   {
+      for (struct list_entry* e = hrmp_list_head(playbacks); e != NULL; e = hrmp_list_next(e))
+      {
+         struct playback* pb = (struct playback*)e->value;
+         if (pb->rb != NULL)
+         {
+            hrmp_ringbuffer_destroy(pb->rb);
+            pb->rb = NULL;
+         }
+      }
+      return 0;
+   }
+
+   if (config->cache_files == HRMP_CACHE_FILES_ALL)
+   {
+      for (struct list_entry* e = hrmp_list_head(playbacks); e != NULL; e = hrmp_list_next(e))
+      {
+         struct playback* pb = (struct playback*)e->value;
+         if (hrmp_playback_prepare_ringbuffer(pb))
+         {
+            return 1;
+         }
+         if (e != current && pb->rb != NULL)
+         {
+            hrmp_ringbuffer_reset(pb->rb);
+         }
+      }
+      return 0;
+   }
+
+   struct list_entry* prev = hrmp_list_prev(current);
+   struct list_entry* next = hrmp_list_next(current);
+
+   for (struct list_entry* e = hrmp_list_head(playbacks); e != NULL; e = hrmp_list_next(e))
+   {
+      struct playback* pb = (struct playback*)e->value;
+      bool keep = (e == current);
+
+      if (config->cache_files == HRMP_CACHE_FILES_MINIMAL)
+      {
+         keep = keep || (e == prev) || (e == next);
+      }
+
+      if (keep)
+      {
+         if (hrmp_playback_prepare_ringbuffer(pb))
+         {
+            return 1;
+         }
+      }
+      else if (pb->rb != NULL)
+      {
+         hrmp_ringbuffer_destroy(pb->rb);
+         pb->rb = NULL;
+      }
+   }
+
+   return 0;
+}
+
+static void
+free_playback_entry(void* value)
+{
+   struct playback* pb = (struct playback*)value;
+   if (pb == NULL)
+   {
+      return;
+   }
+
+   hrmp_ringbuffer_destroy(pb->rb);
+   free(pb->fm);
+   free(pb);
+}
+
+static void
+version(void)
+{
+   printf("hrmp %s\n", VERSION);
+}
+
+static void
+usage(void)
+{
+   printf("hrmp %s\n", VERSION);
+   printf("  High resolution music player\n");
+   printf("\n");
+
+   printf("Usage:\n");
+   printf("  hrmp <FILES>\n");
+   printf("\n");
+   printf("Options:\n");
+   printf("  -c, --config CONFIG_FILE   Set the path to the hrmp.conf file\n");
+   printf("                             Default: $HOME/.hrmp/hrmp.conf\n");
+   printf("  -D, --device               Set the device name\n");
+   printf("  -p, --playlist PLAYLIST    Load a playlist (.hrmp)\n");
+   printf("  -R, --recursive            Add files recursive of the directory\n");
+   printf("  -M, --mode MODE            Playback mode: once, repeat, shuffle\n");
+   printf("  -I, --sample-configuration Generate a sample configuration\n");
+   printf("  -i, --interactive          Text UI mode\n");
+   printf("  -m, --metadata             Display metadata of the files\n");
+   printf("  -s, --status               Status of the devices\n");
+   printf("      --dop                  Use DSD over PCM\n");
+   printf("  -q, --quiet                Quiet the player\n");
+   printf("  -V, --version              Display version information\n");
+   printf("  -?, --help                 Display help\n");
+   printf("\n");
+   printf("hrmp: %s\n", HRMP_HOMEPAGE);
+   printf("Report bugs: %s\n", HRMP_ISSUES);
 }

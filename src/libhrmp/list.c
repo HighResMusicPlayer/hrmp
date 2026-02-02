@@ -24,6 +24,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+static int hrmp_list_insert_node(struct list* list, const char* value, bool at_head);
+static int hrmp_list_insert_node_owned(struct list* list, void* value, bool at_head);
+
 int
 hrmp_list_create(struct list** list)
 {
@@ -64,6 +67,37 @@ hrmp_list_destroy(struct list* list)
    {
       struct list_entry* next = current->next;
 
+      free(current->value);
+      free(current);
+      current = next;
+   }
+
+   free(list);
+}
+
+void
+hrmp_list_destroy_with(struct list* list, void (*free_value)(void*))
+{
+   struct list_entry* current = NULL;
+
+   if (list == NULL)
+   {
+      return;
+   }
+
+   current = list->head;
+   while (current != NULL)
+   {
+      struct list_entry* next = current->next;
+
+      if (free_value != NULL)
+      {
+         free_value(current->value);
+      }
+      else
+      {
+         free(current->value);
+      }
       free(current);
       current = next;
    }
@@ -93,53 +127,16 @@ hrmp_list_size(const struct list* list)
    return list->size;
 }
 
-static int
-hrmp_list_insert_node(struct list* list, const char* value, bool at_head)
-{
-   struct list_entry* node = NULL;
-
-   if (list == NULL || value == NULL)
-   {
-      return 1;
-   }
-
-   node = malloc(sizeof(struct list_entry));
-   if (node == NULL)
-   {
-      return 1;
-   }
-
-   memset(node->value, 0, sizeof(node->value));
-   hrmp_snprintf(node->value, sizeof(node->value), "%s", value);
-
-   node->next = NULL;
-   node->list = list;
-
-   if (hrmp_list_empty(list))
-   {
-      list->head = node;
-      list->tail = node;
-   }
-   else if (at_head)
-   {
-      node->next = list->head;
-      list->head = node;
-   }
-   else
-   {
-      list->tail->next = node;
-      list->tail = node;
-   }
-
-   list->size++;
-
-   return 0;
-}
-
 int
 hrmp_list_append(struct list* list, const char* value)
 {
    return hrmp_list_insert_node(list, value, false);
+}
+
+int
+hrmp_list_append_owned(struct list* list, void* value)
+{
+   return hrmp_list_insert_node_owned(list, value, false);
 }
 
 int
@@ -210,4 +207,92 @@ hrmp_list_prev(struct list_entry* entry)
    }
 
    return prev;
+}
+
+static int
+hrmp_list_insert_node(struct list* list, const char* value, bool at_head)
+{
+   struct list_entry* node = NULL;
+
+   if (list == NULL || value == NULL)
+   {
+      return 1;
+   }
+
+   node = malloc(sizeof(struct list_entry));
+   if (node == NULL)
+   {
+      return 1;
+   }
+
+   node->value = hrmp_copy_string((char*)value);
+   if (node->value == NULL)
+   {
+      free(node);
+      return 1;
+   }
+
+   node->next = NULL;
+   node->list = list;
+
+   if (hrmp_list_empty(list))
+   {
+      list->head = node;
+      list->tail = node;
+   }
+   else if (at_head)
+   {
+      node->next = list->head;
+      list->head = node;
+   }
+   else
+   {
+      list->tail->next = node;
+      list->tail = node;
+   }
+
+   list->size++;
+
+   return 0;
+}
+
+static int
+hrmp_list_insert_node_owned(struct list* list, void* value, bool at_head)
+{
+   struct list_entry* node = NULL;
+
+   if (list == NULL || value == NULL)
+   {
+      return 1;
+   }
+
+   node = malloc(sizeof(struct list_entry));
+   if (node == NULL)
+   {
+      return 1;
+   }
+
+   node->value = value;
+   node->next = NULL;
+   node->list = list;
+
+   if (hrmp_list_empty(list))
+   {
+      list->head = node;
+      list->tail = node;
+   }
+   else if (at_head)
+   {
+      node->next = list->head;
+      list->head = node;
+   }
+   else
+   {
+      list->tail->next = node;
+      list->tail = node;
+   }
+
+   list->size++;
+
+   return 0;
 }

@@ -39,47 +39,265 @@
 #include <string.h>
 #include <alsa/asoundlib.h>
 
+static void normalize_pcm_rate(struct configuration* config, struct file_metadata* fm);
+static void writei_all(snd_pcm_t* h, void* buf, snd_pcm_uframes_t frames, size_t bytes_per_frame);
+static unsigned frames_from_ms(struct playback* pb, unsigned ms);
+static void write_dsd_center_pad(struct playback* pb, unsigned frames, uint8_t* marker);
+static void write_dsd_fadeout(struct playback* pb, unsigned ms, uint8_t* marker);
+static size_t ringbuffer_target_capacity(size_t file_size);
+static size_t ringbuffer_target_max(size_t file_size);
+static void ensure_ringbuffer_target(struct ringbuffer* rb, size_t file_size);
+static void prefill_ringbuffer_limit(FILE* f, struct ringbuffer* rb, size_t bytes_left);
+static void prefill_ringbuffer(FILE* f, struct ringbuffer* rb, size_t file_size);
+static size_t read_some(FILE* f, struct ringbuffer* rb, void* buf, size_t n, size_t file_size);
+static sf_count_t sndfile_vio_get_filelen(void* user_data);
+static sf_count_t sndfile_vio_seek(sf_count_t offset, int whence, void* user_data);
+static sf_count_t sndfile_vio_read(void* ptr, sf_count_t count, void* user_data);
+static sf_count_t sndfile_vio_write(const void* ptr, sf_count_t count, void* user_data);
+static sf_count_t sndfile_vio_tell(void* user_data);
+static int playback_sndfile(snd_pcm_t* pcm_handle, struct playback* pb, int number, int total, bool* next);
+static uint8_t bitrev8(uint8_t x);
+static int read_exact(FILE* f, struct ringbuffer* rb, void* buf, size_t n, size_t bytes_left);
+static int playback_dsf(snd_pcm_t* pcm_handle, struct playback* pb, int number, int total, bool* next);
+static int playback_dff(snd_pcm_t* pcm_handle, struct playback* pb, int number, int total, bool* next);
+static int playback_mkv(snd_pcm_t* pcm_handle, struct playback* pb, int number, int total, bool* next);
+static void fmt2(int v, char out[3]);
+static char* format_output(struct playback* pb);
+static int playback_identifier(struct file_metadata* fm, char** identifer);
+static char* get_progress(struct playback* pb);
+static void print_progress_done(struct playback* pb);
+static int dsd_play_dop_s32le(FILE* f, struct playback* pb, uint32_t in_channels,
+                              uint32_t stride_per_ch_hint, uint64_t bytes_left, bool* next);
+static int dsd_play_native_u32_be(FILE* f, struct playback* pb,
+                                  uint32_t in_channels, uint32_t stride_per_ch_hint, uint64_t bytes_left, bool* next);
+static int do_keyboard(FILE* f, SNDFILE* sndf, struct playback* pb, char** print);
 #define DOP_MARKER_8MSB      0xFA
 #define DOP_MARKER_8LSB      0x05
 
 #define HRMP_DSD_FADEOUT_MS  20u
 #define HRMP_DSD_POSTROLL_MS 60u
 
-static int playback_init(int number, int total, snd_pcm_t* pcm_handle, struct file_metadata* fm, struct playback** playback);
-static int playback_identifier(struct file_metadata* fm, char** identifer);
+int
+hrmp_playback_init(int number, int total, struct file_metadata* fm, struct playback** pb)
+{
+   char* desc = NULL;
+   struct playback* result = NULL;
+   struct configuration* config = NULL;
 
-static char* format_output(struct playback* pb);
-static char* get_progress(struct playback* pb);
-static void print_progress_done(struct playback* pb);
+   config = (struct configuration*)shmem;
 
-static int read_exact(FILE* f, struct ringbuffer* rb, void* buf, size_t n, size_t bytes_left);
+   result = (struct playback*)malloc(sizeof(struct playback));
+   if (result == NULL)
+   {
+      goto error;
+   }
 
-static uint8_t bitrev8(uint8_t x);
+   memset(result, 0, sizeof(struct playback));
 
-static int playback_sndfile(snd_pcm_t* pcm_handle, struct playback* pb,
-                            int number, int total, bool* next);
-static int playback_dsf(snd_pcm_t* pcm_handle, struct playback* pb,
-                        int number, int total, bool* next);
-static int playback_dff(snd_pcm_t* pcm_handle, struct playback* pb,
-                        int number, int total, bool* next);
-static int playback_mkv(snd_pcm_t* pcm_handle, struct playback* pb,
-                        int number, int total, bool* next);
+   normalize_pcm_rate(config, fm);
 
-static void writei_all(snd_pcm_t* h, void* buf, snd_pcm_uframes_t frames, size_t bytes_per_frame);
-static unsigned frames_from_ms(struct playback* pb, unsigned ms);
+   result->file_number = number;
+   result->total_number = total;
+   result->fm = fm;
+   result->file_size = fm->file_size ? fm->file_size : hrmp_get_file_size(fm->name);
+   result->bytes_left = result->file_size;
 
-static void write_dsd_center_pad(struct playback* pb, unsigned frames, uint8_t* marker);
-static void write_dsd_fadeout(struct playback* pb, unsigned ms, uint8_t* marker);
-static int dsd_play_dop_s32le(FILE* f, struct playback* pb,
-                              uint32_t in_channels, uint32_t stride_per_ch_hint,
-                              uint64_t bytes_left, bool* next);
-static int dsd_play_native_u32_be(FILE* f, struct playback* pb,
-                                  uint32_t in_channels,
-                                  uint32_t stride_per_ch_hint,
-                                  uint64_t bytes_left,
-                                  bool* next);
+   if (playback_identifier(fm, &desc))
+   {
+      goto error;
+   }
+   memcpy(&result->identifier, desc, strlen(desc));
 
-static int do_keyboard(FILE* f, SNDFILE* sndf, struct playback* pb, char** k);
+   result->current_samples = 0;
+
+   *pb = result;
+
+   free(desc);
+
+   return 0;
+
+error:
+
+   hrmp_log_error("Could not initialize '%s' for '%s'", &config->active_device.name[0], fm->name);
+
+   free(desc);
+
+   if (result != NULL)
+   {
+      hrmp_ringbuffer_destroy(result->rb);
+      free(result);
+   }
+
+   return 1;
+}
+
+int
+hrmp_playback_prepare_ringbuffer(struct playback* pb)
+{
+   struct configuration* config = NULL;
+
+   if (pb == NULL)
+   {
+      return 1;
+   }
+
+   config = (struct configuration*)shmem;
+
+   if (config->cache_size == 0)
+   {
+      return 0;
+   }
+
+   if (pb->rb != NULL)
+   {
+      return 0;
+   }
+
+   size_t cap = ringbuffer_target_capacity(pb->file_size);
+
+   /* If file < config->cache_size, allow max up to file size */
+   size_t max_size = ringbuffer_target_max(pb->file_size);
+   if (max_size < HRMP_RINGBUFFER_MIN_BYTES)
+   {
+      max_size = HRMP_RINGBUFFER_MIN_BYTES;
+   }
+
+   /* Minimum must always be 4MiB so the buffer can shrink over time. */
+   size_t min_size = HRMP_RINGBUFFER_MIN_BYTES;
+
+   if (hrmp_ringbuffer_create(min_size, cap, max_size, &pb->rb))
+   {
+      return 1;
+   }
+
+   return 0;
+}
+
+int
+hrmp_playback(struct playback* pb, bool* next)
+{
+   int ret = 1;
+   snd_pcm_t* pcm_handle = NULL;
+   struct configuration* config = NULL;
+
+   config = (struct configuration*)shmem;
+
+   *next = true;
+
+   if (hrmp_alsa_init_handle(pb->fm, &pcm_handle))
+   {
+      hrmp_log_error("Could not initialize '%s' for '%s'", &config->active_device.name[0], pb->fm->name);
+      goto error;
+   }
+
+   config->active_device.is_paused = false;
+   pb->pcm_handle = pcm_handle;
+   pb->current_samples = 0;
+   pb->bytes_left = pb->file_size;
+
+   if (hrmp_playback_prepare_ringbuffer(pb))
+   {
+      goto error;
+   }
+
+   if (config->metadata || config->developer)
+   {
+      hrmp_print_file_metadata(pb->fm);
+   }
+
+   if (pb->fm->type == TYPE_WAV || pb->fm->type == TYPE_FLAC || pb->fm->type == TYPE_MP3)
+   {
+      ret = playback_sndfile(pcm_handle, pb, pb->file_number, pb->total_number, next);
+   }
+   else if (pb->fm->type == TYPE_DSF)
+   {
+      ret = playback_dsf(pcm_handle, pb, pb->file_number, pb->total_number, next);
+   }
+   else if (pb->fm->type == TYPE_DFF)
+   {
+      ret = playback_dff(pcm_handle, pb, pb->file_number, pb->total_number, next);
+   }
+   else if (pb->fm->type == TYPE_MKV)
+   {
+      ret = playback_mkv(pcm_handle, pb, pb->file_number, pb->total_number, next);
+   }
+   else
+   {
+      goto error;
+   }
+
+   hrmp_alsa_close_handle(pcm_handle);
+   return ret;
+
+error:
+
+   if (pcm_handle != NULL)
+   {
+      hrmp_alsa_close_handle(pcm_handle);
+   }
+   return 1;
+}
+
+struct sndfile_vio_state
+{
+   FILE* fp;
+   struct ringbuffer* rb;
+   uint64_t pos;
+   uint64_t file_size;
+   struct playback* pb;
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 static void
 normalize_pcm_rate(struct configuration* config, struct file_metadata* fm)
@@ -222,105 +440,24 @@ write_dsd_fadeout(struct playback* pb, unsigned ms, uint8_t* marker)
    write_dsd_center_pad(pb, frames, marker);
 }
 
-int
-hrmp_playback(int number, int total, struct file_metadata* fm, bool* next)
-{
-   int ret = 1;
-   snd_pcm_t* pcm_handle = NULL;
-   struct playback* pb = NULL;
-   struct configuration* config = NULL;
-
-   config = (struct configuration*)shmem;
-
-   *next = true;
-
-   normalize_pcm_rate(config, fm);
-
-   if (hrmp_alsa_init_handle(fm, &pcm_handle))
-   {
-      hrmp_log_error("Could not initialize '%s' for '%s'", &config->active_device.name[0], fm->name);
-      goto error;
-   }
-
-   config->active_device.is_paused = false;
-
-   if (playback_init(number, total, pcm_handle, fm, &pb))
-   {
-      hrmp_log_error("Could not initialize '%s' for '%s'",
-                     &config->active_device.name[0], fm->name);
-      goto error;
-   }
-
-   if (config->metadata || config->developer)
-   {
-      hrmp_print_file_metadata(fm);
-   }
-
-   if (fm->type == TYPE_WAV || fm->type == TYPE_FLAC || fm->type == TYPE_MP3)
-   {
-      ret = playback_sndfile(pcm_handle, pb, number, total, next);
-   }
-   else if (fm->type == TYPE_DSF)
-   {
-      ret = playback_dsf(pcm_handle, pb, number, total, next);
-   }
-   else if (fm->type == TYPE_DFF)
-   {
-      ret = playback_dff(pcm_handle, pb, number, total, next);
-   }
-   else if (fm->type == TYPE_MKV)
-   {
-      ret = playback_mkv(pcm_handle, pb, number, total, next);
-   }
-   else
-   {
-      goto error;
-   }
-
-   hrmp_alsa_close_handle(pcm_handle);
-   if (pb != NULL)
-   {
-      hrmp_ringbuffer_destroy(pb->rb);
-      free(pb);
-   }
-
-   return ret;
-
-error:
-
-   if (pcm_handle != NULL)
-   {
-      hrmp_alsa_close_handle(pcm_handle);
-   }
-   if (pb != NULL)
-   {
-      hrmp_ringbuffer_destroy(pb->rb);
-      free(pb);
-   }
-
-   return 1;
-}
-
-struct sndfile_vio_state
-{
-   FILE* fp;
-   struct ringbuffer* rb;
-   uint64_t pos;
-   uint64_t file_size;
-   struct playback* pb;
-};
-
 static size_t
 ringbuffer_target_capacity(size_t file_size)
 {
    struct configuration* config = (struct configuration*)shmem;
+
+   if (config->cache_size == 0)
+   {
+      return 0;
+   }
+
+   size_t limit = config->cache_size;
 
    if (file_size == 0)
    {
       return HRMP_RINGBUFFER_MIN_BYTES;
    }
 
-   size_t target = MIN(config->cache_size, file_size);
+   size_t target = MIN(limit, file_size);
    if (target < HRMP_RINGBUFFER_MIN_BYTES)
    {
       target = HRMP_RINGBUFFER_MIN_BYTES;
@@ -334,12 +471,24 @@ ringbuffer_target_max(size_t file_size)
 {
    struct configuration* config = (struct configuration*)shmem;
 
-   if (file_size > 0 && file_size < config->cache_size)
+   if (config->cache_size == 0)
+   {
+      return 0;
+   }
+
+   size_t limit = config->cache_size;
+
+   if (file_size > 0 && file_size < limit)
    {
       return file_size < HRMP_RINGBUFFER_MIN_BYTES ? HRMP_RINGBUFFER_MIN_BYTES : file_size;
    }
 
-   return config->cache_size;
+   if (limit < HRMP_RINGBUFFER_MIN_BYTES)
+   {
+      limit = HRMP_RINGBUFFER_MIN_BYTES;
+   }
+
+   return limit;
 }
 
 static void
@@ -1603,7 +1752,15 @@ format_output(struct playback* pb)
             }
             case 'B':
             {
-               uint64_t bytes = (uint64_t)ringbuffer_target_max(pb->file_size);
+               uint64_t bytes = 0;
+               if (pb->rb != NULL)
+               {
+                  bytes = (uint64_t)ringbuffer_target_max(pb->file_size);
+               }
+               else
+               {
+                  bytes = (uint64_t)config->cache_size;
+               }
                uint64_t denom = 1024u * 1024u;
                uint64_t tenths = (bytes * 10u + denom / 2u) / denom;
                out = hrmp_append_int(out, (int)(tenths / 10u));
@@ -1677,78 +1834,6 @@ format_output(struct playback* pb)
    }
 
    return out;
-}
-
-static int
-playback_init(int number, int total,
-              snd_pcm_t* pcm_handle, struct file_metadata* fm,
-              struct playback** playback)
-{
-   char* desc = NULL;
-   struct playback* pb = NULL;
-   struct configuration* config = (struct configuration*)shmem;
-
-   *playback = NULL;
-
-   pb = (struct playback*)malloc(sizeof(struct playback));
-
-   if (pb == NULL)
-   {
-      goto error;
-   }
-
-   memset(pb, 0, sizeof(struct playback));
-
-   if (playback_identifier(fm, &desc))
-   {
-      goto error;
-   }
-
-   pb->file_size = fm->file_size ? fm->file_size : hrmp_get_file_size(fm->name);
-   pb->bytes_left = pb->file_size;
-   pb->file_number = number;
-   pb->total_number = total;
-   memcpy(&pb->identifier, desc, strlen(desc));
-   pb->current_samples = 0;
-   pb->pcm_handle = pcm_handle;
-   pb->fm = fm;
-
-   size_t cap = ringbuffer_target_capacity(pb->file_size);
-
-   /* If file < config->cache_size, allow max up to file size (but never below the 4MiB minimum). */
-   size_t max_size = (pb->file_size > 0 && pb->file_size < config->cache_size) ? pb->file_size : config->cache_size;
-   if (max_size < HRMP_RINGBUFFER_MIN_BYTES)
-   {
-      max_size = HRMP_RINGBUFFER_MIN_BYTES;
-   }
-
-   /* Minimum must always be 4MiB so the buffer can shrink over time. */
-   size_t min_size = HRMP_RINGBUFFER_MIN_BYTES;
-
-   if (hrmp_ringbuffer_create(min_size, cap, max_size, &pb->rb))
-   {
-      goto error;
-   }
-
-   *playback = pb;
-
-   free(desc);
-
-   return 0;
-
-error:
-
-   if (desc)
-   {
-      free(desc);
-   }
-   if (pb)
-   {
-      hrmp_ringbuffer_destroy(pb->rb);
-      free(pb);
-   }
-
-   return 1;
 }
 
 static int

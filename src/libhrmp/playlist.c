@@ -26,292 +26,31 @@
 #include <string.h>
 
 static int
-pathcmp(const void* a, const void* b)
-{
-   const char* const* pa = a;
-   const char* const* pb = b;
-
-   if (pa == NULL || *pa == NULL)
-   {
-      return -1;
-   }
-   if (pb == NULL || *pb == NULL)
-   {
-      return 1;
-   }
-
-   return strcmp(*pa, *pb);
-}
-
+pathcmp(const void* a, const void* b);
 static void
-append_sorted_files(char* dir, bool recursive, struct list* files)
-{
-   struct list* tmp = NULL;
-
-   if (dir == NULL || files == NULL)
-   {
-      return;
-   }
-
-   if (hrmp_list_create(&tmp))
-   {
-      return;
-   }
-
-   if (hrmp_get_files(dir, recursive, tmp))
-   {
-      hrmp_list_destroy(tmp);
-      return;
-   }
-
-   if (tmp->size == 0)
-   {
-      hrmp_list_destroy(tmp);
-      return;
-   }
-
-   char** arr = calloc(tmp->size, sizeof(char*));
-   if (arr == NULL)
-   {
-      hrmp_list_destroy(tmp);
-      return;
-   }
-
-   size_t n = 0;
-   for (struct list_entry* e = hrmp_list_head(tmp); e != NULL; e = hrmp_list_next(e))
-   {
-      arr[n++] = hrmp_copy_string(e->value);
-   }
-
-   qsort(arr, n, sizeof(char*), pathcmp);
-
-   for (size_t i = 0; i < n; i++)
-   {
-      if (arr[i] != NULL)
-      {
-         hrmp_list_append(files, arr[i]);
-         free(arr[i]);
-      }
-   }
-
-   free(arr);
-   hrmp_list_destroy(tmp);
-}
-
+append_sorted_files(char* dir, bool recursive, struct list* files);
 static const char*
-basename_ptr(const char* path)
-{
-   const char* s;
-
-   if (path == NULL)
-   {
-      return NULL;
-   }
-
-   s = strrchr(path, '/');
-   return s != NULL ? s + 1 : path;
-}
-
+basename_ptr(const char* path);
 static bool
-match_rel_anywhere(const char* pattern, const char* rel)
-{
-   if (pattern == NULL || rel == NULL)
-   {
-      return false;
-   }
-
-   /* recursive-glob semantics: pattern may start at any path component boundary */
-   if (fnmatch(pattern, rel, FNM_PATHNAME) == 0)
-   {
-      return true;
-   }
-
-   const char* p = rel;
-   while ((p = strchr(p, '/')) != NULL)
-   {
-      p++;
-      if (fnmatch(pattern, p, FNM_PATHNAME) == 0)
-      {
-         return true;
-      }
-   }
-
-   return false;
-}
-
+match_rel_anywhere(const char* pattern, const char* rel);
 static void
-append_recursive_glob(char* dir, const char* pattern, struct list* files)
-{
-   struct list* tmp = NULL;
-
-   if (dir == NULL || pattern == NULL || files == NULL)
-   {
-      return;
-   }
-
-   if (hrmp_list_create(&tmp))
-   {
-      return;
-   }
-
-   if (hrmp_get_files(dir, true, tmp))
-   {
-      hrmp_list_destroy(tmp);
-      return;
-   }
-
-   if (tmp->size == 0)
-   {
-      hrmp_list_destroy(tmp);
-      return;
-   }
-
-   bool match_rel = strchr(pattern, '/') != NULL;
-   size_t dir_len = strlen(dir);
-   size_t cap = tmp->size;
-
-   char** arr = calloc(cap, sizeof(char*));
-   if (arr == NULL)
-   {
-      hrmp_list_destroy(tmp);
-      return;
-   }
-
-   size_t n = 0;
-   for (struct list_entry* e = hrmp_list_head(tmp); e != NULL; e = hrmp_list_next(e))
-   {
-      const char* path = e->value;
-      const char* rel = path;
-
-      if (dir_len > 0 && strncmp(path, dir, dir_len) == 0)
-      {
-         rel = path + dir_len;
-         if (rel[0] == '/')
-         {
-            rel++;
-         }
-      }
-
-      int ok;
-      if (match_rel)
-      {
-         ok = match_rel_anywhere(pattern, rel);
-      }
-      else
-      {
-         ok = (fnmatch(pattern, basename_ptr(path), 0) == 0);
-      }
-
-      if (ok)
-      {
-         arr[n++] = hrmp_copy_string(e->value);
-      }
-   }
-
-   qsort(arr, n, sizeof(char*), pathcmp);
-
-   for (size_t i = 0; i < n; i++)
-   {
-      if (arr[i] != NULL)
-      {
-         hrmp_list_append(files, arr[i]);
-         free(arr[i]);
-      }
-   }
-
-   free(arr);
-   hrmp_list_destroy(tmp);
-}
-
+append_recursive_glob(char* dir, const char* pattern, struct list* files);
 static char*
-trim_inplace(char* s)
-{
-   char* end;
-
-   if (s == NULL)
-   {
-      return NULL;
-   }
-
-   while (*s != '\0' && isspace((unsigned char)*s))
-   {
-      s++;
-   }
-
-   if (*s == '\0')
-   {
-      return s;
-   }
-
-   end = s + strlen(s) - 1;
-   while (end > s && isspace((unsigned char)*end))
-   {
-      *end = '\0';
-      end--;
-   }
-
-   return s;
-}
-
+trim_inplace(char* s);
 static void
-get_playlist_dir(const char* playlist_path, char* out, size_t out_size)
-{
-   const char* slash;
-
-   if (out == NULL || out_size == 0)
-   {
-      return;
-   }
-
-   memset(out, 0, out_size);
-
-   if (playlist_path == NULL)
-   {
-      hrmp_snprintf(out, out_size, "%s", ".");
-      return;
-   }
-
-   slash = strrchr(playlist_path, '/');
-   if (slash == NULL)
-   {
-      hrmp_snprintf(out, out_size, "%s", ".");
-      return;
-   }
-
-   size_t len = (size_t)(slash - playlist_path);
-   if (len == 0)
-   {
-      hrmp_snprintf(out, out_size, "%s", "/");
-      return;
-   }
-
-   if (len >= out_size)
-   {
-      len = out_size - 1;
-   }
-
-   memcpy(out, playlist_path, len);
-   out[len] = '\0';
-}
-
+get_playlist_dir(const char* playlist_path, char* out, size_t out_size);
 static void
-join_path(const char* dir, const char* rel, char* out, size_t out_size)
-{
-   if (out == NULL || out_size == 0)
-   {
-      return;
-   }
+join_path(const char* dir, const char* rel, char* out, size_t out_size);
 
-   memset(out, 0, out_size);
 
-   if (dir == NULL || dir[0] == '\0' || strcmp(dir, ".") == 0)
-   {
-      hrmp_snprintf(out, out_size, "%s", rel != NULL ? rel : "");
-      return;
-   }
 
-   hrmp_snprintf(out, out_size, "%s/%s", dir, rel != NULL ? rel : "");
-}
+
+
+
+
+
+
+
 
 int
 hrmp_playlist_load(const char* playlist_path, struct list* files, bool quiet)
@@ -524,3 +263,300 @@ hrmp_playlist_load(const char* playlist_path, struct list* files, bool quiet)
 
    return 0;
 }
+
+
+
+
+
+
+
+
+
+static int
+pathcmp(const void* a, const void* b)
+{
+   const char* const* pa = a;
+   const char* const* pb = b;
+
+   if (pa == NULL || *pa == NULL)
+   {
+      return -1;
+   }
+   if (pb == NULL || *pb == NULL)
+   {
+      return 1;
+   }
+
+   return strcmp(*pa, *pb);
+}
+
+static void
+append_sorted_files(char* dir, bool recursive, struct list* files)
+{
+   struct list* tmp = NULL;
+
+   if (dir == NULL || files == NULL)
+   {
+      return;
+   }
+
+   if (hrmp_list_create(&tmp))
+   {
+      return;
+   }
+
+   if (hrmp_get_files(dir, recursive, tmp))
+   {
+      hrmp_list_destroy(tmp);
+      return;
+   }
+
+   if (tmp->size == 0)
+   {
+      hrmp_list_destroy(tmp);
+      return;
+   }
+
+   char** arr = calloc(tmp->size, sizeof(char*));
+   if (arr == NULL)
+   {
+      hrmp_list_destroy(tmp);
+      return;
+   }
+
+   size_t n = 0;
+   for (struct list_entry* e = hrmp_list_head(tmp); e != NULL; e = hrmp_list_next(e))
+   {
+      arr[n++] = hrmp_copy_string((char*)e->value);
+   }
+
+   qsort(arr, n, sizeof(char*), pathcmp);
+
+   for (size_t i = 0; i < n; i++)
+   {
+      if (arr[i] != NULL)
+      {
+         hrmp_list_append(files, arr[i]);
+         free(arr[i]);
+      }
+   }
+
+   free(arr);
+   hrmp_list_destroy(tmp);
+}
+
+static const char*
+basename_ptr(const char* path)
+{
+   const char* s;
+
+   if (path == NULL)
+   {
+      return NULL;
+   }
+
+   s = strrchr(path, '/');
+   return s != NULL ? s + 1 : path;
+}
+
+static bool
+match_rel_anywhere(const char* pattern, const char* rel)
+{
+   if (pattern == NULL || rel == NULL)
+   {
+      return false;
+   }
+
+   /* recursive-glob semantics: pattern may start at any path component boundary */
+   if (fnmatch(pattern, rel, FNM_PATHNAME) == 0)
+   {
+      return true;
+   }
+
+   const char* p = rel;
+   while ((p = strchr(p, '/')) != NULL)
+   {
+      p++;
+      if (fnmatch(pattern, p, FNM_PATHNAME) == 0)
+      {
+         return true;
+      }
+   }
+
+   return false;
+}
+
+static void
+append_recursive_glob(char* dir, const char* pattern, struct list* files)
+{
+   struct list* tmp = NULL;
+
+   if (dir == NULL || pattern == NULL || files == NULL)
+   {
+      return;
+   }
+
+   if (hrmp_list_create(&tmp))
+   {
+      return;
+   }
+
+   if (hrmp_get_files(dir, true, tmp))
+   {
+      hrmp_list_destroy(tmp);
+      return;
+   }
+
+   if (tmp->size == 0)
+   {
+      hrmp_list_destroy(tmp);
+      return;
+   }
+
+   bool match_rel = strchr(pattern, '/') != NULL;
+   size_t dir_len = strlen(dir);
+   size_t cap = tmp->size;
+
+   char** arr = calloc(cap, sizeof(char*));
+   if (arr == NULL)
+   {
+      hrmp_list_destroy(tmp);
+      return;
+   }
+
+   size_t n = 0;
+   for (struct list_entry* e = hrmp_list_head(tmp); e != NULL; e = hrmp_list_next(e))
+   {
+      const char* path = (const char*)e->value;
+      const char* rel = path;
+
+      if (dir_len > 0 && strncmp(path, dir, dir_len) == 0)
+      {
+         rel = path + dir_len;
+         if (rel[0] == '/')
+         {
+            rel++;
+         }
+      }
+
+      int ok;
+      if (match_rel)
+      {
+         ok = match_rel_anywhere(pattern, rel);
+      }
+      else
+      {
+         ok = (fnmatch(pattern, basename_ptr(path), 0) == 0);
+      }
+
+      if (ok)
+      {
+         arr[n++] = hrmp_copy_string((char*)e->value);
+      }
+   }
+
+   qsort(arr, n, sizeof(char*), pathcmp);
+
+   for (size_t i = 0; i < n; i++)
+   {
+      if (arr[i] != NULL)
+      {
+         hrmp_list_append(files, arr[i]);
+         free(arr[i]);
+      }
+   }
+
+   free(arr);
+   hrmp_list_destroy(tmp);
+}
+
+static char*
+trim_inplace(char* s)
+{
+   char* end;
+
+   if (s == NULL)
+   {
+      return NULL;
+   }
+
+   while (*s != '\0' && isspace((unsigned char)*s))
+   {
+      s++;
+   }
+
+   if (*s == '\0')
+   {
+      return s;
+   }
+
+   end = s + strlen(s) - 1;
+   while (end > s && isspace((unsigned char)*end))
+   {
+      *end = '\0';
+      end--;
+   }
+
+   return s;
+}
+
+static void
+get_playlist_dir(const char* playlist_path, char* out, size_t out_size)
+{
+   const char* slash;
+
+   if (out == NULL || out_size == 0)
+   {
+      return;
+   }
+
+   memset(out, 0, out_size);
+
+   if (playlist_path == NULL)
+   {
+      hrmp_snprintf(out, out_size, "%s", ".");
+      return;
+   }
+
+   slash = strrchr(playlist_path, '/');
+   if (slash == NULL)
+   {
+      hrmp_snprintf(out, out_size, "%s", ".");
+      return;
+   }
+
+   size_t len = (size_t)(slash - playlist_path);
+   if (len == 0)
+   {
+      hrmp_snprintf(out, out_size, "%s", "/");
+      return;
+   }
+
+   if (len >= out_size)
+   {
+      len = out_size - 1;
+   }
+
+   memcpy(out, playlist_path, len);
+   out[len] = '\0';
+}
+
+static void
+join_path(const char* dir, const char* rel, char* out, size_t out_size)
+{
+   if (out == NULL || out_size == 0)
+   {
+      return;
+   }
+
+   memset(out, 0, out_size);
+
+   if (dir == NULL || dir[0] == '\0' || strcmp(dir, ".") == 0)
+   {
+      hrmp_snprintf(out, out_size, "%s", rel != NULL ? rel : "");
+      return;
+   }
+
+   hrmp_snprintf(out, out_size, "%s/%s", dir, rel != NULL ? rel : "");
+}
+

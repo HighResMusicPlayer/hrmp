@@ -26,9 +26,6 @@
 #include <dirent.h>
 #include <err.h>
 #include <errno.h>
-#ifdef HAVE_EXECINFO_H
-#include <execinfo.h>
-#endif
 #include <pwd.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -37,12 +34,22 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#if defined(HAVE_LINUX) && defined(HAVE_EXECINFO_H)
+#include <execinfo.h>
+#endif
+
+static void append_bounded(char** out, const char* s, size_t current_len, size_t cap);
+static void append_char_bounded(char** out, char c, size_t current_len, size_t cap);
+static void ull_to_dec(char* buf, size_t n, unsigned long long v);
+static void ll_to_dec(char* buf, size_t n, long long v);
+static void ull_to_hex(char* buf, size_t n, unsigned long long v, bool upper);
+static void ptr_to_hex(char* buf, size_t n, void* ptr);
+static void dbl_to_str(char* buf, size_t n, double v);
+static int hvsnprintf(char* buf, size_t n, const char* fmt, va_list ap);
+static int string_compare(const void* a, const void* b);
 
 #define BUFFER_SIZE 8192
 
-static int string_compare(const void* a, const void* b);
-static void append_char_bounded(char** out, char c, size_t current_len, size_t cap);
-static int hvsnprintf(char* buf, size_t n, const char* fmt, va_list ap);
 
 extern char** environ;
 
@@ -136,363 +143,13 @@ hrmp_read_le_u32_buffer(uint8_t* buffer)
           ((uint32_t)buffer[3] << 24);
 }
 
-static void
-append_bounded(char** out, const char* s, size_t current_len, size_t cap)
-{
-   if (s == NULL || cap <= current_len)
-   {
-      return;
-   }
 
-   size_t remain = cap - current_len;
-   size_t slen = strlen(s);
-   size_t to_copy = (slen > remain) ? remain : slen;
 
-   if (to_copy == 0)
-   {
-      return;
-   }
 
-   char* chunk = (char*)malloc(to_copy + 1);
-   if (chunk == NULL)
-   {
-      return;
-   }
 
-   memcpy(chunk, s, to_copy);
-   chunk[to_copy] = '\0';
-   *out = hrmp_append(*out, chunk);
-   free(chunk);
-}
 
-static void
-append_char_bounded(char** out, char c, size_t current_len, size_t cap)
-{
-   if (current_len < cap)
-   {
-      *out = hrmp_append_char(*out, c);
-   }
-}
 
-static void
-ull_to_dec(char* buf, size_t n, unsigned long long v)
-{
-   char tmp[32];
-   size_t pos = 0;
-   size_t out = 0;
 
-   if (buf == NULL || n == 0)
-   {
-      return;
-   }
-
-   do
-   {
-      tmp[pos++] = (char)('0' + (v % 10));
-      v /= 10;
-   }
-   while (v != 0 && pos < sizeof(tmp));
-
-   while (pos > 0 && out + 1 < n)
-   {
-      buf[out++] = tmp[--pos];
-   }
-
-   buf[out] = '\0';
-}
-
-static void
-ll_to_dec(char* buf, size_t n, long long v)
-{
-   if (buf == NULL || n == 0)
-   {
-      return;
-   }
-
-   if (v < 0)
-   {
-      buf[0] = '-';
-      unsigned long long uv = (unsigned long long)(-(v + 1)) + 1;
-      ull_to_dec(buf + 1, (n > 0) ? (n - 1) : 0, uv);
-   }
-   else
-   {
-      ull_to_dec(buf, n, (unsigned long long)v);
-   }
-}
-
-static void
-ull_to_hex(char* buf, size_t n, unsigned long long v, bool upper)
-{
-   const char* digits = upper ? "0123456789ABCDEF" : "0123456789abcdef";
-   char tmp[32];
-   size_t pos = 0;
-   size_t out = 0;
-
-   if (buf == NULL || n == 0)
-   {
-      return;
-   }
-
-   do
-   {
-      tmp[pos++] = digits[v & 0xF];
-      v >>= 4;
-   }
-   while (v != 0 && pos < sizeof(tmp));
-
-   while (pos > 0 && out + 1 < n)
-   {
-      buf[out++] = tmp[--pos];
-   }
-
-   buf[out] = '\0';
-}
-
-static void
-ptr_to_hex(char* buf, size_t n, void* ptr)
-{
-   if (buf == NULL || n == 0)
-   {
-      return;
-   }
-
-   if (n < 3)
-   {
-      buf[0] = '\0';
-      return;
-   }
-
-   buf[0] = '0';
-   buf[1] = 'x';
-   ull_to_hex(buf + 2, n - 2, (unsigned long long)(uintptr_t)ptr, false);
-}
-
-static void
-dbl_to_str(char* buf, size_t n, double v)
-{
-   if (buf == NULL || n == 0)
-   {
-      return;
-   }
-
-   /* gcvt has no size parameter; ensure we only call it with a large buffer. */
-   (void)gcvt(v, 17, buf);
-   buf[n - 1] = '\0';
-}
-
-static int
-hvsnprintf(char* buf, size_t n, const char* fmt, va_list ap)
-{
-   size_t cap = 8192;
-   if (n > 0 && (n - 1) < cap)
-   {
-      cap = n - 1;
-   }
-
-   char* out = NULL;
-   const char* p = (fmt != NULL) ? fmt : "";
-   char scratch[128];
-
-   while (*p != '\0')
-   {
-      if (*p != '%')
-      {
-         size_t cur = (out != NULL) ? strlen(out) : 0;
-         append_char_bounded(&out, *p, cur, cap);
-         p++;
-         continue;
-      }
-
-      p++;
-      if (*p == '%')
-      {
-         size_t cur = (out != NULL) ? strlen(out) : 0;
-         append_char_bounded(&out, '%', cur, cap);
-         p++;
-         continue;
-      }
-
-      enum { LM_NONE,
-             LM_L,
-             LM_LL,
-             LM_Z } lm = LM_NONE;
-      if (*p == 'l')
-      {
-         p++;
-         if (*p == 'l')
-         {
-            lm = LM_LL;
-            p++;
-         }
-         else
-         {
-            lm = LM_L;
-         }
-      }
-      else if (*p == 'z')
-      {
-         lm = LM_Z;
-         p++;
-      }
-
-      char conv = *p;
-      if (conv == '\0')
-      {
-         break;
-      }
-      p++;
-
-      scratch[0] = '\0';
-
-      switch (conv)
-      {
-         case 's':
-         {
-            char* s = va_arg(ap, char*);
-            if (s == NULL)
-            {
-               s = "(null)";
-            }
-            size_t cur = (out != NULL) ? strlen(out) : 0;
-            append_bounded(&out, s, cur, cap);
-            break;
-         }
-         case 'c':
-         {
-            int ch = va_arg(ap, int);
-            size_t cur = (out != NULL) ? strlen(out) : 0;
-            append_char_bounded(&out, (char)ch, cur, cap);
-            break;
-         }
-         case 'd':
-         case 'i':
-         {
-            long long v;
-            if (lm == LM_LL)
-            {
-               v = va_arg(ap, long long);
-            }
-            else if (lm == LM_L)
-            {
-               v = va_arg(ap, long);
-            }
-            else if (lm == LM_Z)
-            {
-               v = (ssize_t)va_arg(ap, ssize_t);
-            }
-            else
-            {
-               v = va_arg(ap, int);
-            }
-            ll_to_dec(scratch, sizeof(scratch), v);
-            size_t cur = (out != NULL) ? strlen(out) : 0;
-            append_bounded(&out, scratch, cur, cap);
-            break;
-         }
-         case 'u':
-         {
-            unsigned long long v;
-            if (lm == LM_LL)
-            {
-               v = va_arg(ap, unsigned long long);
-            }
-            else if (lm == LM_L)
-            {
-               v = va_arg(ap, unsigned long);
-            }
-            else if (lm == LM_Z)
-            {
-               v = (size_t)va_arg(ap, size_t);
-            }
-            else
-            {
-               v = va_arg(ap, unsigned int);
-            }
-            ull_to_dec(scratch, sizeof(scratch), v);
-            size_t cur = (out != NULL) ? strlen(out) : 0;
-            append_bounded(&out, scratch, cur, cap);
-            break;
-         }
-         case 'x':
-         case 'X':
-         {
-            unsigned long long v;
-            if (lm == LM_LL)
-            {
-               v = va_arg(ap, unsigned long long);
-            }
-            else if (lm == LM_L)
-            {
-               v = va_arg(ap, unsigned long);
-            }
-            else if (lm == LM_Z)
-            {
-               v = (size_t)va_arg(ap, size_t);
-            }
-            else
-            {
-               v = va_arg(ap, unsigned int);
-            }
-            ull_to_hex(scratch, sizeof(scratch), v, conv == 'X');
-            size_t cur = (out != NULL) ? strlen(out) : 0;
-            append_bounded(&out, scratch, cur, cap);
-            break;
-         }
-         case 'p':
-         {
-            void* ptr = va_arg(ap, void*);
-            ptr_to_hex(scratch, sizeof(scratch), ptr);
-            size_t cur = (out != NULL) ? strlen(out) : 0;
-            append_bounded(&out, scratch, cur, cap);
-            break;
-         }
-         case 'f':
-         case 'F':
-         case 'g':
-         case 'G':
-         case 'e':
-         case 'E':
-         {
-            double dv = va_arg(ap, double);
-            dbl_to_str(scratch, sizeof(scratch), dv);
-            size_t cur = (out != NULL) ? strlen(out) : 0;
-            append_bounded(&out, scratch, cur, cap);
-            break;
-         }
-         default:
-         {
-            size_t cur = (out != NULL) ? strlen(out) : 0;
-            append_char_bounded(&out, '%', cur, cap);
-            cur = (out != NULL) ? strlen(out) : 0;
-            append_char_bounded(&out, conv, cur, cap);
-            break;
-         }
-      }
-   }
-
-   size_t produced_len = (out != NULL) ? strlen(out) : 0;
-
-   if (buf != NULL && n > 0)
-   {
-      size_t to_copy = (produced_len < (n - 1)) ? produced_len : (n - 1);
-      if (to_copy > 0 && out != NULL)
-      {
-         memcpy(buf, out, to_copy);
-      }
-      if (n > 0)
-      {
-         buf[to_copy] = '\0';
-      }
-   }
-
-   if (out != NULL)
-   {
-      free(out);
-   }
-
-   return (int)produced_len;
-}
 
 int
 hrmp_snprintf(char* buf, size_t n, const char* fmt, ...)
@@ -787,11 +444,6 @@ hrmp_sort(size_t size, char** array)
    }
 }
 
-static int
-string_compare(const void* a, const void* b)
-{
-   return strcmp(*(char**)a, *(char**)b);
-}
 
 char*
 hrmp_append(char* orig, char* s)
@@ -1255,4 +907,377 @@ error:
 #else
    return 1;
 #endif
+}
+
+
+
+
+
+
+
+
+
+
+static void
+append_bounded(char** out, const char* s, size_t current_len, size_t cap)
+{
+   if (s == NULL || cap <= current_len)
+   {
+      return;
+   }
+
+   size_t remain = cap - current_len;
+   size_t slen = strlen(s);
+   size_t to_copy = (slen > remain) ? remain : slen;
+
+   if (to_copy == 0)
+   {
+      return;
+   }
+
+   char* chunk = (char*)malloc(to_copy + 1);
+   if (chunk == NULL)
+   {
+      return;
+   }
+
+   memcpy(chunk, s, to_copy);
+   chunk[to_copy] = '\0';
+   *out = hrmp_append(*out, chunk);
+   free(chunk);
+}
+
+static void
+append_char_bounded(char** out, char c, size_t current_len, size_t cap)
+{
+   if (current_len < cap)
+   {
+      *out = hrmp_append_char(*out, c);
+   }
+}
+
+static void
+ull_to_dec(char* buf, size_t n, unsigned long long v)
+{
+   char tmp[32];
+   size_t pos = 0;
+   size_t out = 0;
+
+   if (buf == NULL || n == 0)
+   {
+      return;
+   }
+
+   do
+   {
+      tmp[pos++] = (char)('0' + (v % 10));
+      v /= 10;
+   }
+   while (v != 0 && pos < sizeof(tmp));
+
+   while (pos > 0 && out + 1 < n)
+   {
+      buf[out++] = tmp[--pos];
+   }
+
+   buf[out] = '\0';
+}
+
+static void
+ll_to_dec(char* buf, size_t n, long long v)
+{
+   if (buf == NULL || n == 0)
+   {
+      return;
+   }
+
+   if (v < 0)
+   {
+      buf[0] = '-';
+      unsigned long long uv = (unsigned long long)(-(v + 1)) + 1;
+      ull_to_dec(buf + 1, (n > 0) ? (n - 1) : 0, uv);
+   }
+   else
+   {
+      ull_to_dec(buf, n, (unsigned long long)v);
+   }
+}
+
+static void
+ull_to_hex(char* buf, size_t n, unsigned long long v, bool upper)
+{
+   const char* digits = upper ? "0123456789ABCDEF" : "0123456789abcdef";
+   char tmp[32];
+   size_t pos = 0;
+   size_t out = 0;
+
+   if (buf == NULL || n == 0)
+   {
+      return;
+   }
+
+   do
+   {
+      tmp[pos++] = digits[v & 0xF];
+      v >>= 4;
+   }
+   while (v != 0 && pos < sizeof(tmp));
+
+   while (pos > 0 && out + 1 < n)
+   {
+      buf[out++] = tmp[--pos];
+   }
+
+   buf[out] = '\0';
+}
+
+static void
+ptr_to_hex(char* buf, size_t n, void* ptr)
+{
+   if (buf == NULL || n == 0)
+   {
+      return;
+   }
+
+   if (n < 3)
+   {
+      buf[0] = '\0';
+      return;
+   }
+
+   buf[0] = '0';
+   buf[1] = 'x';
+   ull_to_hex(buf + 2, n - 2, (unsigned long long)(uintptr_t)ptr, false);
+}
+
+static void
+dbl_to_str(char* buf, size_t n, double v)
+{
+   if (buf == NULL || n == 0)
+   {
+      return;
+   }
+
+   /* gcvt has no size parameter; ensure we only call it with a large buffer. */
+   (void)gcvt(v, 17, buf);
+   buf[n - 1] = '\0';
+}
+
+static int
+hvsnprintf(char* buf, size_t n, const char* fmt, va_list ap)
+{
+   size_t cap = 8192;
+   if (n > 0 && (n - 1) < cap)
+   {
+      cap = n - 1;
+   }
+
+   char* out = NULL;
+   const char* p = (fmt != NULL) ? fmt : "";
+   char scratch[128];
+
+   while (*p != '\0')
+   {
+      if (*p != '%')
+      {
+         size_t cur = (out != NULL) ? strlen(out) : 0;
+         append_char_bounded(&out, *p, cur, cap);
+         p++;
+         continue;
+      }
+
+      p++;
+      if (*p == '%')
+      {
+         size_t cur = (out != NULL) ? strlen(out) : 0;
+         append_char_bounded(&out, '%', cur, cap);
+         p++;
+         continue;
+      }
+
+      enum { LM_NONE,
+             LM_L,
+             LM_LL,
+             LM_Z } lm = LM_NONE;
+      if (*p == 'l')
+      {
+         p++;
+         if (*p == 'l')
+         {
+            lm = LM_LL;
+            p++;
+         }
+         else
+         {
+            lm = LM_L;
+         }
+      }
+      else if (*p == 'z')
+      {
+         lm = LM_Z;
+         p++;
+      }
+
+      char conv = *p;
+      if (conv == '\0')
+      {
+         break;
+      }
+      p++;
+
+      scratch[0] = '\0';
+
+      switch (conv)
+      {
+         case 's':
+         {
+            char* s = va_arg(ap, char*);
+            if (s == NULL)
+            {
+               s = "(null)";
+            }
+            size_t cur = (out != NULL) ? strlen(out) : 0;
+            append_bounded(&out, s, cur, cap);
+            break;
+         }
+         case 'c':
+         {
+            int ch = va_arg(ap, int);
+            size_t cur = (out != NULL) ? strlen(out) : 0;
+            append_char_bounded(&out, (char)ch, cur, cap);
+            break;
+         }
+         case 'd':
+         case 'i':
+         {
+            long long v;
+            if (lm == LM_LL)
+            {
+               v = va_arg(ap, long long);
+            }
+            else if (lm == LM_L)
+            {
+               v = va_arg(ap, long);
+            }
+            else if (lm == LM_Z)
+            {
+               v = (ssize_t)va_arg(ap, ssize_t);
+            }
+            else
+            {
+               v = va_arg(ap, int);
+            }
+            ll_to_dec(scratch, sizeof(scratch), v);
+            size_t cur = (out != NULL) ? strlen(out) : 0;
+            append_bounded(&out, scratch, cur, cap);
+            break;
+         }
+         case 'u':
+         {
+            unsigned long long v;
+            if (lm == LM_LL)
+            {
+               v = va_arg(ap, unsigned long long);
+            }
+            else if (lm == LM_L)
+            {
+               v = va_arg(ap, unsigned long);
+            }
+            else if (lm == LM_Z)
+            {
+               v = (size_t)va_arg(ap, size_t);
+            }
+            else
+            {
+               v = va_arg(ap, unsigned int);
+            }
+            ull_to_dec(scratch, sizeof(scratch), v);
+            size_t cur = (out != NULL) ? strlen(out) : 0;
+            append_bounded(&out, scratch, cur, cap);
+            break;
+         }
+         case 'x':
+         case 'X':
+         {
+            unsigned long long v;
+            if (lm == LM_LL)
+            {
+               v = va_arg(ap, unsigned long long);
+            }
+            else if (lm == LM_L)
+            {
+               v = va_arg(ap, unsigned long);
+            }
+            else if (lm == LM_Z)
+            {
+               v = (size_t)va_arg(ap, size_t);
+            }
+            else
+            {
+               v = va_arg(ap, unsigned int);
+            }
+            ull_to_hex(scratch, sizeof(scratch), v, conv == 'X');
+            size_t cur = (out != NULL) ? strlen(out) : 0;
+            append_bounded(&out, scratch, cur, cap);
+            break;
+         }
+         case 'p':
+         {
+            void* ptr = va_arg(ap, void*);
+            ptr_to_hex(scratch, sizeof(scratch), ptr);
+            size_t cur = (out != NULL) ? strlen(out) : 0;
+            append_bounded(&out, scratch, cur, cap);
+            break;
+         }
+         case 'f':
+         case 'F':
+         case 'g':
+         case 'G':
+         case 'e':
+         case 'E':
+         {
+            double dv = va_arg(ap, double);
+            dbl_to_str(scratch, sizeof(scratch), dv);
+            size_t cur = (out != NULL) ? strlen(out) : 0;
+            append_bounded(&out, scratch, cur, cap);
+            break;
+         }
+         default:
+         {
+            size_t cur = (out != NULL) ? strlen(out) : 0;
+            append_char_bounded(&out, '%', cur, cap);
+            cur = (out != NULL) ? strlen(out) : 0;
+            append_char_bounded(&out, conv, cur, cap);
+            break;
+         }
+      }
+   }
+
+   size_t produced_len = (out != NULL) ? strlen(out) : 0;
+
+   if (buf != NULL && n > 0)
+   {
+      size_t to_copy = (produced_len < (n - 1)) ? produced_len : (n - 1);
+      if (to_copy > 0 && out != NULL)
+      {
+         memcpy(buf, out, to_copy);
+      }
+      if (n > 0)
+      {
+         buf[to_copy] = '\0';
+      }
+   }
+
+   if (out != NULL)
+   {
+      free(out);
+   }
+
+   return (int)produced_len;
+}
+
+static int
+string_compare(const void* a, const void* b)
+{
+   return strcmp(*(char**)a, *(char**)b);
 }
