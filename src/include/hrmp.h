@@ -26,7 +26,7 @@ extern "C" {
 #include <stdbool.h>
 #include <stddef.h>
 
-#define VERSION                      "0.14.0"
+#define VERSION                      "0.15.0"
 
 #define HRMP_HOMEPAGE                "https://hrmp.github.io/"
 #define HRMP_ISSUES                  "https://github.com/HighResMusicPlayer/hrmp/issues"
