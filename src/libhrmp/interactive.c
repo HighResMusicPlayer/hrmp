@@ -21,6 +21,7 @@
 #include <playlist.h>
 #include <utils.h>
 
+#include <ctype.h>
 #include <dirent.h>
 #include <stdio.h>
 #include <limits.h>
@@ -37,6 +38,20 @@ struct tui_entry
    bool is_dir;
 };
 
+struct tui_search_entry
+{
+   char path[PATH_MAX];
+   char display[PATH_MAX];
+};
+
+struct tui_search_state
+{
+   struct tui_search_entry* all;
+   size_t n_all;
+   struct tui_search_entry** matches;
+   size_t n_matches;
+};
+
 typedef enum {
    TUI_PANEL_DISK,
    TUI_PANEL_PLAYLIST
@@ -44,9 +59,15 @@ typedef enum {
 
 static const char* tui_basename(const char* path);
 static int tui_entry_cmp(const void* a, const void* b);
+static int tui_search_entry_cmp(const void* a, const void* b);
 static void tui_parent_dir(char* dir);
 static void tui_get_term_size(int* out_rows, int* out_cols);
 static int tui_load_dir(const char* dir, struct tui_entry** entries, size_t* n_entries);
+static int tui_search_collect(const char* root, struct tui_search_entry** entries, size_t* n_entries);
+static int tui_search_collect_dir(const char* root, const char* dir, struct tui_search_entry** entries, size_t* n_entries, size_t* cap);
+static void tui_search_clear(struct tui_search_state* state);
+static int tui_search_update_matches(struct tui_search_state* state, const char* query);
+static bool tui_match_query(const char* text, const char* query);
 static void tui_playlist_clear(struct list* files);
 static void tui_playlist_pop(struct list* files);
 static void tui_playlist_remove_at(struct list* files, int idx);
@@ -117,11 +138,20 @@ hrmp_interactive_ui(struct list* files, const char* start_path, int* play_from_i
    bool first_paint = true;
    struct tui_entry* entries = NULL;
    size_t n_entries = 0;
+   bool search_mode = false;
+   char search_query[PATH_MAX];
+   size_t search_len = 0;
+   struct tui_search_state search;
+   int search_sel = 0;
+   int search_scroll = 0;
    WINDOW* left = NULL;
    WINDOW* right = NULL;
    int last_rows = 0;
    int last_cols = 0;
    int last_split = 0;
+
+   memset(search_query, 0, sizeof(search_query));
+   memset(&search, 0, sizeof(search));
 
    for (;;)
    {
@@ -166,38 +196,63 @@ hrmp_interactive_ui(struct list* files, const char* start_path, int* play_from_i
          split = cols - 20;
       }
 
-      if (tui_load_dir(cur, &entries, &n_entries))
+      if (!search_mode)
       {
-         ret = 1;
-         break;
+         if (tui_load_dir(cur, &entries, &n_entries))
+         {
+            ret = 1;
+            break;
+         }
+      }
+      else
+      {
+         n_entries = 0;
       }
 
-      if (sel >= (int)n_entries)
-      {
-         sel = (int)n_entries - 1;
-      }
-      if (sel < 0)
-      {
-         sel = 0;
-      }
-
+      int list_start = 1;
       int list_height = rows - 3;
+      if (search_mode)
+      {
+         list_start = 2;
+         list_height = rows - 4;
+      }
       if (list_height < 1)
       {
          list_height = 1;
       }
 
-      if (sel < scroll)
+      int list_count = search_mode ? (int)search.n_matches : (int)n_entries;
+      int* list_sel = search_mode ? &search_sel : &sel;
+      int* list_scroll = search_mode ? &search_scroll : &scroll;
+
+      if (list_count <= 0)
       {
-         scroll = sel;
+         *list_sel = 0;
+         *list_scroll = 0;
       }
-      if (sel >= scroll + list_height)
+      else
       {
-         scroll = sel - list_height + 1;
-      }
-      if (scroll < 0)
-      {
-         scroll = 0;
+         if (*list_sel >= list_count)
+         {
+            *list_sel = list_count - 1;
+         }
+         if (*list_sel < 0)
+         {
+            *list_sel = 0;
+         }
+
+         if (*list_sel < *list_scroll)
+         {
+            *list_scroll = *list_sel;
+         }
+         if (*list_sel >= *list_scroll + list_height)
+         {
+            *list_scroll = *list_sel - list_height + 1;
+         }
+         if (*list_scroll < 0)
+         {
+            *list_scroll = 0;
+         }
       }
 
       if (left == NULL || right == NULL || rows != last_rows || cols != last_cols || split != last_split)
@@ -237,32 +292,48 @@ hrmp_interactive_ui(struct list* files, const char* start_path, int* play_from_i
       mvwprintw(left, 0, 2, " %s ", cur);
       mvwprintw(right, 0, 2, " Playlist ");
 
+      if (search_mode)
+      {
+         char search_line[PATH_MAX];
+         hrmp_snprintf(search_line, sizeof(search_line), "/ %s", search_query);
+         mvwprintw(left, 1, 1, "%-*.*s", split - 2, split - 2, search_line);
+      }
+
       for (int i = 0; i < list_height; i++)
       {
-         int idx = scroll + i;
-         if (idx >= (int)n_entries)
+         int idx = *list_scroll + i;
+         if (idx >= list_count)
          {
             break;
          }
 
-         if (active == TUI_PANEL_DISK && idx == sel)
+         if (active == TUI_PANEL_DISK && idx == *list_sel)
          {
             wattron(left, A_REVERSE);
          }
 
-         char label[NAME_MAX + 8];
-         if (entries[idx].is_dir)
+         const char* label = NULL;
+         char tmp[NAME_MAX + 8];
+         if (search_mode)
          {
-            hrmp_snprintf(label, sizeof(label), "%s/", entries[idx].name);
+            label = search.matches[idx]->display;
          }
          else
          {
-            hrmp_snprintf(label, sizeof(label), "%s", entries[idx].name);
+            if (entries[idx].is_dir)
+            {
+               hrmp_snprintf(tmp, sizeof(tmp), "%s/", entries[idx].name);
+            }
+            else
+            {
+               hrmp_snprintf(tmp, sizeof(tmp), "%s", entries[idx].name);
+            }
+            label = tmp;
          }
 
-         mvwprintw(left, 1 + i, 1, "%-*.*s", split - 2, split - 2, label);
+         mvwprintw(left, list_start + i, 1, "%-*.*s", split - 2, split - 2, label);
 
-         if (active == TUI_PANEL_DISK && idx == sel)
+         if (active == TUI_PANEL_DISK && idx == *list_sel)
          {
             wattroff(left, A_REVERSE);
          }
@@ -334,9 +405,13 @@ hrmp_interactive_ui(struct list* files, const char* start_path, int* play_from_i
          pr_y++;
       }
 
-      if (active == TUI_PANEL_DISK)
+      if (search_mode)
       {
-         mvprintw(rows - 1, 0, "Up/Down=Move  Left/Right=Switch  Enter=Up/Add  +=Add  *=AddAll  -=Remove  Backspace=Up  l=Load  s=Save  p=Play  q=Quit");
+         mvprintw(rows - 1, 0, "Search: type to filter  Enter=Jump  Esc=Cancel  Up/Down=Move");
+      }
+      else if (active == TUI_PANEL_DISK)
+      {
+         mvprintw(rows - 1, 0, "Up/Down=Move  Left/Right=Switch  Enter=Up/Add  +=Add  *=AddAll  -=Remove  /=Search  Backspace=Up  l=Load  s=Save  p=Play  q=Quit");
       }
       else
       {
@@ -361,7 +436,99 @@ hrmp_interactive_ui(struct list* files, const char* start_path, int* play_from_i
 
       int ch = getch();
 
-      if (ch == 'q' || ch == 'Q' || ch == 27)
+      if (search_mode)
+      {
+         if (ch == 27)
+         {
+            search_mode = false;
+            tui_search_clear(&search);
+            search_query[0] = '\0';
+            search_len = 0;
+            search_sel = 0;
+            search_scroll = 0;
+         }
+         else if (ch == KEY_UP)
+         {
+            search_sel--;
+         }
+         else if (ch == KEY_DOWN)
+         {
+            search_sel++;
+         }
+         else if (ch == KEY_PPAGE)
+         {
+            search_sel -= list_height;
+         }
+         else if (ch == KEY_NPAGE)
+         {
+            search_sel += list_height;
+         }
+         else if (ch == KEY_BACKSPACE || ch == 127 || ch == 8)
+         {
+            if (search_len > 0)
+            {
+               search_len--;
+               search_query[search_len] = '\0';
+               if (tui_search_update_matches(&search, search_query) != 0)
+               {
+                  beep();
+               }
+               search_sel = 0;
+               search_scroll = 0;
+            }
+         }
+         else if (ch == '\n' || ch == KEY_ENTER)
+         {
+            if (search_sel >= 0 && search_sel < (int)search.n_matches)
+            {
+               const struct tui_search_entry* entry = search.matches[search_sel];
+               char target[PATH_MAX];
+               hrmp_snprintf(target, sizeof(target), "%s", entry->path);
+               tui_parent_dir(target);
+
+               if (realpath(target, resolved) != NULL)
+               {
+                  hrmp_snprintf(cur, sizeof(cur), "%s", resolved);
+               }
+               else
+               {
+                  hrmp_snprintf(cur, sizeof(cur), "%s", target);
+               }
+
+               search_mode = false;
+               tui_search_clear(&search);
+               search_query[0] = '\0';
+               search_len = 0;
+               search_sel = 0;
+               search_scroll = 0;
+               sel = 0;
+               scroll = 0;
+            }
+            else
+            {
+               beep();
+            }
+         }
+         else if (ch >= 0 && ch < 256 && isprint((unsigned char)ch))
+         {
+            if (search_len + 1 < sizeof(search_query))
+            {
+               search_query[search_len++] = (char)ch;
+               search_query[search_len] = '\0';
+               if (tui_search_update_matches(&search, search_query) != 0)
+               {
+                  beep();
+               }
+               search_sel = 0;
+               search_scroll = 0;
+            }
+            else
+            {
+               beep();
+            }
+         }
+      }
+      else if (ch == 'q' || ch == 'Q' || ch == 27)
       {
          if (play_from_index != NULL)
          {
@@ -549,6 +716,34 @@ hrmp_interactive_ui(struct list* files, const char* start_path, int* play_from_i
             }
          }
       }
+      else if (ch == '/')
+      {
+         if (active == TUI_PANEL_DISK)
+         {
+            tui_search_clear(&search);
+            if (tui_search_collect(cur, &search.all, &search.n_all) == 0)
+            {
+               search_query[0] = '\0';
+               search_len = 0;
+               if (tui_search_update_matches(&search, search_query) == 0)
+               {
+                  search_mode = true;
+                  search_sel = 0;
+                  search_scroll = 0;
+               }
+               else
+               {
+                  tui_search_clear(&search);
+                  beep();
+               }
+            }
+            else
+            {
+               tui_search_clear(&search);
+               beep();
+            }
+         }
+      }
       else if (ch == '+' || ch == '=')
       {
          if (active == TUI_PANEL_DISK && sel >= 0 && sel < (int)n_entries && !entries[sel].is_dir)
@@ -647,6 +842,7 @@ hrmp_interactive_ui(struct list* files, const char* start_path, int* play_from_i
    }
 
    free(entries);
+   tui_search_clear(&search);
 
    if (left != NULL)
    {
@@ -902,6 +1098,263 @@ tui_load_dir(const char* dir, struct tui_entry** entries, size_t* n_entries)
    return 0;
 }
 
+static int
+tui_search_entry_cmp(const void* a, const void* b)
+{
+   const struct tui_search_entry* ea = a;
+   const struct tui_search_entry* eb = b;
+
+   if (ea == NULL && eb == NULL)
+   {
+      return 0;
+   }
+   if (ea == NULL)
+   {
+      return 1;
+   }
+   if (eb == NULL)
+   {
+      return -1;
+   }
+
+   return strcmp(ea->display, eb->display);
+}
+
+static bool
+tui_match_query(const char* text, const char* query)
+{
+   if (query == NULL || query[0] == '\0')
+   {
+      return true;
+   }
+   if (text == NULL)
+   {
+      return false;
+   }
+
+   size_t text_len = strlen(text);
+   size_t query_len = strlen(query);
+   if (query_len > text_len)
+   {
+      return false;
+   }
+
+   for (size_t i = 0; i + query_len <= text_len; i++)
+   {
+      size_t j = 0;
+      for (; j < query_len; j++)
+      {
+         char left = (char)tolower((unsigned char)text[i + j]);
+         char right = (char)tolower((unsigned char)query[j]);
+         if (left != right)
+         {
+            break;
+         }
+      }
+      if (j == query_len)
+      {
+         return true;
+      }
+   }
+
+   return false;
+}
+
+static void
+tui_search_clear(struct tui_search_state* state)
+{
+   if (state == NULL)
+   {
+      return;
+   }
+
+   free(state->all);
+   free(state->matches);
+   state->all = NULL;
+   state->matches = NULL;
+   state->n_all = 0;
+   state->n_matches = 0;
+}
+
+static int
+tui_search_update_matches(struct tui_search_state* state, const char* query)
+{
+   if (state == NULL)
+   {
+      return 1;
+   }
+
+   free(state->matches);
+   state->matches = NULL;
+   state->n_matches = 0;
+
+   if (state->all == NULL || state->n_all == 0)
+   {
+      return 0;
+   }
+
+   state->matches = calloc(state->n_all, sizeof(*state->matches));
+   if (state->matches == NULL)
+   {
+      return 1;
+   }
+
+   for (size_t i = 0; i < state->n_all; i++)
+   {
+      if (tui_match_query(state->all[i].display, query))
+      {
+         state->matches[state->n_matches++] = &state->all[i];
+      }
+   }
+
+   return 0;
+}
+
+static int
+tui_search_collect(const char* root, struct tui_search_entry** entries, size_t* n_entries)
+{
+   struct tui_search_entry* arr = NULL;
+   size_t n = 0;
+   size_t cap = 128;
+
+   if (root == NULL || entries == NULL || n_entries == NULL)
+   {
+      return 1;
+   }
+
+   *entries = NULL;
+   *n_entries = 0;
+
+   arr = calloc(cap, sizeof(struct tui_search_entry));
+   if (arr == NULL)
+   {
+      return 1;
+   }
+
+   if (tui_search_collect_dir(root, root, &arr, &n, &cap))
+   {
+      free(arr);
+      return 1;
+   }
+
+   if (n > 1)
+   {
+      qsort(arr, n, sizeof(struct tui_search_entry), tui_search_entry_cmp);
+   }
+
+   *entries = arr;
+   *n_entries = n;
+   return 0;
+}
+
+static int
+tui_search_collect_dir(const char* root, const char* dir, struct tui_search_entry** entries, size_t* n_entries, size_t* cap)
+{
+   DIR* d = NULL;
+   struct dirent* de = NULL;
+
+   if (root == NULL || dir == NULL || entries == NULL || n_entries == NULL || cap == NULL)
+   {
+      return 1;
+   }
+
+   d = opendir(dir);
+   if (d == NULL)
+   {
+      return 1;
+   }
+
+   while ((de = readdir(d)) != NULL)
+   {
+      if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0)
+      {
+         continue;
+      }
+
+      char full[PATH_MAX];
+      struct stat st;
+
+      if (strcmp(dir, "/") == 0)
+      {
+         hrmp_snprintf(full, sizeof(full), "/%s", de->d_name);
+      }
+      else
+      {
+         hrmp_snprintf(full, sizeof(full), "%s/%s", dir, de->d_name);
+      }
+
+      if (lstat(full, &st) != 0)
+      {
+         continue;
+      }
+
+      bool is_dir = S_ISDIR(st.st_mode);
+      bool is_file = S_ISREG(st.st_mode);
+
+      if (is_dir)
+      {
+         if (tui_search_collect_dir(root, full, entries, n_entries, cap))
+         {
+            closedir(d);
+            return 1;
+         }
+         continue;
+      }
+
+      if (!is_file || !hrmp_file_is_supported(de->d_name))
+      {
+         continue;
+      }
+
+      if (*n_entries == *cap)
+      {
+         size_t next = (*cap) * 2;
+         struct tui_search_entry* tmp = realloc(*entries, next * sizeof(struct tui_search_entry));
+         if (tmp == NULL)
+         {
+            closedir(d);
+            return 1;
+         }
+         *entries = tmp;
+         *cap = next;
+      }
+
+      struct tui_search_entry* entry = &(*entries)[*n_entries];
+      memset(entry, 0, sizeof(struct tui_search_entry));
+      hrmp_snprintf(entry->path, sizeof(entry->path), "%s", full);
+
+      const char* rel = full;
+      size_t root_len = strlen(root);
+      if (root_len == 1 && root[0] == '/')
+      {
+         rel = full + 1;
+         if (*rel == '\0')
+         {
+            rel = full;
+         }
+      }
+      else if (root_len > 0 && strncmp(full, root, root_len) == 0 &&
+               (full[root_len] == '/' || full[root_len] == '\0'))
+      {
+         rel = full + root_len;
+         if (*rel == '/')
+         {
+            rel++;
+         }
+         if (*rel == '\0')
+         {
+            rel = full;
+         }
+      }
+
+      hrmp_snprintf(entry->display, sizeof(entry->display), "%s", rel);
+      (*n_entries)++;
+   }
+
+   closedir(d);
+   return 0;
+}
+
 static void
 tui_playlist_clear(struct list* files)
 {
@@ -1011,4 +1464,3 @@ tui_playlist_remove_at(struct list* files, int idx)
       files->size--;
    }
 }
-

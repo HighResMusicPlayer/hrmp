@@ -27,6 +27,7 @@ The screen is split into two panels:
 - **Backspace**: Go to parent directory
 - **+**: Add the selected file to the playlist
 - **\***: Add all files in the current directory to the playlist
+- **/**: Search files recursively from the current directory; type to filter, Enter jumps to the file's directory, Esc cancels
 - **-**: Remove the last entry from the playlist
 - **Left/Right**: Switch panels (switching to Playlist only works when the playlist is non-empty)
 
@@ -46,4 +47,3 @@ The screen is split into two panels:
   - If the playlist panel is active: start from the selected playlist entry
   - Otherwise: start from the beginning of the playlist
 - **q**: Quit (exit the UI without playing)
-

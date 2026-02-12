@@ -418,6 +418,7 @@ main(int argc, char** argv)
                   while (e != NULL)
                   {
                      struct list_entry* next = e->next;
+                     free(e->value);
                      free(e);
                      e = next;
                   }
