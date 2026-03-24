@@ -48,14 +48,30 @@ typedef enum {
 } HrmpSupport;
 
 struct App;
+struct SearchDialog;
 
 static gboolean on_debug_window_delete(GtkWidget* widget, GdkEvent* event, gpointer user_data);
 static void hrmp_gtk_show_debug_window(struct App* app);
 static void on_menu_debug(GtkWidget* widget, gpointer user_data);
 static void on_debug_clear_clicked(GtkWidget* widget, gpointer user_data);
 static void on_debug_close_clicked(GtkWidget* widget, gpointer user_data);
+static gboolean hrmp_gtk_append_playlist_file(struct App* app, const gchar* filename);
+static gboolean hrmp_gtk_collect_search_matches(const gchar* directory,
+                                                const gchar* relative_path,
+                                                GRegex* regex,
+                                                GPtrArray* matches,
+                                                GtkWidget* error_label);
+static void hrmp_gtk_refresh_search_results(struct SearchDialog* search);
 static void on_menu_load(GtkWidget* widget, gpointer user_data);
+static void on_menu_search(GtkWidget* widget, gpointer user_data);
 static void on_menu_save(GtkWidget* widget, gpointer user_data);
+static void on_search_dialog_destroy(GtkWidget* widget, gpointer user_data);
+static void on_search_directory_changed(GtkFileChooserButton* button, gpointer user_data);
+static void on_search_regex_changed(GtkEditable* editable, gpointer user_data);
+static void on_search_row_activated(GtkTreeView* tree_view,
+                                    GtkTreePath* path,
+                                    GtkTreeViewColumn* column,
+                                    gpointer user_data);
 static gchar* hrmp_gtk_get_config_path(void);
 static void hrmp_gtk_load_preferences(struct App* app);
 static void hrmp_gtk_free_devices(struct App* app);
@@ -96,6 +112,12 @@ static void on_menu_license(GtkWidget* widget, gpointer user_data);
 static void on_menu_preferences(GtkWidget* widget, gpointer user_data);
 static void on_mode_button_clicked(GtkWidget* button, gpointer user_data);
 static gboolean on_playlist_button_press(GtkWidget* widget, GdkEventButton* event, gpointer user_data);
+static gboolean on_playlist_query_tooltip(GtkWidget* widget,
+                                          gint x,
+                                          gint y,
+                                          gboolean keyboard_mode,
+                                          GtkTooltip* tooltip,
+                                          gpointer user_data);
 static void on_playlist_row_activated(GtkTreeView* tree_view,
                                       GtkTreePath* path,
                                       GtkTreeViewColumn* column,
@@ -113,6 +135,16 @@ typedef enum {
    HRMP_FILES_MODE_FULL = 0,
    HRMP_FILES_MODE_SHORT
 } HrmpFilesMode;
+
+struct SearchDialog
+{
+   struct App* app;
+   GtkWidget* dialog;
+   GtkWidget* directory_button;
+   GtkWidget* regex_entry;
+   GtkWidget* error_label;
+   GtkListStore* results_store;
+};
 
 struct App
 {
@@ -139,6 +171,8 @@ struct App
 
    gchar* hrmp_path;
    gchar* default_device;
+   gchar* startup_dir;
+   gchar* last_search_dir;
 
    GPid child_pid;
    GIOChannel* child_stdin;
@@ -207,6 +241,8 @@ main(int argc, char** argv)
    g_set_prgname("hrmp-ui");
    g_set_application_name("hrmp-ui");
 
+   app.startup_dir = g_get_current_dir();
+
    gtk_init(&argc, &argv);
 
    hrmp_gtk_load_preferences(&app);
@@ -224,6 +260,10 @@ main(int argc, char** argv)
                     "button-press-event",
                     G_CALLBACK(on_playlist_button_press),
                     &app);
+   g_signal_connect(app.list_view,
+                    "query-tooltip",
+                    G_CALLBACK(on_playlist_query_tooltip),
+                    &app);
 
    gtk_widget_show_all(app.window);
 
@@ -238,6 +278,8 @@ main(int argc, char** argv)
 
    g_free(app.hrmp_path);
    g_free(app.default_device);
+   g_free(app.startup_dir);
+   g_free(app.last_search_dir);
    hrmp_gtk_free_devices(&app);
 
    return 0;
@@ -341,6 +383,254 @@ on_debug_close_clicked(GtkWidget* widget, gpointer user_data)
 }
 
 static void
+on_search_dialog_destroy(GtkWidget* widget, gpointer user_data)
+{
+   (void)widget;
+   struct SearchDialog* search = user_data;
+
+   if (search != NULL && search->results_store != NULL)
+   {
+      g_object_unref(search->results_store);
+   }
+   g_free(search);
+}
+
+static gboolean
+hrmp_gtk_append_playlist_file(struct App* app, const gchar* filename)
+{
+   GtkTreeIter iter;
+
+   if (app == NULL || filename == NULL || !hrmp_file_is_supported((char*)filename))
+   {
+      return FALSE;
+   }
+
+   gtk_list_store_append(app->list_store, &iter);
+
+   if (app->files_mode == HRMP_FILES_MODE_SHORT)
+   {
+      gchar* base = g_path_get_basename(filename);
+      gtk_list_store_set(app->list_store, &iter, 0, filename, 1, base, -1);
+      g_free(base);
+   }
+   else
+   {
+      gtk_list_store_set(app->list_store, &iter, 0, filename, 1, filename, -1);
+   }
+
+   return TRUE;
+}
+
+static void
+hrmp_gtk_add_search_result(struct SearchDialog* search,
+                           const gchar* full_path,
+                           const gchar* relative_path)
+{
+   GtkTreeIter iter;
+
+   gtk_list_store_append(search->results_store, &iter);
+   gtk_list_store_set(search->results_store, &iter, 0, full_path, 1, relative_path, -1);
+}
+
+static gboolean
+hrmp_gtk_collect_search_matches(const gchar* directory,
+                                const gchar* relative_path,
+                                GRegex* regex,
+                                GPtrArray* matches,
+                                GtkWidget* error_label)
+{
+   GDir* dir = NULL;
+   GError* error = NULL;
+   const gchar* name = NULL;
+   gchar* current_dir = NULL;
+
+   current_dir = (relative_path == NULL || relative_path[0] == '\0')
+                    ? g_strdup(directory)
+                    : g_build_filename(directory, relative_path, NULL);
+
+   dir = g_dir_open(current_dir, 0, &error);
+   if (dir == NULL)
+   {
+      gtk_label_set_text(GTK_LABEL(error_label), error->message);
+      g_error_free(error);
+      g_free(current_dir);
+      return FALSE;
+   }
+
+   while ((name = g_dir_read_name(dir)) != NULL)
+   {
+      gchar* next_relative = NULL;
+      gchar* full_path = NULL;
+
+      next_relative = (relative_path == NULL || relative_path[0] == '\0')
+                         ? g_strdup(name)
+                         : g_build_filename(relative_path, name, NULL);
+      full_path = g_build_filename(directory, next_relative, NULL);
+
+      if (g_file_test(full_path, G_FILE_TEST_IS_DIR))
+      {
+         gboolean ok = hrmp_gtk_collect_search_matches(directory,
+                                                       next_relative,
+                                                       regex,
+                                                       matches,
+                                                       error_label);
+         g_free(full_path);
+         g_free(next_relative);
+         if (!ok)
+         {
+            g_dir_close(dir);
+            g_free(current_dir);
+            return FALSE;
+         }
+         continue;
+      }
+
+      if (!g_file_test(full_path, G_FILE_TEST_IS_REGULAR) ||
+          !hrmp_file_is_supported((char*)full_path) ||
+          (regex != NULL && !g_regex_match(regex, next_relative, 0, NULL)))
+      {
+         g_free(full_path);
+         g_free(next_relative);
+         continue;
+      }
+
+      g_ptr_array_add(matches, full_path);
+      g_ptr_array_add(matches, next_relative);
+   }
+
+   g_dir_close(dir);
+   g_free(current_dir);
+   return TRUE;
+}
+
+static void
+hrmp_gtk_refresh_search_results(struct SearchDialog* search)
+{
+   gchar* directory = NULL;
+   const gchar* pattern = NULL;
+   GRegex* regex = NULL;
+   GError* error = NULL;
+   GPtrArray* matches = NULL;
+
+   if (search == NULL)
+   {
+      return;
+   }
+
+   gtk_list_store_clear(search->results_store);
+   gtk_label_set_text(GTK_LABEL(search->error_label), "");
+
+   directory = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(search->directory_button));
+   pattern = gtk_entry_get_text(GTK_ENTRY(search->regex_entry));
+
+   if (directory == NULL || directory[0] == '\0')
+   {
+      g_free(directory);
+      return;
+   }
+
+   if (pattern != NULL && pattern[0] != '\0')
+   {
+      regex = g_regex_new(pattern, 0, 0, &error);
+      if (regex == NULL)
+      {
+         gtk_label_set_text(GTK_LABEL(search->error_label), error->message);
+         g_error_free(error);
+         g_free(directory);
+         return;
+      }
+   }
+
+   matches = g_ptr_array_new_with_free_func(g_free);
+   if (hrmp_gtk_collect_search_matches(directory, "", regex, matches, search->error_label))
+   {
+      for (guint i = 0; i + 1 < matches->len; i += 2)
+      {
+         for (guint j = i + 2; j + 1 < matches->len; j += 2)
+         {
+            gchar* left = g_ptr_array_index(matches, i + 1);
+            gchar* right = g_ptr_array_index(matches, j + 1);
+
+            if (g_strcmp0(left, right) > 0)
+            {
+               gpointer full_tmp = matches->pdata[i];
+               gpointer rel_tmp = matches->pdata[i + 1];
+               matches->pdata[i] = matches->pdata[j];
+               matches->pdata[i + 1] = matches->pdata[j + 1];
+               matches->pdata[j] = full_tmp;
+               matches->pdata[j + 1] = rel_tmp;
+            }
+         }
+      }
+
+      for (guint i = 0; i + 1 < matches->len; i += 2)
+      {
+         hrmp_gtk_add_search_result(search,
+                                    g_ptr_array_index(matches, i),
+                                    g_ptr_array_index(matches, i + 1));
+      }
+   }
+
+   g_ptr_array_free(matches, TRUE);
+   if (regex != NULL)
+   {
+      g_regex_unref(regex);
+   }
+   g_free(directory);
+}
+
+static void
+on_search_directory_changed(GtkFileChooserButton* button, gpointer user_data)
+{
+   struct SearchDialog* search = user_data;
+   gchar* directory = NULL;
+
+   if (search == NULL || search->app == NULL)
+   {
+      return;
+   }
+
+   directory = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(button));
+   g_free(search->app->last_search_dir);
+   search->app->last_search_dir = directory;
+
+   hrmp_gtk_refresh_search_results(search);
+}
+
+static void
+on_search_regex_changed(GtkEditable* editable, gpointer user_data)
+{
+   (void)editable;
+   hrmp_gtk_refresh_search_results(user_data);
+}
+
+static void
+on_search_row_activated(GtkTreeView* tree_view,
+                        GtkTreePath* path,
+                        GtkTreeViewColumn* column,
+                        gpointer user_data)
+{
+   struct SearchDialog* search = user_data;
+   GtkTreeModel* model = gtk_tree_view_get_model(tree_view);
+   GtkTreeIter iter;
+   gchar* filename = NULL;
+
+   (void)column;
+
+   if (search == NULL || !gtk_tree_model_get_iter(model, &iter, path))
+   {
+      return;
+   }
+
+   gtk_tree_model_get(model, &iter, 0, &filename, -1);
+   if (filename != NULL)
+   {
+      hrmp_gtk_append_playlist_file(search->app, filename);
+      g_free(filename);
+   }
+}
+
+static void
 on_menu_load(GtkWidget* widget, gpointer user_data)
 {
    (void)widget;
@@ -383,24 +673,7 @@ on_menu_load(GtkWidget* widget, gpointer user_data)
             {
                const char* filename = (const char*)e->value;
 
-               if (!hrmp_file_is_supported((char*)filename))
-               {
-                  continue;
-               }
-
-               GtkTreeIter iter;
-               gtk_list_store_append(app->list_store, &iter);
-
-               if (app->files_mode == HRMP_FILES_MODE_SHORT)
-               {
-                  gchar* base = g_path_get_basename(filename);
-                  gtk_list_store_set(app->list_store, &iter, 0, filename, 1, base, -1);
-                  g_free(base);
-               }
-               else
-               {
-                  gtk_list_store_set(app->list_store, &iter, 0, filename, 1, filename, -1);
-               }
+               hrmp_gtk_append_playlist_file(app, filename);
             }
          }
 
@@ -411,6 +684,109 @@ on_menu_load(GtkWidget* widget, gpointer user_data)
    }
 
    gtk_widget_destroy(dialog);
+}
+
+static void
+on_menu_search(GtkWidget* widget, gpointer user_data)
+{
+   struct App* app = user_data;
+   struct SearchDialog* search = NULL;
+   GtkWidget* content = NULL;
+   GtkWidget* box = NULL;
+   GtkWidget* directory_box = NULL;
+   GtkWidget* regex_box = NULL;
+   GtkWidget* scrolled_window = NULL;
+   GtkWidget* results_view = NULL;
+   GtkCellRenderer* renderer = NULL;
+   GtkTreeViewColumn* column = NULL;
+   GtkWidget* directory_label = NULL;
+   GtkWidget* search_label = NULL;
+
+   (void)widget;
+
+   search = g_new0(struct SearchDialog, 1);
+   search->app = app;
+   search->dialog = gtk_dialog_new_with_buttons("Search",
+                                                GTK_WINDOW(app->window),
+                                                GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
+                                                "_Close",
+                                                GTK_RESPONSE_CLOSE,
+                                                NULL);
+
+   gtk_window_set_default_size(GTK_WINDOW(search->dialog), 700, 500);
+
+   content = gtk_dialog_get_content_area(GTK_DIALOG(search->dialog));
+   box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
+   gtk_container_set_border_width(GTK_CONTAINER(box), 8);
+   gtk_box_pack_start(GTK_BOX(content), box, TRUE, TRUE, 0);
+
+   directory_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+   directory_label = gtk_label_new("Directory:");
+   gtk_widget_set_halign(directory_label, GTK_ALIGN_START);
+   gtk_box_pack_start(GTK_BOX(directory_box), directory_label, FALSE, FALSE, 0);
+
+   search->directory_button = gtk_file_chooser_button_new("Select search directory",
+                                                          GTK_FILE_CHOOSER_ACTION_SELECT_FOLDER);
+   gtk_widget_set_hexpand(search->directory_button, TRUE);
+   gtk_box_pack_start(GTK_BOX(directory_box), search->directory_button, TRUE, TRUE, 0);
+   gtk_box_pack_start(GTK_BOX(box), directory_box, FALSE, FALSE, 0);
+
+   regex_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+   search_label = gtk_label_new("Search:");
+   gtk_widget_set_halign(search_label, GTK_ALIGN_START);
+   gtk_box_pack_start(GTK_BOX(regex_box), search_label, FALSE, FALSE, 0);
+
+   search->regex_entry = gtk_entry_new();
+   gtk_entry_set_placeholder_text(GTK_ENTRY(search->regex_entry), "Empty matches all files recursively");
+   gtk_box_pack_start(GTK_BOX(regex_box), search->regex_entry, TRUE, TRUE, 0);
+   gtk_box_pack_start(GTK_BOX(box), regex_box, FALSE, FALSE, 0);
+
+   search->error_label = gtk_label_new("");
+   gtk_widget_set_halign(search->error_label, GTK_ALIGN_START);
+   gtk_label_set_xalign(GTK_LABEL(search->error_label), 0.0);
+   gtk_box_pack_start(GTK_BOX(box), search->error_label, FALSE, FALSE, 0);
+
+   search->results_store = gtk_list_store_new(2, G_TYPE_STRING, G_TYPE_STRING);
+   results_view = gtk_tree_view_new_with_model(GTK_TREE_MODEL(search->results_store));
+   renderer = gtk_cell_renderer_text_new();
+   column = gtk_tree_view_column_new_with_attributes("Files", renderer, "text", 1, NULL);
+   gtk_tree_view_append_column(GTK_TREE_VIEW(results_view), column);
+
+   scrolled_window = gtk_scrolled_window_new(NULL, NULL);
+   gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scrolled_window),
+                                  GTK_POLICY_AUTOMATIC,
+                                  GTK_POLICY_AUTOMATIC);
+   gtk_container_add(GTK_CONTAINER(scrolled_window), results_view);
+   gtk_box_pack_start(GTK_BOX(box), scrolled_window, TRUE, TRUE, 0);
+
+   if (app->last_search_dir != NULL && app->last_search_dir[0] != '\0')
+   {
+      gtk_file_chooser_set_filename(GTK_FILE_CHOOSER(search->directory_button), app->last_search_dir);
+   }
+   else if (app->startup_dir != NULL && app->startup_dir[0] != '\0')
+   {
+      gtk_file_chooser_set_filename(GTK_FILE_CHOOSER(search->directory_button), app->startup_dir);
+   }
+
+   g_signal_connect(search->dialog, "destroy", G_CALLBACK(on_search_dialog_destroy), search);
+   g_signal_connect(search->directory_button,
+                    "file-set",
+                    G_CALLBACK(on_search_directory_changed),
+                    search);
+   g_signal_connect(search->regex_entry,
+                    "changed",
+                    G_CALLBACK(on_search_regex_changed),
+                    search);
+   g_signal_connect(results_view,
+                    "row-activated",
+                    G_CALLBACK(on_search_row_activated),
+                    search);
+
+   hrmp_gtk_refresh_search_results(search);
+
+   gtk_widget_show_all(search->dialog);
+   gtk_dialog_run(GTK_DIALOG(search->dialog));
+   gtk_widget_destroy(search->dialog);
 }
 
 static void
@@ -2008,38 +2384,7 @@ on_button_add_clicked(GtkWidget* button, gpointer user_data)
       {
          const gchar* filename = l->data;
 
-         if (!hrmp_file_is_supported((char*)filename))
-         {
-            g_free(l->data);
-            continue;
-         }
-
-         GtkTreeIter iter;
-
-         gtk_list_store_append(app->list_store, &iter);
-
-         if (app->files_mode == HRMP_FILES_MODE_SHORT)
-         {
-            gchar* base = g_path_get_basename(filename);
-            gtk_list_store_set(app->list_store,
-                               &iter,
-                               0,
-                               filename,
-                               1,
-                               base,
-                               -1);
-            g_free(base);
-         }
-         else
-         {
-            gtk_list_store_set(app->list_store,
-                               &iter,
-                               0,
-                               filename,
-                               1,
-                               filename,
-                               -1);
-         }
+         hrmp_gtk_append_playlist_file(app, filename);
 
          g_free(l->data);
       }
@@ -2823,6 +3168,56 @@ on_playlist_button_press(GtkWidget* widget, GdkEventButton* event, gpointer user
    return FALSE;
 }
 
+static gboolean
+on_playlist_query_tooltip(GtkWidget* widget,
+                          gint x,
+                          gint y,
+                          gboolean keyboard_mode,
+                          GtkTooltip* tooltip,
+                          gpointer user_data)
+{
+   GtkTreeView* tree_view = GTK_TREE_VIEW(widget);
+   GtkTreeModel* model = NULL;
+   GtkTreePath* path = NULL;
+   GtkTreeIter iter;
+   gchar* filepath = NULL;
+
+   (void)user_data;
+
+   if (!gtk_tree_view_get_tooltip_context(tree_view,
+                                          &x,
+                                          &y,
+                                          keyboard_mode,
+                                          &model,
+                                          &path,
+                                          &iter))
+   {
+      return FALSE;
+   }
+
+   gtk_tree_model_get(model, &iter, 0, &filepath, -1);
+   if (filepath == NULL || filepath[0] == '\0')
+   {
+      g_free(filepath);
+      if (path != NULL)
+      {
+         gtk_tree_path_free(path);
+      }
+      return FALSE;
+   }
+
+   gtk_tooltip_set_text(tooltip, filepath);
+   gtk_tree_view_set_tooltip_row(tree_view, tooltip, path);
+
+   g_free(filepath);
+   if (path != NULL)
+   {
+      gtk_tree_path_free(path);
+   }
+
+   return TRUE;
+}
+
 static void
 on_playlist_row_activated(GtkTreeView* tree_view,
                           GtkTreePath* path,
@@ -2875,6 +3270,7 @@ create_main_window(struct App* app)
    GtkAccelGroup* accel_group;
    GtkWidget* file_item;
    GtkWidget* file_menu;
+   GtkWidget* menu_search;
    GtkWidget* menu_load;
    GtkWidget* menu_save;
    GtkWidget* menu_quit;
@@ -2929,10 +3325,13 @@ create_main_window(struct App* app)
 
    file_item = gtk_menu_item_new_with_mnemonic("_File");
    file_menu = gtk_menu_new();
+   menu_search = gtk_menu_item_new_with_mnemonic("_Search");
    menu_load = gtk_menu_item_new_with_mnemonic("_Load");
    menu_save = gtk_menu_item_new_with_mnemonic("_Save");
    menu_quit = gtk_menu_item_new_with_mnemonic("_Quit");
 
+   gtk_menu_shell_append(GTK_MENU_SHELL(file_menu), menu_search);
+   gtk_menu_shell_append(GTK_MENU_SHELL(file_menu), gtk_separator_menu_item_new());
    gtk_menu_shell_append(GTK_MENU_SHELL(file_menu), menu_load);
    gtk_menu_shell_append(GTK_MENU_SHELL(file_menu), menu_save);
    gtk_menu_shell_append(GTK_MENU_SHELL(file_menu), gtk_separator_menu_item_new());
@@ -3153,6 +3552,7 @@ create_main_window(struct App* app)
    /* Playlist */
    app->list_store = gtk_list_store_new(2, G_TYPE_STRING, G_TYPE_STRING);
    app->list_view = gtk_tree_view_new_with_model(GTK_TREE_MODEL(app->list_store));
+   gtk_widget_set_has_tooltip(app->list_view, TRUE);
 
    renderer = gtk_cell_renderer_text_new();
    column = gtk_tree_view_column_new_with_attributes("Files",
@@ -3195,6 +3595,7 @@ create_main_window(struct App* app)
    /* Signals */
    g_signal_connect(window, "destroy", G_CALLBACK(on_window_destroy), app);
 
+   g_signal_connect(menu_search, "activate", G_CALLBACK(on_menu_search), app);
    g_signal_connect(menu_load, "activate", G_CALLBACK(on_menu_load), app);
    g_signal_connect(menu_save, "activate", G_CALLBACK(on_menu_save), app);
    g_signal_connect(menu_quit, "activate", G_CALLBACK(on_window_destroy), app);
