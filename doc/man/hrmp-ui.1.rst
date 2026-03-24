@@ -23,6 +23,12 @@ along with a playlist view and an output log window.
 The application launches the hrmp command-line player in the background and
 controls it via the keyboard commands that hrmp understands.
 
+The playlist view supports double-click to start playback from a row, hover
+tooltips that reveal the full file path, middle-click to replace that row with
+supported files from the same directory sorted by filename without duplicating
+entries already present elsewhere in the playlist, and right-click to remove a
+row.
+
 CONTROLS
 ========
 
@@ -59,11 +65,18 @@ Play mode
 Menu items
 ----------
 
-File → Add
-  Add audio files to the playlist.
+File → Search
+  Open a dialog for choosing a directory and filtering supported files with a
+  regular expression. An empty search matches all supported files recursively
+  below the selected directory. Double-clicking a result adds it to the
+  playlist. The dialog remembers the last selected directory for the current
+  hrmp-ui process.
 
-File → Clear
-  Clear the playlist and stop any running hrmp instance.
+File → Load
+  Load a playlist file (``*.hrmp``) into the playlist view.
+
+File → Save
+  Save the current playlist view to a playlist file (``*.hrmp``).
 
 File → Quit
   Quit hrmp-ui.

@@ -56,6 +56,10 @@ static void on_menu_debug(GtkWidget* widget, gpointer user_data);
 static void on_debug_clear_clicked(GtkWidget* widget, gpointer user_data);
 static void on_debug_close_clicked(GtkWidget* widget, gpointer user_data);
 static gboolean hrmp_gtk_append_playlist_file(struct App* app, const gchar* filename);
+static gint hrmp_gtk_compare_paths_by_name(gconstpointer a, gconstpointer b);
+static void hrmp_gtk_add_directory_files_to_playlist(struct App* app,
+                                                     const gchar* clicked_filepath,
+                                                     gint clicked_position);
 static gboolean hrmp_gtk_collect_search_matches(const gchar* directory,
                                                 const gchar* relative_path,
                                                 GRegex* regex,
@@ -419,6 +423,193 @@ hrmp_gtk_append_playlist_file(struct App* app, const gchar* filename)
    }
 
    return TRUE;
+}
+
+static void
+hrmp_gtk_add_unique_playlist_path(GPtrArray* paths, GHashTable* seen, const gchar* filepath)
+{
+   if (filepath == NULL || filepath[0] == '\0' || g_hash_table_contains(seen, filepath))
+   {
+      return;
+   }
+
+   g_hash_table_add(seen, g_strdup(filepath));
+   g_ptr_array_add(paths, g_strdup(filepath));
+}
+
+static gint
+hrmp_gtk_compare_paths_by_name(gconstpointer a, gconstpointer b)
+{
+   const gchar* left = *((const gchar* const*)a);
+   const gchar* right = *((const gchar* const*)b);
+   gchar* left_base = g_path_get_basename(left);
+   gchar* right_base = g_path_get_basename(right);
+   gchar* left_key = g_utf8_collate_key_for_filename(left_base, -1);
+   gchar* right_key = g_utf8_collate_key_for_filename(right_base, -1);
+   gint cmp = g_strcmp0(left_key, right_key);
+
+   if (cmp == 0)
+   {
+      cmp = g_strcmp0(left, right);
+   }
+
+   g_free(left_key);
+   g_free(right_key);
+   g_free(left_base);
+   g_free(right_base);
+
+   return cmp;
+}
+
+static void
+hrmp_gtk_add_directory_files_to_playlist(struct App* app,
+                                         const gchar* clicked_filepath,
+                                         gint clicked_position)
+{
+   GDir* dir = NULL;
+   GError* error = NULL;
+   const gchar* name = NULL;
+   GPtrArray* files = NULL;
+   GtkTreeModel* model = NULL;
+   GtkTreeIter iter;
+   gboolean valid = FALSE;
+   gchar* directory = NULL;
+   GPtrArray* remaining_playlist = NULL;
+   GPtrArray* final_playlist = NULL;
+   GHashTable* seen = NULL;
+   gchar* selected_filepath = NULL;
+   gint insertion_index = 0;
+   gint row_index = 0;
+
+   if (app == NULL || clicked_filepath == NULL || clicked_filepath[0] == '\0')
+   {
+      return;
+   }
+
+   directory = g_path_get_dirname(clicked_filepath);
+   if (directory == NULL || directory[0] == '\0')
+   {
+      g_free(directory);
+      return;
+   }
+
+   dir = g_dir_open(directory, 0, &error);
+   if (dir == NULL)
+   {
+      g_warning("Failed to open directory '%s': %s", directory, error->message);
+      g_error_free(error);
+      g_free(directory);
+      return;
+   }
+
+   model = GTK_TREE_MODEL(app->list_store);
+   {
+      GtkTreeSelection* selection = gtk_tree_view_get_selection(GTK_TREE_VIEW(app->list_view));
+      GtkTreeIter selected_iter;
+      if (gtk_tree_selection_get_selected(selection, NULL, &selected_iter))
+      {
+         gtk_tree_model_get(model, &selected_iter, 0, &selected_filepath, -1);
+      }
+   }
+
+   remaining_playlist = g_ptr_array_new_with_free_func(g_free);
+   final_playlist = g_ptr_array_new_with_free_func(g_free);
+   seen = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+
+   valid = gtk_tree_model_get_iter_first(model, &iter);
+   while (valid)
+   {
+      gchar* filepath = NULL;
+      gtk_tree_model_get(model, &iter, 0, &filepath, -1);
+      if (filepath != NULL && filepath[0] != '\0')
+      {
+         if (!(row_index == clicked_position && g_strcmp0(filepath, clicked_filepath) == 0))
+         {
+            g_ptr_array_add(remaining_playlist, g_strdup(filepath));
+            g_hash_table_add(seen, g_strdup(filepath));
+         }
+      }
+      g_free(filepath);
+      row_index++;
+      valid = gtk_tree_model_iter_next(model, &iter);
+   }
+
+   files = g_ptr_array_new_with_free_func(g_free);
+   while ((name = g_dir_read_name(dir)) != NULL)
+   {
+      gchar* full_path = g_build_filename(directory, name, NULL);
+
+      if (!g_file_test(full_path, G_FILE_TEST_IS_REGULAR) ||
+          !hrmp_file_is_supported((char*)full_path))
+      {
+         g_free(full_path);
+         continue;
+      }
+
+      g_ptr_array_add(files, full_path);
+   }
+
+   g_ptr_array_sort(files, hrmp_gtk_compare_paths_by_name);
+
+   insertion_index = clicked_position;
+   if (insertion_index < 0)
+   {
+      insertion_index = 0;
+   }
+   if (insertion_index > (gint)remaining_playlist->len)
+   {
+      insertion_index = (gint)remaining_playlist->len;
+   }
+
+   for (gint i = 0; i < insertion_index; ++i)
+   {
+      g_ptr_array_add(final_playlist, g_strdup(g_ptr_array_index(remaining_playlist, i)));
+   }
+
+   for (guint i = 0; i < files->len; ++i)
+   {
+      hrmp_gtk_add_unique_playlist_path(final_playlist, seen, g_ptr_array_index(files, i));
+   }
+
+   for (guint i = (guint)insertion_index; i < remaining_playlist->len; ++i)
+   {
+      g_ptr_array_add(final_playlist, g_strdup(g_ptr_array_index(remaining_playlist, i)));
+   }
+
+   gtk_list_store_clear(app->list_store);
+   for (guint i = 0; i < final_playlist->len; ++i)
+   {
+      hrmp_gtk_append_playlist_file(app, g_ptr_array_index(final_playlist, i));
+   }
+
+   if (selected_filepath != NULL)
+   {
+      GtkTreeSelection* selection = gtk_tree_view_get_selection(GTK_TREE_VIEW(app->list_view));
+
+      valid = gtk_tree_model_get_iter_first(GTK_TREE_MODEL(app->list_store), &iter);
+      while (valid)
+      {
+         gchar* filepath = NULL;
+         gtk_tree_model_get(GTK_TREE_MODEL(app->list_store), &iter, 0, &filepath, -1);
+         if (filepath != NULL && g_strcmp0(filepath, selected_filepath) == 0)
+         {
+            gtk_tree_selection_unselect_all(selection);
+            gtk_tree_selection_select_iter(selection, &iter);
+            g_free(filepath);
+            break;
+         }
+         g_free(filepath);
+         valid = gtk_tree_model_iter_next(GTK_TREE_MODEL(app->list_store), &iter);
+      }
+   }
+
+   g_free(selected_filepath);
+   g_hash_table_destroy(seen);
+   g_ptr_array_free(remaining_playlist, TRUE);
+   g_ptr_array_free(final_playlist, TRUE);
+   g_ptr_array_free(files, TRUE);
+   g_dir_close(dir);
+   g_free(directory);
 }
 
 static void
@@ -3114,29 +3305,39 @@ static gboolean
 on_playlist_button_press(GtkWidget* widget, GdkEventButton* event, gpointer user_data)
 {
    struct App* app = user_data;
+   GtkTreeView* tree_view = GTK_TREE_VIEW(widget);
+   GtkTreePath* path = NULL;
+   GtkTreeViewColumn* column = NULL;
 
-   if (event->type == GDK_BUTTON_PRESS && event->button == 3)
+   if (event->type == GDK_BUTTON_PRESS &&
+       (event->button == 2 || event->button == 3) &&
+       gtk_tree_view_get_path_at_pos(tree_view,
+                                     (gint)event->x,
+                                     (gint)event->y,
+                                     &path,
+                                     &column,
+                                     NULL,
+                                     NULL))
    {
-      GtkTreeView* tree_view = GTK_TREE_VIEW(widget);
-      GtkTreePath* path = NULL;
-      GtkTreeViewColumn* column = NULL;
+      GtkTreeModel* model = gtk_tree_view_get_model(tree_view);
+      GtkTreeIter iter;
 
-      if (gtk_tree_view_get_path_at_pos(tree_view,
-                                        (gint)event->x,
-                                        (gint)event->y,
-                                        &path,
-                                        &column,
-                                        NULL,
-                                        NULL))
+      if (gtk_tree_model_get_iter(model, &iter, path))
       {
-         GtkTreeModel* model = gtk_tree_view_get_model(tree_view);
-         GtkTreeIter iter;
+         gchar* filepath = NULL;
+         gtk_tree_model_get(model, &iter, 0, &filepath, -1);
 
-         if (gtk_tree_model_get_iter(model, &iter, path))
+         if (event->button == 2)
          {
-            gchar* filepath = NULL;
-            gtk_tree_model_get(model, &iter, 0, &filepath, -1);
-
+            if (filepath != NULL && filepath[0] != '\0')
+            {
+               gint* indices = gtk_tree_path_get_indices(path);
+               gint clicked_position = (indices != NULL) ? indices[0] : 0;
+               hrmp_gtk_add_directory_files_to_playlist(app, filepath, clicked_position);
+            }
+         }
+         else
+         {
             /* Do not remove the row corresponding to the currently playing file: treat the
              * currently selected row as "playing" when hrmp is running. */
             GtkTreeSelection* selection = gtk_tree_view_get_selection(tree_view);
@@ -3157,12 +3358,12 @@ on_playlist_button_press(GtkWidget* widget, GdkEventButton* event, gpointer user
             {
                gtk_tree_path_free(cur_path);
             }
-            g_free(filepath);
          }
-
-         gtk_tree_path_free(path);
-         return TRUE;
+         g_free(filepath);
       }
+
+      gtk_tree_path_free(path);
+      return TRUE;
    }
 
    return FALSE;
