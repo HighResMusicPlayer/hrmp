@@ -36,7 +36,9 @@ jobs:
             opus-devel \
             faad2-devel \
             libcdio-devel \
-            gtk3-devel
+            gtk3-devel \
+            ncurses-devel \
+            python3-docutils
 
       - name: Build Project
         run: |
