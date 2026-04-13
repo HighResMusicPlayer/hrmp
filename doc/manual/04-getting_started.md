@@ -19,6 +19,7 @@ Options:
   -p, --playlist PLAYLIST    Load files/directories from a playlist file (.hrmp)
   -R, --recursive            Add files recursive of the directory
   -M, --mode MODE            Playback mode: once, repeat, shuffle
+  -C, --convert              Convert .dsf files to 24bit .flac
   -I, --sample-configuration Generate a sample configuration
   -i, --interactive          Text UI mode
   -m, --metadata             Display metadata of the files
@@ -71,6 +72,12 @@ We will run **hrmp** using the command
 
 ```
 hrmp -c hrmp.conf <directory|files>
+```
+
+To convert DSF files to 24-bit FLAC at the matching PCM rate instead of playing them:
+
+```sh
+hrmp -C my-track.dsf
 ```
 
 See the **Keyboard shortcuts** section for all key commands.

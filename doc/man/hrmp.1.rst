@@ -36,6 +36,9 @@ OPTIONS
 -M, --mode MODE
   Playback mode: once, repeat, shuffle
 
+-C, --convert
+  Convert supported ``.dsf`` files to ``.flac`` using 24-bit PCM at the matching PCM rate
+
 -I, --sample-configuration
   Generate a sample configuration
 

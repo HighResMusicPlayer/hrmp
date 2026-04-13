@@ -19,6 +19,7 @@
 #include <hrmp.h>
 #include <alsa.h>
 #include <cmd.h>
+#include <convert.h>
 #include <configuration.h>
 #include <devices.h>
 #include <extract.h>
@@ -54,6 +55,7 @@ static void usage(void);
 #define ACTION_STATUS        4
 #define ACTION_PLAY          5
 #define ACTION_EXTRACT       6
+#define ACTION_CONVERT       7
 
 typedef enum {
    HRMP_PLAYBACK_MODE_ONCE,
@@ -98,6 +100,7 @@ main(int argc, char** argv)
       {"p", "playlist", true},
       {"R", "recursive", false},
       {"M", "mode", true},
+      {"C", "convert", false},
       {"I", "sample-configuration", false},
       {"i", "interactive", false},
       {"m", "metadata", false},
@@ -178,6 +181,11 @@ main(int argc, char** argv)
 
          files_index += 2;
       }
+      else if (!strcmp(optname, "C") || !strcmp(optname, "convert"))
+      {
+         action = ACTION_CONVERT;
+         files_index += 1;
+      }
       else if (!strcmp(optname, "I") || !strcmp(optname, "sample-configuration"))
       {
          action = ACTION_SAMPLE_CONFIG;
@@ -244,6 +252,89 @@ main(int argc, char** argv)
    {
       usage();
       exit(0);
+   }
+
+   if (action == ACTION_CONVERT)
+   {
+      int convert_failures = 0;
+      char output_path[MAX_PATH];
+
+      if (hrmp_list_create(&files))
+      {
+         printf("Error creating files list\n");
+         return 1;
+      }
+
+      for (int i = files_index; i < argc; i++)
+      {
+         if (hrmp_is_directory(argv[i]))
+         {
+            if (recursive)
+            {
+               hrmp_get_files(argv[i], recursive, files);
+            }
+         }
+         else if (hrmp_exists(argv[i]))
+         {
+            if (hrmp_list_append(files, argv[i]))
+            {
+               printf("Error creating files list\n");
+               hrmp_list_destroy(files);
+               return 1;
+            }
+         }
+         else
+         {
+            printf("File not found '%s'\n", argv[i]);
+            convert_failures++;
+         }
+      }
+
+      if (hrmp_list_empty(files))
+      {
+         if (convert_failures == 0)
+         {
+            printf("No files provided for conversion\n");
+         }
+
+         hrmp_list_destroy(files);
+
+         return 1;
+      }
+
+      for (files_entry = hrmp_list_head(files);
+           files_entry != NULL;
+           files_entry = hrmp_list_next(files_entry))
+      {
+         char* file = (char*)files_entry->value;
+
+         if (!hrmp_ends_with(file, ".dsf"))
+         {
+            printf("Unsupported conversion source '%s'\n", file);
+            convert_failures++;
+            continue;
+         }
+
+         memset(output_path, 0, sizeof(output_path));
+         if (hrmp_convert_dsf_default_output_path(file, output_path, sizeof(output_path)))
+         {
+            printf("Unable to create output path for '%s'\n", file);
+            convert_failures++;
+            continue;
+         }
+
+         if (hrmp_convert_dsf_to_flac(file, NULL))
+         {
+            convert_failures++;
+            continue;
+         }
+
+         printf("Converted '%s' -> '%s'\n", file, output_path);
+      }
+
+      hrmp_list_destroy(files);
+
+      return convert_failures == 0 ? 0 : 1;
    }
 
    shmem_size = sizeof(struct configuration);
@@ -840,6 +931,7 @@ usage(void)
    printf("  -p, --playlist PLAYLIST    Load a playlist (.hrmp)\n");
    printf("  -R, --recursive            Add files recursive of the directory\n");
    printf("  -M, --mode MODE            Playback mode: once, repeat, shuffle\n");
+   printf("  -C, --convert              Convert .dsf files to 24bit .flac\n");
    printf("  -I, --sample-configuration Generate a sample configuration\n");
    printf("  -i, --interactive          Text UI mode\n");
    printf("  -m, --metadata             Display metadata of the files\n");

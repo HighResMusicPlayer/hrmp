@@ -18,6 +18,7 @@ Options:
   -p, --playlist PLAYLIST    Load files/directories from a playlist file (.hrmp)
   -R, --recursive            Add files recursive of the directory
   -M, --mode MODE            Playback mode: once, repeat, shuffle
+  -C, --convert              Convert .dsf files to 24bit .flac
   -I, --sample-configuration Generate a sample configuration
   -i, --interactive          Text UI mode
   -m, --metadata             Display metadata of the files
@@ -82,6 +83,22 @@ Control playback mode:
 
 ```sh
 hrmp -M shuffle -R .
+```
+
+## -C
+
+Convert `.dsf` files to `.flac` using 24-bit PCM at the matching PCM rate:
+
+* DSD64  -> 88.2kHz
+* DSD128 -> 176.4kHz
+* DSD256 -> 352.8kHz
+* DSD512 -> 705.6kHz
+
+The output file is written next to the source file with the `.flac` suffix. Existing output files are not overwritten.
+
+```sh
+hrmp -C track.dsf
+hrmp -C -R ./archive
 ```
 
 ## -I
